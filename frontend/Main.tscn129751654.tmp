@@ -1,0 +1,37 @@
+[gd_scene load_steps=7 format=3 uid="uid://swxcid1pryfg"]
+
+[ext_resource type="PackedScene" uid="uid://dluyffcsae5mi" path="res://OrbitRig.tscn" id="1_glv2v"]
+[ext_resource type="PackedScene" uid="uid://ug6q6ou0n3pp" path="res://Board3D.tscn" id="2_uu6xs"]
+[ext_resource type="Script" uid="uid://cvn2mgjkxixkq" path="res://Scripts/board_3d.gd" id="3_r0du0"]
+[ext_resource type="PackedScene" uid="uid://cybr7gaad0xdo" path="res://CellHitbox.tscn" id="4_cm0pq"]
+[ext_resource type="Script" uid="uid://bl00kux1swthm" path="res://game_logic.gd" id="5_fos0i"]
+
+[sub_resource type="Environment" id="Environment_uu6xs"]
+background_mode = 1
+background_color = Color(0.3868334, 0.44548005, 0.54401493, 1)
+
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_uu6xs")
+
+[node name="OrbitRig" parent="." instance=ExtResource("1_glv2v")]
+transform = Transform3D(1, 0, 0, 0, 0.9995234, -0.030869931, 0, 0.030869931, 0.9995234, 0, 0, 0)
+distance = 2.0
+min_distance = 1.0
+max_distance = 2.5
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, -0.5562957, 0.8309844, 0, -0.8309844, -0.5562957, 0, 0, 0)
+sky_mode = 1
+
+[node name="Board3d" parent="." instance=ExtResource("2_uu6xs")]
+script = ExtResource("3_r0du0")
+game_logic_path = NodePath("../GameLogic")
+cell_hitbox_scene = ExtResource("4_cm0pq")
+grid_size = null
+spacing = 0.25
+cell_size = 0.2
+
+[node name="GameLogic" type="Node" parent="."]
+script = ExtResource("5_fos0i")

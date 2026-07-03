@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://ug6q6ou0n3pp"]
+
+[ext_resource type="Script" uid="uid://b37vnukjlbvo" path="res://Scripts/board.gd" id="1_3ng4l"]
+[ext_resource type="ArrayMesh" uid="uid://bic4tuij2w0io" path="res://Assets/grid.obj" id="1_xqmrn"]
+[ext_resource type="PackedScene" uid="uid://cybr7gaad0xdo" path="res://Scenes/CellHitbox.tscn" id="2_hq5ls"]
+[ext_resource type="PackedScene" uid="uid://ihantn02ibsm" path="res://Scenes/Piece.tscn" id="3_k0g80"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_4wobu"]
+albedo_color = Color(0.874737, 0.874737, 0.874737, 1)
+metallic = 0.12
+metallic_specular = 0.21
+roughness = 0.55
+
+[node name="Board" type="Node3D" unique_id=808514408]
+script = ExtResource("1_3ng4l")
+cell_hitbox_scene = ExtResource("2_hq5ls")
+piece_scene = ExtResource("3_k0g80")
+
+[node name="BoardMesh" type="MeshInstance3D" parent="." unique_id=657402722]
+material_override = SubResource("StandardMaterial3D_4wobu")
+mesh = ExtResource("1_xqmrn")
+
+[node name="Pieces" type="Node3D" parent="." unique_id=1371495405]
+
+[node name="Cells" type="Node3D" parent="." unique_id=763903969]
+
+[node name="HighlightedSpots" type="Node3D" parent="." unique_id=1526074407]
