@@ -14,7 +14,6 @@ class Weights:
     open_line: float = 1.0      # Enable any line
     open_two: float = 1.0       # Enable two in a row line
     hanging_three: float = 100.0
-    block_win: float = 1000.0
     win: float = 1_000_000.0
     can_force_win: float = 100_000.0
 
@@ -176,7 +175,6 @@ class SimpleBot:
             "possible_line": 0.0,
             "block_line": 0.0,
             "block_two": 0.0,
-            "block_win": 0.0,
             "enable_two": 0.0,
             "hanging_three": 0.0,
             "win": 0.0,
@@ -222,8 +220,6 @@ class SimpleBot:
                 elif n_opponent == 2:
                     breakdown["block_two"] += self.weights.block_two
 
-                elif n_opponent >= 3:
-                    breakdown["block_win"] += self.weights.block_win
 
 
         if creates_three:
@@ -241,7 +237,11 @@ class SimpleBot:
         return {
             "action": action,
             "value": sum(breakdown.values()),
-            "breakdown": breakdown,
+            "breakdown": {
+                key: value
+                for key, value in breakdown.items()
+                if value != 0
+            },
         }
     
 
