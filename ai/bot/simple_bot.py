@@ -1,26 +1,22 @@
-from dataclasses import dataclass
-from environment.game import Game, MoveResult, MoveReason
+from dataclasses import dataclass, field
+from environment.game import Game, MoveResult, MoveReason, Piece
 import random
 from pprint import pprint
+import numpy as np
 
 
 
 
 @dataclass
 class Weights:
-    # Defense
-    block_line: float = 1.0     # Block any opponent line
-    block_two: float = 1.0      # Block opponents two in a row line
+    block_line: float = 1.0
+    block_two: float = 1.0
+    open_line: float = 1.0      # Enable any line
+    open_two: float = 1.0       # Enable two in a row line
+    hanging_three: float = 100.0
     block_win: float = 1000.0
-    danger_plane: float = 10.0
-    
-    # Offense
-    possible_line: float = 1.0  # Enable any line
-    enable_two: float = 1.0     # Enable two in a row line
-    enable_three: float = 0.0   # Enable three in a row line
-    three_and_opponent_cannot_block: float = 90.0
-    checkmate: float = 100_000.0
     win: float = 1_000_000.0
+    can_force_win: float = 100_000.0
 
 
 
@@ -28,41 +24,36 @@ class SimpleBot:
     def __init__(self, game: Game, bot_id: int):
 
         self.bot_id: int = bot_id
+        self.bot_piece = game.get_piece_from_id(bot_id)
         self.game = game
         self.last_action_info = {}
-        self.weights = Weights() # default weights
+
+        self.last_evaluations = {}
+
+        # weights to evaluate how good an action is
+        self.weights = Weights()
 
 
 
     def make_move(self) -> MoveResult:
-        opponent_id = self.game.get_opponent_id(self.bot_id)
+        opponent_piece = self.game.get_opponent_piece(self.bot_piece)
 
-        # 1. Vinn dersom mulig
-        best_actions = self.game.get_winning_actions(self.bot_id)
+        # Først, vinn dersom mulig
+        best_actions = self.game.get_winning_actions(self.bot_piece)
         selection_reason = "immediate_win"
 
-        # 2. Ellers blokker motstanderens seier
+        # Ellers blokker motstanderens seier
         if not best_actions:
-            best_actions = self.game.get_winning_actions(opponent_id)
+            best_actions = self.game.get_winning_actions(opponent_piece)
             selection_reason = "block_immediate_win"
 
-        # 3. Ellers bruk vanlig evaluering
+        # Ellers bruk vanlig evaluering
         if not best_actions:
             evaluations = self.get_all_action_evaluations()
 
-
-            # TODO testing
+            # TODO For debugging
             self.last_evaluations = evaluations
-
-            if not evaluations:
-                self.last_action_info = {
-                    "selection_reason": "no_possible_actions"
-                }
-
-                return MoveResult(
-                    valid=False,
-                    reason=MoveReason.INVALID_REQUEST,
-                )
+            ####################
 
             highest_value = max(
                 info["final_value"]
@@ -79,7 +70,7 @@ class SimpleBot:
 
         best_action = random.choice(best_actions)
 
-        # Må gjøres før det ekte trekket endrer brettet
+        # Legg til info om det beste trekket
         action_info = self.evaluate_action_with_lookahead(best_action)
 
         result = self.game.request_move(best_action, self.bot_id)
@@ -93,7 +84,7 @@ class SimpleBot:
         return result
     
 
-    def print_last_action(self):
+    def print_last_action_info(self):
         pprint(self.last_action_info, sort_dicts=False)
 
 
@@ -104,22 +95,19 @@ class SimpleBot:
         actions: list[tuple[int, int]] = self.game.get_possible_actions()
 
         for action in actions:
-            action_values[action] = self.calculate_action_value_with_lookahead(action)
+            action_values[action] = self.evaluate_action_with_lookahead(action)
 
         return action_values
     
 
 
-    def evaluate_action_with_lookahead(
-        self,
-        action: tuple[int, int],
-    ) -> dict:
+    def evaluate_action_with_lookahead(self, action: tuple[int, int]) -> dict:
 
-        own = self.evaluate_action(action, self.bot_id)
+        own = self.evaluate_action(action, self.bot_piece)
 
-        position = self.game.simulate_move(action, self.bot_id)
+        position = self.game.simulate_move(action, self.bot_piece)
 
-        if self.game.is_winning_position(position, self.bot_id):
+        if self.game.is_winning_position(position, self.bot_piece):
             self.game.undo_move(position)
 
             return {
@@ -130,10 +118,10 @@ class SimpleBot:
                 "final_value": self.weights.win,
             }
 
-        opponent_id = self.game.get_opponent_id(self.bot_id)
+        opponent_piece = self.game.get_opponent_piece(self.bot_piece)
 
         opponent_evaluations = [
-            self.evaluate_action(opponent_action, opponent_id)
+            self.evaluate_action(opponent_action, opponent_piece)
             for opponent_action in self.game.get_possible_actions()
         ]
 
@@ -169,20 +157,19 @@ class SimpleBot:
     
 
     def get_all_action_evaluations(self) -> dict[tuple[int, int], dict]:
-        return {
-            action: self.evaluate_action_with_lookahead(action)
-            for action in self.game.get_possible_actions()
-        }
+        output = {}
+        for action in self.game.get_possible_actions():
+            output[action] = self.evaluate_action_with_lookahead(action)
+        return output
 
 
-    def evaluate_action(
-        self,
-        action: tuple[int, int],
-        player_id: int | None = None,
-    ) -> dict:
 
+    def evaluate_action(self, action: tuple[int, int], piece: Piece) -> dict:
+        """
+        Main function that evaluates the value of a single action.
+        """
 
-        opponent_id = self.game.get_opponent_id(player_id)
+        opponent_piece = self.game.get_opponent_piece(piece)
         position = self.game.action_to_position(action)
 
         breakdown = {
@@ -191,114 +178,65 @@ class SimpleBot:
             "block_two": 0.0,
             "block_win": 0.0,
             "enable_two": 0.0,
-            "enable_three": 0.0,
             "hanging_three": 0.0,
-            "danger_plane": 0.0,
             "win": 0.0,
-            "checkmate": 0.0,
+            "can_force_win": 0.0,
         }
 
-        # Plan der dette trekket blokkerer en motstander-toer
-        blocked_two_planes: set[str] = set()
+        creates_three = False
 
-        for direction in self.game.DIRECTIONS:
+        for direction in self.game.get_valid_directions(position):
             n_opponent = self.game.count_pieces_in_open_line(
                 position,
                 direction,
-                opponent_id,
+                opponent_piece,
                 count_initial_pos=False,
             )
 
             n_player = self.game.count_pieces_in_open_line(
                 position,
                 direction,
-                player_id,
+                piece,
                 count_initial_pos=False,
             )
 
-            is_valid_line = self.game.is_valid_line(
-                position,
-                direction,
-            )
 
             # Offensiv evaluering
-            if is_valid_line and n_player >= 0:
-                breakdown["possible_line"] += (
-                    self.weights.possible_line
-                )
+            if n_player >= 0:
+                breakdown["possible_line"] += self.weights.open_line
 
                 if n_player == 1:
-                    breakdown["enable_two"] += self.weights.enable_two
+                    breakdown["enable_two"] += self.weights.open_two
 
                 elif n_player == 2:
-                    breakdown["enable_three"] += (
-                        self.weights.enable_three
-                    )
+                    creates_three = True
 
                 elif n_player >= 3:
-                    breakdown["win"] = self.weights.win
+                    breakdown["win"] += self.weights.win
 
             # Defensiv evaluering
-            if is_valid_line and n_opponent >= 0:
+            if n_opponent >= 0:
                 if n_opponent == 1:
                     breakdown["block_line"] += self.weights.block_line
 
                 elif n_opponent == 2:
                     breakdown["block_two"] += self.weights.block_two
 
-                    dx, dy, dz = direction
-
-                    if dx == 0:
-                        blocked_two_planes.add("x")
-                    if dy == 0:
-                        blocked_two_planes.add("y")
-                    if dz == 0:
-                        blocked_two_planes.add("z")
-                    if dx == dy:
-                        blocked_two_planes.add("xy_diag")
-                    if dx == -dy:
-                        blocked_two_planes.add("xy_anti_diag")
-
                 elif n_opponent >= 3:
                     breakdown["block_win"] += self.weights.block_win
 
-        # Tell motstanderens åpne toere i planene som trekket blokkerer
-        twos_per_plane = self.game.get_open_twos_per_plane(
-            position,
-            player_id,
-            opponent_id,
-        )
 
-        max_twos_in_blocked_plane = max(
-            (
-                twos_per_plane[plane]
-                for plane in blocked_two_planes
-            ),
-            default=0,
-        )
+        if creates_three:
+            if self.can_force_win(action, piece):
+                breakdown["can_force_win"] += self.weights.can_force_win
 
-        # block_two gir allerede grunnverdien for én toer.
-        # danger_plane gir ekstra verdi for flere toere i samme plan.
-        if max_twos_in_blocked_plane >= 2:
-            breakdown["danger_plane"] += (
-                (max_twos_in_blocked_plane - 1)
-                * self.weights.danger_plane
-            )
+            if self.game.creates_hanging_three(action, piece):
+                breakdown["hanging_three"] += self.weights.hanging_three
 
-        winning_actions_next_turn = (
-            self.game.get_winning_actions_after_move(
-                action,
-                player_id,
-            )
-        )
 
-        if len(winning_actions_next_turn) >= 2:
-            breakdown["checkmate"] = self.weights.checkmate
 
-        if self.game.creates_hanging_three(action, player_id):
-            breakdown["hanging_three"] += (
-                self.weights.three_and_opponent_cannot_block
-            )
+        if self.creates_stacked_winning_positions(action, piece):
+            breakdown["can_force_win"] += self.weights.can_force_win
 
         return {
             "action": action,
@@ -307,9 +245,73 @@ class SimpleBot:
         }
     
 
-    def calculate_action_value(
-        self,
-        action: tuple[int, int],
-        player_id: int | None = None,
-    ) -> float:
-        return self.evaluate_action(action, player_id)["value"]
+
+    def can_force_win(self, action: tuple[int, int], piece: Piece, max_depth: int = 8) -> bool:
+
+        opponent_piece = self.game.get_opponent_piece(piece)
+
+        def recursive_search(attack_action: tuple[int, int], depth: int) -> bool:
+
+            attack_position = self.game.simulate_move(attack_action, piece)
+
+            try:
+                # Angrepstrekket vant direkte
+                if self.game.is_winning_position(attack_position, piece):
+                    return True
+
+                # Motstanderen kan vinne i stedet for å blokkere
+                if self.game.get_winning_actions(opponent_piece):
+                    return False
+
+                forced_blocks = self.game.get_winning_actions(piece)
+
+                # Motstanderen kan bare blokkere 1 posisjon
+                if len(forced_blocks) >= 2:
+                    return True
+
+                # Trekket skapte ingen tvungen trussel
+                if len(forced_blocks) == 0 or depth <= 0:
+                    return False
+
+                block_position = self.game.simulate_move(forced_blocks[0], opponent_piece)
+
+                try:
+                    next_actions = self.game.get_possible_actions()
+
+                    return any(
+                        recursive_search(next_action, depth - 1)
+                        for next_action in next_actions
+                    )
+                finally:
+                    self.game.undo_move(block_position)
+
+            finally:
+                self.game.undo_move(attack_position)
+
+        return recursive_search(action, max_depth)  
+
+
+    def creates_stacked_winning_positions(self, action: tuple[int, int], piece: Piece) -> bool:
+
+        placed_position = self.game.simulate_move(action, piece)
+
+        try:
+            for next_action in self.game.get_possible_actions():
+
+                lower = self.game.action_to_position(next_action)
+                upper = self.game.get_position_above(lower)
+                if upper is None:
+                    continue
+
+                over_upper = self.game.get_position_above(upper)
+                if over_upper is None:
+                    continue
+
+                if self.game.is_winning_position(upper, piece):
+                    if self.game.is_winning_position(over_upper, piece):
+                        return True
+
+            return False
+
+        finally:
+            self.game.undo_move(placed_position)
