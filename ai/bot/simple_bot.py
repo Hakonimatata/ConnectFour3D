@@ -177,6 +177,9 @@ class SimpleBot:
             "block_two": 0.0,
             "enable_two": 0.0,
             "hanging_three": 0.0,
+            #TODO: legg til block win!
+            # TODO: også sjekk hanging three. (sjekk om en ikke har noe under seg)
+            
             "win": 0.0,
             "can_force_win": 0.0,
         }
