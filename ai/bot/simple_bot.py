@@ -221,11 +221,10 @@ class SimpleBot:
                     breakdown["block_two"] += self.weights.block_two
 
 
-
+        if self.can_force_win(action, piece):
+            breakdown["can_force_win"] += self.weights.can_force_win
+        
         if creates_three:
-            if self.can_force_win(action, piece):
-                breakdown["can_force_win"] += self.weights.can_force_win
-
             if self.game.creates_hanging_three(action, piece):
                 breakdown["hanging_three"] += self.weights.hanging_three
 
