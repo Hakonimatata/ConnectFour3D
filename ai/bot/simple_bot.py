@@ -15,7 +15,8 @@ class Weights:
     open_two: float = 1.0       # Enable two in a row line
     hanging_three: float = 100.0
     win: float = 1_000_000.0
-    can_force_win: float = 100_000.0
+    block_win: float = 50_000.0
+    can_force_win: float = 500_000.0
 
 
 
@@ -25,12 +26,13 @@ class SimpleBot:
         self.bot_id: int = bot_id
         self.bot_piece = game.get_piece_from_id(bot_id)
         self.game = game
-        self.last_action_info = {}
-
-        self.last_evaluations = {}
 
         # weights to evaluate how good an action is
         self.weights = Weights()
+
+        # For debugging
+        self.last_action_info = {}
+        self.last_evaluations = {}
 
 
 
@@ -177,9 +179,7 @@ class SimpleBot:
             "block_two": 0.0,
             "enable_two": 0.0,
             "hanging_three": 0.0,
-            #TODO: legg til block win!
-            # TODO: også sjekk hanging three. (sjekk om en ikke har noe under seg)
-            
+            "block_win": 0.0,
             "win": 0.0,
             "can_force_win": 0.0,
         }
@@ -222,6 +222,9 @@ class SimpleBot:
 
                 elif n_opponent == 2:
                     breakdown["block_two"] += self.weights.block_two
+
+                elif n_opponent >= 3:
+                    breakdown["block_win"] += self.weights.block_win
 
 
         if self.can_force_win(action, piece):
