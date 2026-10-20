@@ -14,6 +14,9 @@ const CHUNK := 256 * 1024
 const MAX_PER_POLL := 16 * 1024 * 1024
 const TIMEOUT_MS := 30_000
 
+## Filtyper som komprimeres (gzip) når nettleseren støtter det. index.wasm krymper ~4×.
+const GZIP_TYPES := ["wasm", "js", "html", "pck", "json", "css", "svg", "txt"]
+
 const TYPES := {
 	"html": "text/html; charset=utf-8", "js": "application/javascript", "wasm": "application/wasm",
 	"pck": "application/octet-stream", "png": "image/png", "svg": "image/svg+xml", "ico": "image/x-icon",
@@ -24,6 +27,7 @@ var root := ""
 var port := 0
 var ws_port := 0              ## Spillserverens port (0 = ingen videresending av /ws)
 var tls: TLSOptions = null    ## Satt = HTTPS
+var _gzip_cache: Dictionary = {}   ## full sti -> { mtime, data } (komprimert innhold i minnet)
 var _tcp := TCPServer.new()
 var _clients: Array[Dictionary] = []
 
@@ -38,6 +42,10 @@ func start(dir: String, p_port: int, p_ws_port := 0, p_tls: TLSOptions = null) -
 	if not FileAccess.file_exists(root.path_join("index.html")):
 		push_warning("Fant ikke %s – eksporter web-klienten først." % root.path_join("index.html"))
 	port = p_port
+	# Komprimer de store filene med en gang, så første besøkende slipper å vente.
+	for name in ["index.wasm", "index.js", "index.pck"]:
+		if FileAccess.file_exists(root.path_join(name)):
+			_gzipped(root.path_join(name))
 	return _tcp.listen(port, "*")
 
 
@@ -59,7 +67,8 @@ func poll() -> void:
 				continue
 			stream = secure
 		_clients.append({ "tcp": stream, "request": PackedByteArray(), "file": null, "pending": PackedByteArray(),
-			"since": now, "upstream": null, "to_up": PackedByteArray(), "to_client": PackedByteArray() })
+			"since": now, "upstream": null, "to_up": PackedByteArray(), "to_client": PackedByteArray(),
+			"mem": PackedByteArray(), "mem_pos": 0 })
 
 	var keep: Array[Dictionary] = []
 	for c in _clients:
@@ -84,7 +93,7 @@ func _serve(c: Dictionary) -> bool:
 	if c.upstream != null:
 		return _pipe(c)
 
-	if c.file == null and c.pending.is_empty():
+	if c.file == null and c.pending.is_empty() and c.mem.is_empty():
 		# Les forespørselen til vi har hele headeren.
 		var available := tcp.get_available_bytes()
 		if available > 0:
@@ -97,19 +106,28 @@ func _serve(c: Dictionary) -> bool:
 		_respond(c, text)
 		if c.upstream != null:
 			return true
-		if c.file == null and c.pending.is_empty():
+		if c.file == null and c.pending.is_empty() and c.mem.is_empty():
 			return false
 
 	# Send så mye som nettverket tar imot nå.
 	var sent_total := 0
 	while sent_total < MAX_PER_POLL:
 		if c.pending.is_empty():
-			var f: FileAccess = c.file
-			if f == null or f.eof_reached() or f.get_position() >= f.get_length():
-				return false
-			c.pending = f.get_buffer(CHUNK)
-			if c.pending.is_empty():
-				return false
+			if not c.mem.is_empty():
+				# Komprimert innhold fra minnet
+				var mem: PackedByteArray = c.mem
+				var pos: int = c.mem_pos
+				if pos >= mem.size():
+					return false
+				c.pending = mem.slice(pos, pos + CHUNK)
+				c.mem_pos = pos + CHUNK
+			else:
+				var f: FileAccess = c.file
+				if f == null or f.eof_reached() or f.get_position() >= f.get_length():
+					return false
+				c.pending = f.get_buffer(CHUNK)
+				if c.pending.is_empty():
+					return false
 		var res := tcp.put_partial_data(c.pending)
 		if res[0] != OK:
 			return false
@@ -152,14 +170,42 @@ func _respond(c: Dictionary, request: String) -> void:
 		c.pending = _header(404, "text/plain; charset=utf-8", body.size()) + body
 		return
 	var ext := clean.get_extension().to_lower()
-	c.pending = _header(200, TYPES.get(ext, "application/octet-stream"), f.get_length())
+	var type: String = TYPES.get(ext, "application/octet-stream")
+	if ext in GZIP_TYPES and _accepts_gzip(request):
+		var data := _gzipped(full)
+		if not data.is_empty():
+			c.pending = _header(200, type, data.size(), "Content-Encoding: gzip" + "\r\n" + "Vary: Accept-Encoding" + "\r\n")
+			c.mem = data
+			return
+	c.pending = _header(200, type, f.get_length())
 	c.file = f
 
 
-func _header(code: int, type: String, length: int) -> PackedByteArray:
+static func _accepts_gzip(request: String) -> bool:
+	for line in request.split("\r\n"):
+		if line.to_lower().begins_with("accept-encoding:"):
+			return line.to_lower().contains("gzip")
+	return false
+
+
+## Komprimert innhold for en fil (gzip), hentet fra minnet hvis filen ikke er endret.
+func _gzipped(full: String) -> PackedByteArray:
+	var mtime := FileAccess.get_modified_time(full)
+	var cached: Dictionary = _gzip_cache.get(full, {})
+	if cached.get("mtime", -1) == mtime:
+		return cached.data
+	var raw := FileAccess.get_file_as_bytes(full)
+	if raw.is_empty():
+		return PackedByteArray()
+	var data := raw.compress(FileAccess.COMPRESSION_GZIP)
+	_gzip_cache[full] = { "mtime": mtime, "data": data }
+	return data
+
+
+func _header(code: int, type: String, length: int, extra := "") -> PackedByteArray:
 	var reason := { 200: "OK", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 502: "Bad Gateway" }
-	var h := "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n" \
-		% [code, reason.get(code, ""), type, length]
+	var h := "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n%sCache-Control: no-cache\r\nConnection: close\r\n\r\n" \
+		% [code, reason.get(code, ""), type, length, extra]
 	return h.to_utf8_buffer()
 
 

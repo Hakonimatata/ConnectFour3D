@@ -2,3 +2,4 @@
 * text=auto eol=lf
 # Windows-skript må ha CRLF
 *.cmd text eol=crlf
+*.ps1 text eol=crlf

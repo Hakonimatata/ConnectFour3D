@@ -45,6 +45,27 @@ Flytter du Godot til en annen mappe, retter du stien med `notepad $PROFILE`.
 
 Serveradressen kan endres under *Innstillinger → Server*. På web kan den også settes i adressefeltet, for eksempel `?server=ws://192.168.1.10:8080`.
 
+### Spille med venner over internett (én kommando)
+
+```
+scripts\online.cmd
+```
+
+Skriptet gjør alt:
+1. Eksporterer spillet.
+2. Starter serveren.
+3. Lager en gratis Cloudflare-tunnel (`cloudflared` installeres automatisk første gang).
+4. Skriver ut en adresse som `https://noe-tilfeldig.trycloudflare.com` og kopierer den til utklippstavlen.
+
+Send adressen til de som skal spille. Den virker på iPhone, Android og PC, også over mobilnett.
+
+- **Spille:** velg «Spill online», opprett et rom og del romkoden.
+- **Stoppe:** trykk Ctrl+C.
+- **Raskere oppstart:** `scripts\online.cmd -NoExport` hopper over eksporten når du ikke har endret noe.
+- **Andre porter:** er 8000 eller 8080 opptatt, bruk `-WebPort 9000 -GamePort 9080`.
+- **Ny adresse hver gang:** tunnelen får en ny adresse hver gang du starter den. Åpner du den på din egen PC med én gang, kan det ta opptil et halvt minutt før den virker der (nettverket ditt husker at navnet ikke fantes).
+- **Spillet kjører på PC-en din:** den må være på, og opplastingen din avgjør hvor fort andre laster spillet. Spillfilen komprimeres til ca. 10 MB.
+
 ### Spille i nettleseren fra din egen PC (telefon, venner)
 
 **Viktig:** nettlesere starter bare Godot-spill fra en *sikker* adresse, altså `https://…` eller `http://localhost`. En adresse som `http://192.168.1.23:8000` gir feilen *«Secure Context – use HTTPS»*. Serveren kan derfor kjøre HTTPS selv (`--https`).

@@ -28,7 +28,7 @@ func after_each() -> void:
 
 
 ## Sender en GET og gir { head, body } nÃ¥r serveren har lukket forbindelsen.
-func _http_get(path: String) -> Dictionary:
+func _http_get(path: String, extra_headers := "") -> Dictionary:
 	var tcp := StreamPeerTCP.new()
 	tcp.connect_to_host("127.0.0.1", PORT)
 	var sent := false
@@ -39,7 +39,7 @@ func _http_get(path: String) -> Dictionary:
 		tcp.poll()
 		var status := tcp.get_status()
 		if status == StreamPeerTCP.STATUS_CONNECTED and not sent:
-			tcp.put_data(("GET %s HTTP/1.1\r\nHost: x\r\n\r\n" % path).to_utf8_buffer())
+			tcp.put_data(("GET %s HTTP/1.1\r\nHost: x\r\n%s\r\n" % [path, extra_headers]).to_utf8_buffer())
 			sent = true
 		var n := tcp.get_available_bytes() if status == StreamPeerTCP.STATUS_CONNECTED else 0
 		if n > 0:
@@ -151,3 +151,17 @@ func test_https_with_certificate() -> void:
 	if tls:
 		tls.disconnect_from_stream()
 	secure_server.stop()
+
+
+func test_gzip_when_browser_accepts_it() -> void:
+	var r: Dictionary = await _http_get("/game.wasm", "Accept-Encoding: gzip, deflate, br\r\n")
+	check(r.head.contains("Content-Encoding: gzip"), "skal være komprimert: " + r.head)
+	var body: PackedByteArray = r.body
+	check(body.size() < 700_000, "komprimert skal være mindre, var %d" % body.size())
+	check(body.size() > 2 and body[0] == 0x1f and body[1] == 0x8b, "skal være gzip-format")
+	var raw := body.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+	check_eq(raw.size(), 700_000, "utpakket størrelse:")
+	check_eq(raw[699_999], 699_999 % 251)
+	# Uten Accept-Encoding: ukomprimert
+	var plain: Dictionary = await _http_get("/game.wasm")
+	check(not plain.head.contains("Content-Encoding"), "uten gzip-støtte skal svaret være ukomprimert")
