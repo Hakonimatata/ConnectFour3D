@@ -1,0 +1,30 @@
+# Kjør fra roten av repoet:
+#   DOMAIN=spill.example.no docker compose -f deploy/docker-compose.yml up -d --build
+# Uten DOMAIN kjører alt på https://localhost (selvsignert sertifikat).
+services:
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: server
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+    restart: unless-stopped
+    depends_on: [server]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - caddy_data:/data
+
+volumes:
+  caddy_data:

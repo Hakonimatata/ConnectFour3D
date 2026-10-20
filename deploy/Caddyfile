@@ -1,0 +1,14 @@
+# Én adresse for alt:
+#   https://DOMENE/     -> web-klienten (statiske filer)
+#   wss://DOMENE/ws     -> spillserveren
+# Caddy henter HTTPS-sertifikat automatisk når DOMAIN er et ekte domenenavn.
+{$DOMAIN:localhost} {
+	encode zstd gzip
+	handle /ws* {
+		reverse_proxy server:8080
+	}
+	handle {
+		root * /srv/web
+		file_server
+	}
+}

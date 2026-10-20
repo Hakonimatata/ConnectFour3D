@@ -1,24 +1,15 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyd
+# Godot
+.godot/
+/android/
+*.tmp
 
-# Virtual environments
-.venv/
-venv/
-env/
+# Bygg
+/build/
 
-# Jupyter
-.ipynb_checkpoints/
+# Gamle filer fra før omleggingen (mappen kan slettes)
+/frontend/
 
-# VS Code
+# Verktøy og OS
 .vscode/
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# OS
 .DS_Store
 Thumbs.db
