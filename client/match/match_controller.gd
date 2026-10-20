@@ -18,7 +18,8 @@ var options := GameOptions.new()
 var state: GameState
 var clock := ChessClock.new()
 var game_number := 0
-## Spillerne: name, skin (id), avatar (base64, kan være ""), local (styres fra denne enheten), subtitle
+## Spillerne: name, skin, decal, win_fx, away (se Skins.look), avatar (base64, kan være ""),
+## local (styres fra denne enheten), subtitle
 var players := {
 	1: { "name": "Spiller 1", "skin": Skins.DEFAULT_P1, "local": true, "subtitle": "" },
 	2: { "name": "Spiller 2", "skin": Skins.DEFAULT_P2, "local": true, "subtitle": "" },
@@ -71,4 +72,17 @@ func time_left_ms(player: int) -> int:
 
 
 func color_of(player: int) -> Color:
-	return Skins.color_of(players[player].skin)
+	return Skins.ui_color(players[player])
+
+
+func look_of(player: int) -> Dictionary:
+	var p: Dictionary = players[player]
+	return Skins.look(str(p.get("skin", "")), str(p.get("decal", "none")), str(p.get("win_fx", "classic")),
+		bool(p.get("away", false)))
+
+
+## Gjør spillernes utseende lett å skille (bortedrakt for spiller 2 ved lik skin).
+func resolve_looks() -> void:
+	var pair := Skins.resolve_pair(look_of(1), look_of(2))
+	for i in 2:
+		(players[i + 1] as Dictionary).merge(pair[i], true)

@@ -22,10 +22,7 @@ func _ready() -> void:
 
 	v.add_child(UI.section("Bli med med kode"))
 	var row := UI.hbox(8)
-	_code_edit = LineEdit.new()
-	_code_edit.placeholder_text = "F.eks. KXRTA"
-	_code_edit.max_length = Lobby.CODE_LENGTH
-	_code_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_code_edit = UI.line_edit("", "F.eks. KXRTA", Lobby.CODE_LENGTH)
 	_code_edit.text_submitted.connect(func(_t: String) -> void: _join(_code_edit.text))
 	row.add_child(_code_edit)
 	var join := UI.button("Bli med", func() -> void: _join(_code_edit.text))
@@ -68,11 +65,11 @@ func _update_status() -> void:
 		b.disabled = not online
 	match Net.status:
 		Net.Status.ONLINE:
-			_status.text = "Tilkoblet som %s" % Settings.player_name
+			_status.text = tr("Tilkoblet som %s") % Settings.player_name
 		Net.Status.CONNECTING:
-			_status.text = "Kobler til %s…%s" % [Net.url, ("\n" + Net.last_error) if Net.last_error != "" else ""]
+			_status.text = tr("Kobler til %s…%s") % [Net.url, ("\n" + Net.last_error) if Net.last_error != "" else ""]
 		_:
-			_status.text = Net.last_error if Net.last_error != "" else "Frakoblet"
+			_status.text = Net.last_error if Net.last_error != "" else tr("Frakoblet")
 
 
 func _on_connected(_resumed: bool) -> void:
@@ -92,7 +89,7 @@ func _on_message(msg: Dictionary) -> void:
 		Protocol.ROOM_STATE:
 			app.show_room(msg)
 		Protocol.ERROR:
-			_status.text = str(msg.get("text", "Feil"))
+			_status.text = I18n.server_text(msg)
 
 
 func _show_rooms(rooms: Array) -> void:
@@ -105,8 +102,10 @@ func _show_rooms(rooms: Array) -> void:
 		var row := UI.hbox(10)
 		var texts := UI.vbox(2)
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		texts.add_child(UI.label("%s sitt rom" % str(r.get("host", "?"))))
-		texts.add_child(UI.label(str(r.get("description", "")), "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+		texts.add_child(UI.label(tr("%s sitt rom") % str(r.get("host", "?"))))
+		var opts = r.get("options", {})
+		texts.add_child(UI.label(GameOptions.from_dict(opts if opts is Dictionary else {}).describe(), "Muted",
+			HORIZONTAL_ALIGNMENT_LEFT, true))
 		row.add_child(texts)
 		var code := str(r.get("code", ""))
 		row.add_child(UI.button("Bli med", func() -> void: _join(code)))

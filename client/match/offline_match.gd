@@ -11,18 +11,19 @@ var _rng := RandomNumberGenerator.new()
 func _init(p_options: GameOptions, bot_profile: BotProfile = null) -> void:
 	options = p_options
 	_rng.randomize()
-	var own_skin: String = Settings.skin_id
-	players[1] = { "name": Settings.player_name, "skin": own_skin, "avatar": Settings.avatar, "local": true, "subtitle": "" }
+	players[1] = { "name": Settings.player_name, "avatar": Settings.avatar, "local": true, "subtitle": "" }
+	players[1].merge(Settings.look(), true)
 	if bot_profile != null:
 		mode = "ai"
 		bot = Bot.new(bot_profile)
-		players[2] = { "name": "Bot", "skin": Skins.contrast_for(own_skin, Skins.DEFAULT_P2),
-			"local": false, "subtitle": bot_profile.display_name }
+		players[2] = { "name": tr("Bot"), "local": false, "subtitle": bot_profile.display_name }
+		players[2].merge(Skins.look(Skins.DEFAULT_P2), true)
 	else:
 		mode = "local"
-		players[1].name = "Spiller 1"
-		players[2] = { "name": "Spiller 2", "skin": Skins.contrast_for(own_skin, Skins.DEFAULT_P2),
-			"local": true, "subtitle": "" }
+		players[1].name = tr("Spiller 1")
+		players[2] = { "name": tr("Spiller 2"), "local": true, "subtitle": "" }
+		players[2].merge(Skins.look(Skins.DEFAULT_P2), true)
+	resolve_looks()
 
 
 func my_seat() -> int:

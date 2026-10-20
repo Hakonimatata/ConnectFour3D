@@ -67,13 +67,16 @@ func test_avatar_is_shared_and_invalid_ones_dropped() -> void:
 	var img := Image.create(40, 30, false, Image.FORMAT_RGB8)
 	img.fill(Color.ORANGE)
 	var avatar := AvatarData.from_bytes(img.save_png_to_buffer())
-	_msg(1, { "t": "hello", "name": "Ada", "skin": "ocean", "avatar": avatar, "version": Protocol.VERSION })
+	_msg(1, { "t": "hello", "name": "Ada", "skin": "ocean", "decal": "star", "win_fx": "confetti", "avatar": avatar,
+		"version": Protocol.VERSION })
 	_msg(2, { "t": "hello", "name": "Bo", "skin": "lime", "avatar": Marshalls.raw_to_base64("ikke et bilde".to_utf8_buffer()),
 		"version": Protocol.VERSION })
 	_msg(1, { "t": "create_room", "options": {}, "private": true })
 	_msg(2, { "t": "join_room", "code": _last(1, "room_state").code })
 	var players: Array = _last(2, "room_state").players
 	check_eq(players[0].avatar, avatar, "Ada sitt bilde deles:")
+	check_eq(players[0].decal, "star")
+	check_eq(players[0].win_fx, "confetti")
 	check_eq(players[1].avatar, "", "ugyldig bilde droppes:")
 
 
@@ -172,6 +175,8 @@ func test_resign_and_rematch() -> void:
 	check_eq(_last(2, "game_over").get("winner"), 2.0)
 	_msg(1, { "t": "rematch" })
 	check_eq(_last(2, "notice").text, "Ada vil spille igjen!")
+	check_eq(_last(2, "notice").key, "%s vil spille igjen!", "meldingen har nøkkel for oversettelse:")
+	check_eq(_last(2, "notice").args, ["Ada"])
 	_msg(2, { "t": "rematch" })
 	check_eq(_count(1, "game_start"), 2)
 	check_eq(_last(1, "game_start").first, 2.0, "annenhver: parti 2 startes av P2:")

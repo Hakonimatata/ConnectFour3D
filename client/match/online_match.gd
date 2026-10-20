@@ -56,7 +56,7 @@ func resign() -> void:
 
 func request_rematch() -> void:
 	Net.send({ "t": Protocol.REMATCH })
-	info.emit("Venter på motstanderen…")
+	info.emit(tr("Venter på motstanderen…"))
 
 
 func send_chat(text: String) -> void:
@@ -91,22 +91,17 @@ func _apply_start(msg: Dictionary) -> void:
 
 
 func _read_players(list: Array) -> void:
-	var own_skin := ""
-	for info in list:
-		if info is Dictionary and int(info.seat) == _seat:
-			own_skin = str(info.skin)
 	for info in list:
 		if not info is Dictionary:
 			continue
 		var seat := int(info.seat)
-		var skin := str(info.skin)
-		if seat != _seat:
-			skin = Skins.contrast_for(own_skin, skin if Skins.is_valid(skin) else Skins.DEFAULT_P2)
-		elif not Skins.is_valid(skin):
-			skin = Skins.DEFAULT_P1
-		var sub := "" if bool(info.get("connected", true)) else "frakoblet"
-		players[seat] = { "name": str(info.name), "skin": skin, "avatar": str(info.get("avatar", "")),
+		var sub := "" if bool(info.get("connected", true)) else tr("frakoblet")
+		players[seat] = { "name": str(info.name), "avatar": str(info.get("avatar", "")),
 			"local": seat == _seat, "subtitle": sub }
+		players[seat].merge(Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
+			str(info.get("win_fx", "classic"))), true)
+	# Begge klientene regner likt: verten (sete 1) har hjemmedrakt, gjesten bortedrakt ved lik skin.
+	resolve_looks()
 	players_changed.emit()
 
 
@@ -138,7 +133,7 @@ func _on_message(msg: Dictionary) -> void:
 			if state != null:
 				_read_players(msg.get("players", []))
 		Protocol.NOTICE, Protocol.ERROR:
-			info.emit(str(msg.get("text", "")))
+			info.emit(I18n.server_text(msg))
 
 
 func _finish_from(msg: Dictionary) -> void:
@@ -155,11 +150,11 @@ func _finish_from(msg: Dictionary) -> void:
 
 
 func _on_disconnected() -> void:
-	info.emit("Mistet forbindelsen. Kobler til igjen…")
+	info.emit(tr("Mistet forbindelsen. Kobler til igjen…"))
 
 
 func _on_connected(resumed: bool) -> void:
 	if not resumed and state != null and not state.is_over():
-		info.emit("Partiet ble avbrutt (serveren startet på nytt).")
+		info.emit(tr("Partiet ble avbrutt (serveren startet på nytt)."))
 		state.end_with_loss(_seat, GameState.EndReason.DISCONNECT)
 		finished.emit(state.result, state.end_reason, [])

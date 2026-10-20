@@ -11,7 +11,8 @@ func _ready() -> void:
 	app.camera.auto_rotate = true
 	app.board.input_enabled = false
 	app.board.setup(4)
-	app.board.set_colors(Skins.color_of(Settings.skin_id), Skins.color_of(Skins.contrast_for(Settings.skin_id, Skins.DEFAULT_P2)))
+	var pair := Skins.resolve_pair(Settings.look(), Skins.look(Skins.DEFAULT_P2))
+	app.board.set_looks(pair[0], pair[1])
 	_demo_bot.profile.think_time_s = 0.0
 
 	_panel = MarginContainer.new()

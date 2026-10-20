@@ -95,6 +95,48 @@ func test_settings_avatar_pick_and_clear() -> void:
 	Settings.avatar = before
 
 
+func test_every_win_animation_runs() -> void:
+	var m := OfflineMatch.new(GameOptions.new())
+	app.start_match(m)
+	await _frames(2)
+	for mv in [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 3], [3, 0]]:
+		m.submit_move(Vector2i(mv[0], mv[1]))
+	await _frames(2)
+	for fx in Skins.WIN_FX:
+		WinFx.play(app.board, app.camera, m.state.winning_line, Color.ORANGE, fx.id)
+		await tree.create_timer(0.7, true, false, true).timeout
+	Engine.time_scale = 1.0
+	check(true)
+
+
+func test_language_switch_and_chat_presets() -> void:
+	var old_lang := Settings.language
+	var old_presets := Settings.chat_presets.duplicate()
+	app.show_settings()
+	await _frames(2)
+	(_screen() as SettingsScreen)._set_language("en")
+	await _frames(2)
+	check(_screen() is SettingsScreen, "innstillingene vises igjen")
+	check_eq(tr("Lagre"), "Save")
+	check_eq(Settings.chat_messages()[0], "Good luck!", "standardmeldinger følger språket:")
+	var screen := _screen() as SettingsScreen
+	screen._preset_edits[0].text = "Hei hei"
+	screen._store_fields()
+	check_eq(Settings.chat_messages()[0], "Hei hei")
+	var chat := ChatPanel.new()
+	root.add_child(chat)
+	await _frames(1)
+	var found := false
+	for b in chat.find_children("*", "Button", true, false):
+		if (b as Button).text == "Hei hei":
+			found = true
+	check(found, "chatten viser egne hurtigmeldinger")
+	chat.queue_free()
+	Settings.chat_presets.assign(old_presets)
+	Settings.language = old_lang
+	I18n.apply(old_lang)
+
+
 func test_local_game_touch_needs_two_taps_and_5x5() -> void:
 	var o := GameOptions.new()
 	o.size = 5

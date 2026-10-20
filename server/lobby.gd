@@ -15,6 +15,8 @@ class Player:
 	var id: int
 	var name: String
 	var skin: String
+	var decal := "none"
+	var win_fx := "classic"
 	var avatar := ""               ## base64-JPEG, sjekket med AvatarData.is_valid
 	var token: String
 	var peer := 0                  ## 0 = frakoblet
@@ -68,7 +70,7 @@ func on_disconnect(peer: int, now: int) -> void:
 	p.disconnected_at = now
 	var room := _room_of(p)
 	if room:
-		_notice_room(room, "%s mistet forbindelsen…" % p.name, p.id)
+		_notice_room(room, "%s mistet forbindelsen…", [p.name], p.id)
 		_broadcast_room_state(room)
 
 
@@ -93,7 +95,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.CHAT: _chat(p, str(msg.get("text", "")), now)
 		Protocol.RESIGN: _resign(p, now)
 		Protocol.REMATCH: _rematch(p, now)
-		_: _error(peer, "unknown", "Ukjent melding: " + t)
+		_: _error(peer, "unknown", "Ukjent melding: %s", [t])
 
 
 ## Kalles jevnlig: tid ute og spillere som ikke kom tilbake.
@@ -134,6 +136,8 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		close_peer.call(p.peer)
 	p.name = Protocol.clean_name(msg.get("name", "Spiller"))
 	p.skin = str(msg.get("skin", "ocean")).substr(0, 24)
+	p.decal = str(msg.get("decal", "none")).substr(0, 24)
+	p.win_fx = str(msg.get("win_fx", "classic")).substr(0, 24)
 	var avatar = msg.get("avatar", "")
 	p.avatar = avatar if AvatarData.is_valid(avatar) else ""
 	p.peer = peer
@@ -146,7 +150,7 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		_broadcast_room_state(room)
 		if room.state != null:
 			_send_sync(room, p, now)
-		_notice_room(room, "%s er tilbake." % p.name, p.id)
+		_notice_room(room, "%s er tilbake.", [p.name], p.id)
 
 
 func _list_rooms(p: Player) -> void:
@@ -175,7 +179,7 @@ func _create_room(p: Player, msg: Dictionary, now: int) -> void:
 func _join_room(p: Player, code: String, now: int) -> void:
 	code = code.strip_edges().to_upper()
 	if not rooms.has(code):
-		_error(p.peer, "no_room", "Fant ikke rommet %s." % code)
+		_error(p.peer, "no_room", "Fant ikke rommet %s.", [code])
 		return
 	var room: Room = rooms[code]
 	if room.seat_of(p.id) > 0:
@@ -188,7 +192,7 @@ func _join_room(p: Player, code: String, now: int) -> void:
 	var seat := 1 if room.seats[1] == 0 else 2
 	room.seats[seat] = p.id
 	p.room_code = room.code
-	_notice_room(room, "%s ble med." % p.name, p.id)
+	_notice_room(room, "%s ble med.", [p.name], p.id)
 	_broadcast_room_state(room)
 
 
@@ -212,7 +216,7 @@ func _leave_room(p: Player, now: int) -> void:
 		room.seats[1] = room.seats[2]
 		room.seats[2] = 0
 	room.state = null
-	_notice_room(room, "%s forlot rommet." % p.name, p.id)
+	_notice_room(room, "%s forlot rommet.", [p.name], p.id)
 	_broadcast_room_state(room)
 
 
@@ -295,7 +299,7 @@ func _rematch(p: Player, now: int) -> void:
 	if room.rematch[1] and room.rematch[2]:
 		_start_game(room, now)
 	else:
-		_notice_room(room, "%s vil spille igjen!" % p.name, p.id)
+		_notice_room(room, "%s vil spille igjen!", [p.name], p.id)
 
 
 # ---------------------------------------------------------------- Parti
@@ -368,7 +372,7 @@ func _players_info(room: Room) -> Array:
 			out.append(null)
 			continue
 		var p: Player = players[id]
-		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "avatar": p.avatar,
+		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "decal": p.decal, "win_fx": p.win_fx, "avatar": p.avatar,
 			"ready": room.ready[seat], "connected": p.peer != 0 })
 	return out
 
@@ -391,15 +395,17 @@ func _send_room(room: Room, msg: Dictionary) -> void:
 			send.call(players[id].peer, msg)
 
 
-func _notice_room(room: Room, text: String, except_id: int) -> void:
+## key er en norsk tekst med %s for args. Klienten oversetter key, og «text» er ferdig utfylt.
+func _notice_room(room: Room, key: String, args: Array, except_id: int) -> void:
 	for seat in [1, 2]:
 		var id := room.seats[seat]
 		if id != 0 and id != except_id and players[id].peer != 0:
-			send.call(players[id].peer, { "t": Protocol.NOTICE, "text": text })
+			send.call(players[id].peer, { "t": Protocol.NOTICE, "text": key % args, "key": key, "args": args })
 
 
-func _error(peer: int, code: String, text: String) -> void:
-	send.call(peer, { "t": Protocol.ERROR, "code": code, "text": text })
+func _error(peer: int, code: String, key: String, args: Array = []) -> void:
+	var text := key % args if not args.is_empty() else key
+	send.call(peer, { "t": Protocol.ERROR, "code": code, "text": text, "key": key, "args": args })
 
 
 func _new_code() -> String:

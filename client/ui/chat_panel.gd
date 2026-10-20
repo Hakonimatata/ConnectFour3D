@@ -4,7 +4,6 @@ extends PanelContainer
 
 signal send_requested(text: String)
 
-const QUICK := ["Lykke til!", "Bra trekk!", "Oi!", "GG"]
 const MAX_LENGTH := 200
 
 var _log: RichTextLabel
@@ -25,7 +24,7 @@ func _ready() -> void:
 	var quick := HFlowContainer.new()
 	quick.add_theme_constant_override("h_separation", 6)
 	quick.add_theme_constant_override("v_separation", 6)
-	for q in QUICK:
+	for q in Settings.chat_messages():
 		var b := UI.button(q, func() -> void: send_requested.emit(q), "ChoiceButton")
 		b.custom_minimum_size.y = 36
 		b.add_theme_font_size_override("font_size", 15)
@@ -33,10 +32,9 @@ func _ready() -> void:
 	v.add_child(quick)
 
 	var row := UI.hbox(8)
-	_input = LineEdit.new()
-	_input.placeholder_text = "Skriv en melding…"
-	_input.max_length = MAX_LENGTH
-	_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_input = UI.line_edit("", "Skriv en melding…", MAX_LENGTH)
+	_input.select_all_on_focus = false
+	_input.clear_button_enabled = false
 	_input.text_submitted.connect(func(_t: String) -> void: _send())
 	row.add_child(_input)
 	row.add_child(UI.button("Send", _send))

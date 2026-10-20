@@ -264,7 +264,14 @@ ConnectFour3D/
 ### 5.3 Utseende
 
 - **Minimalistisk stil:** mørk bakgrunn, Godots standardfont (kan byttes til f.eks. Inter senere), få farger, myke animasjoner og ett `Theme` for hele UI-et.
-- **Skins:** en liste i `client/skins.gd` med navn og farge (8 stk). Senere kan en skin få eget materiale eller egen mesh.
+- **Skins (runde 5):** 12 skins i `client/skins.gd`, tegnet av én shader (`assets/shaders/piece.gdshader`):
+  - stiler: glatt, metall, lava, galakse, holografisk, neon, marmor, karbon og racing,
+  - en gradient mellom to nære farger,
+  - hver skin har **hjemme- og bortedrakt**. Ved lik skin bruker spiller 2 (gjesten) bortedrakt, og begge klientene regner likt,
+  - 7 **merker** på toppen (stjerne, prikk, ring, kryss, diamant, hjerte),
+  - 5 **seiersanimasjoner** (klassisk, fyrverkeri, konfetti, sjokkbølge, lyn). Vinnerens valg vises, også online.
+  - Alt er laget i kode, uten teksturer, så det er lett og virker på web og mobil.
+- **Språk (runde 5):** norsk og engelsk (`client/i18n.gd`). Norsk tekst i koden er nøkkelen, og engelsk ligger i en ordliste. En test sjekker at ingen UI-tekst mangler oversettelse. Serveren sender meldinger med nøkkel + argumenter, så de også oversettes.
   - Valgt skin lagres lokalt og sendes til serveren, slik at motstanderen ser den.
   - Velger begge samme farge, bytter klienten automatisk motstanderen til en kontrastfarge.
 - **Små detaljer som gir god følelse:** brikken faller med en liten sprett (tween), lyd ved plassering, og markering av tvungne trekk når `must_block` er på (finnes allerede, se `_on_forced_move`).
@@ -424,7 +431,7 @@ DOMAIN=… docker compose -f deploy/docker-compose.yml up -d --build      # alt 
 
 Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir ferdig før online. Størrelse: S = liten, M = middels, L = stor.
 
-**Status etter runde 2:** fase 0–5 ✅ · fase 6 ⏳ (filene er klare, men ikke satt i drift) · fase 7–8 ikke startet.
+**Status etter runde 2:** fase 0–5 ✅ · fase 6 ⏳ (filene er klare, men ikke satt i drift) · fase 7–11 ikke startet (design for 8–11 i seksjon 13).
 
 ### Fase 0 – Opprydding og oppsett (S) ✅
 - Ny gren. Flytt Godot-prosjektet til roten av repoet.
@@ -469,19 +476,32 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 - P2P via WebRTC.
 - Tilskuere, replays, rangering, app-eksport (Android).
 
-### Fase 8 – Kontoer med passord (M)
-- *Allerede på plass (runde 4):* kallenavn, farge og profilbilde, som sendes i `hello` og vises for motstanderen. Med kontoer lagres de på serveren i stedet for bare lokalt.
-- Registrering og innlogging med kallenavn + passord, i tillegg til gjestespill som i dag.
-- Serveren lagrer kontoer i en JSON-fil på et Docker-volum (lettvekt, ingen database).
-- Passord lagres aldri i klartekst: tilfeldig salt + mange runder HMAC-SHA256 (Godots `HMACContext` og `Crypto`).
-- Innlogging gir samme token-mekanisme som brukes til gjenkobling i dag.
-- Senere kan kontoene brukes til statistikk eller rangering.
+### Fase 8 – Invitasjonslenke (S)
+- «Del invitasjon»-knapp i venterommet. Den gir en lenke som `https://<adresse>/?rom=KXRTA`.
+- Åpner man lenken, kobler spillet seg til og blir med i rommet. Har man ikke kallenavn, blir man spurt om det først.
+- Fungerer uten kontoer, og virker med tunnelen, `--https` på wifi og VPS. Detaljer i 13.2.
 
-### Fase 9 – Turneringsmodus (L, til senere)
-- Admin-brukere (krever fase 8) oppretter turneringer med påmeldingsfrist, format (f.eks. utslag eller serie), tidskontroll og tidspunkt for kampene.
-- Spillerne melder seg på innen fristen. Serveren setter opp kampene og åpner rommene til avtalt tid.
-- Den som ikke møter innen en kort frist, taper automatisk (bygger på mekanismen for frakobling og walkover).
-- Krever at serveren lagrer data mellom omstarter (samme JSON-lagring som kontoene).
+### Fase 9 – Lagring og kontoer med passord (M)
+- Serveren får varig lagring (JSON-filer) i stedet for bare minnet.
+- Registrering og innlogging med brukernavn og passord. Gjestespill med kallenavn virker fortsatt.
+- Profil (navn, farge, bilde) lagres på serveren.
+- *Allerede på plass:* kallenavn, farge og profilbilde sendes i `hello`.
+- Detaljer i 13.1 og 13.3.
+
+### Fase 10 – Statistikk og toppliste (M)
+- Hvert online-parti lagres med trekkliste.
+- **Per spiller:** seire, tap, uavgjort, vinnerprosent, rekker, raskeste seier, og «tvungne trekk»-tellere (tvungne trekk, lengste tvungne rekke, doble trusler).
+- Profilskjerm, statistikk på spillerkortet og en toppliste.
+- Detaljer i 13.4.
+
+### Fase 11 – Turneringer med admin i spillet (L)
+- Admin oppretter turneringer i spillet med:
+  - format (utslag eller alle-mot-alle) og regler/klokke,
+  - påmeldingsfrist og starttid,
+  - tid mellom rundene.
+- Spillerne melder seg på. Serveren setter opp kampene, åpner rommene til riktig tid og gir walkover til den som ikke møter.
+- Krever fase 9 (kontoer, admin-rolle) og en server som alltid er på (fase 6).
+- Detaljer i 13.5.
 
 ---
 
@@ -494,6 +514,9 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 | Godot 4.7 er nytt, og tillegg støtter det kanskje ikke | Løst: ingen tillegg brukes (egen testløper). |
 | Prosjektet blir for stort | Fasene følges i rekkefølge. Online starter først når offline er ferdig. |
 | Serveren krasjer, og kamper går tapt | Akseptabelt nå. Integrasjonstester og robust meldingshåndtering reduserer risikoen. |
+| Passord på avveie | Lagres bare som salt + hash. Sendes bare over kryptert forbindelse. Begrenset antall innloggingsforsøk. |
+| Data går tapt (brukere, statistikk, turneringer) | Trygg skriving (midlertidig fil + navnebytte) og datamappe på Docker-volum. Ta jevnlig kopi av mappen. |
+| Turnering mens serveren er av | Turneringer kjøres bare på en server som alltid er på (VPS). Ved omstart fortsetter serveren fra lagret tilstand. |
 
 ---
 
@@ -511,3 +534,140 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 1. **Domene og VPS:** har du et domene, og hvilken leverandør? *(F.eks. Hetzner CX22, ca. 4 €/mnd.)*
 2. **Neste fokus:** teste på mobil og sette i drift (fase 6), eller passord (fase 8)? *(Fase 6 først.)*
 3. **Ekspert-AI:** ønskes et enda sterkere nivå? *(Ja, men etter drift.)*
+4. **Turneringsformat:** utslag, alle-mot-alle, eller begge? *(Utslag først.)*
+5. **Uavgjort i turnering:** ny kamp med byttet startspiller, eller den med mest tid igjen vinner? *(Ny kamp.)*
+6. **Statistikk mot AI:** skal partier mot AI telle i statistikken, eller bare online-partier? *(Bare online på serveren. AI-partier kan telles lokalt.)*
+7. **Toppliste:** skal alle kunne se den, også gjester? *(Ja, men bare innloggede kommer på listen.)*
+
+---
+
+## 13. Brukere, statistikk, invitasjoner og turneringer (design)
+
+**Kort svar: ja, alt dette er mulig med dagens oppsett.** Det som mangler er at serveren *husker* ting mellom omstarter (i dag ligger alt i minnet). Passord bør dessuten bare sendes over HTTPS, og turneringer med tidsfrister trenger en server som alltid er på. Rekkefølgen under bygger på dette.
+
+### 13.1 Lagring (grunnmuren)
+
+- **Format:** JSON-filer i en datamappe (`--data <mappe>`, standard `user://data`, et Docker-volum på VPS). Det holder fint for noen hundre spillere og er lett å ta backup av (kopier mappen). Ingen database trengs.
+
+  | Fil | Innhold |
+  |---|---|
+  | `users.json` | brukere: id, brukernavn, passord-hash, rolle, profil, statistikk |
+  | `games.jsonl` | ett ferdig parti per linje: spillere, innstillinger, trekkliste, resultat, analyse |
+  | `tournaments.json` | turneringer, påmeldte, runder og kamper |
+
+- **Trygg lagring:** skriv til en midlertidig fil og bytt navn, så en krasj midt i en lagring ikke ødelegger filen. `games.jsonl` får bare nye linjer lagt til.
+- **Ny serverdel:** `server/store.gd` med enkle funksjoner (`load_user`, `save_user`, `append_game` …). `Lobby` får lagringen inn utenfra, slik at testene kan bruke en lagring i minnet.
+
+### 13.2 Invitasjonslenke
+
+1. I venterommet: **«Del invitasjon»**.
+   - På mobil åpnes telefonens del-meny (Web Share API), så du kan sende lenken på SMS, Messenger osv.
+   - På PC kopieres lenken.
+2. Lenken er `https://<adressen spillet ligger på>/?rom=KXRTA`.
+3. Når spillet starter med `?rom=…`, hopper det rett til online, kobler til og blir med i rommet. Mangler kallenavn, spørres det først.
+4. Er rommet borte, vises «Rommet finnes ikke lenger» og lobbyen.
+
+**Merk:** tunnelen (`scripts\online.cmd`) får ny adresse hver gang den startes, så lenken virker bare mens den økten kjører. Faste lenker krever fast adresse (VPS med domene, fase 6).
+
+### 13.3 Kontoer og passord
+
+- **Brukere:** brukernavn (unikt, store og små bokstaver regnes som like) og passord (minst 8 tegn). Gjestespill fungerer som i dag.
+- **Passord lagres aldri i klartekst:**
+  - Serveren lagrer bare tilfeldig salt + PBKDF2-HMAC-SHA256 med mange runder (laget med Godots `Crypto`/`HMACContext`).
+  - Ved innlogging sammenlignes hashen på en måte som ikke lekker tid.
+- **Innlogget økt:** innlogging gir en tilfeldig økt-nøkkel som klienten husker. Neste gang logges man inn automatisk via `hello`. «Logg ut» sletter nøkkelen på serveren.
+- **Beskyttelse:**
+  - Begrenset antall feilforsøk per brukernavn og IP (f.eks. 5 per 10 min).
+  - Passord sendes bare når forbindelsen er kryptert (`wss://`: tunnel, `--https` eller Caddy). Klienten nekter å sende passord over vanlig `ws://`.
+- **Glemt passord:** det er ingen e-post foreløpig. En admin kan sette et midlertidig passord.
+- **Admin-rolle:** du gjøres til admin med `--admin <brukernavn>` når serveren startes (lagres i `users.json`). Senere kan en admin gjøre andre til admin i spillet.
+- **Protokoll (nytt):** `register`, `login`, `logout`, `hello` {…, session?}, `me` {bruker, rolle, profil, statistikk}, `set_profile`.
+- **Klient:**
+  - «Logg inn / Registrer» i innstillingene og i lobbyen.
+  - Viser hvem du er innlogget som.
+  - Profilbilde og farge synkroniseres med serveren.
+
+### 13.4 Statistikk og «tvungne trekk»
+
+**Lagres for hvert online-parti:** spillere, innstillinger, trekkliste, resultat og grunn (fire på rad, tid ute, gi opp, frakobling), antall trekk og varighet. Trekklisten gjør det også mulig med replays senere.
+
+**Per spiller** (oppdateres når partiet er ferdig):
+
+| Tall | Forklaring |
+|---|---|
+| Partier, seire, tap, uavgjort | Totalt og per brettstørrelse |
+| Vinnerprosent | Seire / partier (vises f.eks. som «12–5–1, 67 %») |
+| Rekker | Nåværende og beste seiersrekke |
+| Raskeste seier | Færrest trekk til fire på rad |
+| Seiere på tid / ga opp / walkover | Hvordan partiene endte |
+| **Tvungne trekk** | Antall ganger trekket ditt ga motstanderen en trussel de *måtte* blokkere |
+| **Lengste tvungne rekke** | Flest tvungne trekk på rad, der motstanderen bare kunne svare, før du vant. Vises som «Seier med 5 tvungne trekk». |
+| **Doble trusler** | Trekk som lager to vinnerplasser samtidig. Motstanderen kan bare blokkere én, så seieren er avgjort. |
+| Elo-rating *(valgfritt)* | Brukes til toppliste og til seeding i turneringer |
+
+**Slik regnes tvungne trekk ut:**
+- Etter partiet spiller serveren trekklisten på nytt med regelmotoren (`core/`).
+- For hvert trekk sjekkes `winning_columns()`: har spilleren nå en vinnerplass motstanderen kan nå, er trekket «tvungent». Har spilleren to eller flere, er det en «dobbel trussel».
+- Dette blir en ren funksjon (`core/game_analysis.gd`) med egne tester. Det er de samme begrepene boten allerede bruker.
+
+**Klient:**
+- Ny skjerm «Profil og statistikk».
+- Motstanderens kort viser seire–tap.
+- «Toppliste»: flest seire, best vinnerprosent (minst 10 partier) og lengste tvungne rekke.
+- Partier mot AI kan telles lokalt på enheten. Bare online-partier teller på serveren.
+
+### 13.5 Turneringer (med deg som admin i spillet)
+
+**Hvordan det ser ut for spillerne:**
+1. Hovedmenyen får **«Turneringer»**, med kommende, pågående og ferdige turneringer.
+2. En turneringsside viser:
+   - navn, regler og klokke, påmeldingsfrist og starttid,
+   - påmeldte spillere,
+   - utslagstre eller tabell,
+   - din neste kamp,
+   - knappene «Meld på» og «Meld av» (krever innlogging).
+3. **Fem minutter før en kamp** får begge spillerne et varsel i spillet med knappen **«Gå til kamp»**. Den åpner et ferdig rom med turneringens regler, låst slik at de ikke kan endres.
+4. **Møter du ikke** innen fristen (f.eks. 5 min etter start), taper du på walkover.
+   - Møter ingen av dem, taper begge. I utslag får da motstanderen i neste runde walkover.
+5. Resultatet registreres automatisk når partiet er ferdig, og treet eller tabellen oppdateres for alle.
+
+**Hvordan det ser ut for deg som admin:**
+- I «Turneringer» finnes **«Ny turnering»**. Den bruker samme skjema som spilloppsettet, pluss:
+  - navn og beskrivelse,
+  - format: **utslag** (anbefalt først) eller **alle-mot-alle** (små grupper). Senere eventuelt sveitsisk.
+  - maks antall deltakere,
+  - påmeldingsfrist og starttid (dato og klokkeslett),
+  - tid mellom rundene, f.eks. «neste runde 10 min etter at forrige er ferdig» eller faste klokkeslett,
+  - beste av 1 eller 3,
+  - uavgjort: ny kamp med byttet startspiller.
+- Status: *Utkast → Åpen for påmelding → Pågår → Ferdig*.
+- **Admin-verktøy:** publisere, utsette, avlyse, endre et resultat (ved uenighet), diskvalifisere, og legge til eller fjerne en deltaker før start.
+- Invitasjonslenke til turneringen, som i 13.2: `?turnering=<id>`.
+
+**Hvordan serveren gjør det:**
+- **Ny del `server/tournaments.gd`:** ren logikk med tiden gitt utenfra, akkurat som `Lobby`. Den kan testes helt uten nettverk.
+- Ved påmeldingsfristen trekkes oppsettet: tilfeldig, eller etter rating hvis Elo finnes. Ved oddetall får noen «bye» (fri runde).
+- Ved kampstart oppretter den et privat rom per kamp via `Lobby`, med låste innstillinger, og venter på begge spillerne.
+- Når partiet er ferdig, meldes resultatet fra `Lobby`, og turneringen går videre.
+- Alt lagres i `tournaments.json`, så en omstart av serveren fortsetter der den slapp. Tidspunkter lagres i UTC og vises i lokal tid.
+- **Protokoll (nytt):** `list_tournaments`, `tournament_state`, `tournament_join`/`leave`, admin: `tournament_create`/`update`/`action`. Fra serveren: `tournament_notice` («Kampen din starter om 5 min»).
+
+**Fremgangsmåte (i små steg):**
+1. Datamodell og `tournaments.gd` med tester: påmelding, frist, oppsett, walkover, uavgjort og videre til neste runde.
+2. Koble til `Lobby`: turneringsrom, resultat tilbake og varsler.
+3. Klient: turneringsliste, turneringsside (tre/tabell) og «Gå til kamp»-varselet.
+4. Admin-skjema og admin-verktøy i spillet.
+5. Prøvekjøring med noen venner (kort turnering, 4 spillere, 5 min mellom rundene).
+6. **Drift:** turneringer med frister krever en server som alltid er på (VPS, fase 6). Tunnelen fra PC-en duger bare til testing.
+
+**Senere:** varsel utenfor spillet (e-post, push eller Discord), tilskuere som ser kampene live, og premier eller merker på profilen.
+
+### 13.6 Anbefalt rekkefølge
+
+| # | Hva | Størrelse | Hvorfor i denne rekkefølgen |
+|---|---|---|---|
+| 1 | Invitasjonslenke (fase 8) | S | Liten, nyttig med en gang, trenger ingen kontoer |
+| 2 | Fast server (fase 6) | S | Trengs for faste lenker, trygge passord og turneringer med tidsfrister |
+| 3 | Lagring og kontoer (fase 9) | M | Grunnmuren for statistikk og admin |
+| 4 | Statistikk og toppliste (fase 10) | M | Bygger på kontoer og lagrede partier |
+| 5 | Turneringer (fase 11) | L | Bygger på alt over |

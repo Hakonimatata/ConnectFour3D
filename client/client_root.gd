@@ -8,7 +8,11 @@ var camera: CameraRig
 var board: BoardView
 var ui: Control
 var current_match: MatchController
+var keyboard_height := 0.0    ## Hvor mye av skjermen tastaturet dekker (UI-enheter)
+## Hvor mye av nettleservinduet som er dekket nederst (tastatur), i fysiske piksler.
+const KEYBOARD_JS := "(function(){var vv=window.visualViewport;if(!vv)return 0;return Math.max(0,window.innerHeight-vv.height-vv.offsetTop)*(window.devicePixelRatio||1);})()"
 var _screen: Control
+var _keyboard_check := 0.0
 
 
 func _ready() -> void:
@@ -74,6 +78,44 @@ func _build_world() -> void:
 	board = BoardView.new()
 	board.camera_rig = camera
 	world.add_child(board)
+
+
+## Når skjermtastaturet er oppe på mobil, krymper UI-laget nedenfra slik at
+## tekstfeltet (f.eks. chatten) havner over tastaturet.
+func _process(delta: float) -> void:
+	_keyboard_check -= delta
+	if _keyboard_check > 0.0:
+		return
+	_keyboard_check = 0.15
+	var focus := get_viewport().gui_get_focus_owner()
+	var px := _keyboard_pixels() if focus is LineEdit else 0.0
+	var h := px / maxf(get_window().content_scale_factor, 0.01)
+	if absf(h - keyboard_height) < 2.0:
+		return
+	keyboard_height = h
+	ui.offset_bottom = -h
+	if focus:
+		_reveal.call_deferred(focus)
+
+
+## Høyden på skjermtastaturet i vinduspiksler (0 hvis det ikke vises).
+func _keyboard_pixels() -> float:
+	if OS.has_feature("web"):
+		var v = JavaScriptBridge.eval(KEYBOARD_JS, true)
+		return float(v) if v != null else 0.0
+	if OS.has_feature("mobile"):
+		return float(DisplayServer.virtual_keyboard_get_height())
+	return 0.0
+
+
+## Ruller feltet frem hvis det ligger i en rulleliste.
+func _reveal(control: Control) -> void:
+	var p := control.get_parent()
+	while p != null:
+		if p is ScrollContainer:
+			(p as ScrollContainer).ensure_control_visible(control)
+			return
+		p = p.get_parent()
 
 
 ## Skalerer UI etter skjermen: større på store skjermer, tettere på mobil.

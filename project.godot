@@ -33,6 +33,10 @@ window/handheld/orientation=6
 
 common/drop_mouse_on_gui_input_disabled=true
 
+[internationalization]
+
+locale/fallback="nb"
+
 [physics]
 
 common/physics_ticks_per_second=30

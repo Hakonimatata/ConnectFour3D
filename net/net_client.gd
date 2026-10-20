@@ -61,7 +61,7 @@ func _open() -> void:
 	status = Status.CONNECTING
 	var err := _ws.connect_to_url(url)
 	if err != OK:
-		last_error = "Ugyldig serveradresse: %s" % url
+		last_error = tr("Ugyldig serveradresse: %s") % url
 		_on_closed()
 
 
@@ -78,7 +78,8 @@ func _process(delta: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if not _socket_open:
 				_socket_open = true
-				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id, "avatar": Settings.avatar,
+				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id,
+					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "avatar": Settings.avatar,
 					"version": Protocol.VERSION, "token": _token })
 			while _ws and _ws.get_available_packet_count() > 0:
 				var msg := Protocol.decode(_ws.get_packet().get_string_from_utf8())
@@ -90,7 +91,7 @@ func _process(delta: float) -> void:
 				send({ "t": Protocol.PING })
 		WebSocketPeer.STATE_CLOSED:
 			if not _socket_open:
-				last_error = "Fikk ikke kontakt med %s" % url
+				last_error = tr("Fikk ikke kontakt med %s") % url
 			_on_closed()
 
 
@@ -104,7 +105,7 @@ func _handle(msg: Dictionary) -> void:
 		last_error = ""
 		connected.emit(resumed)
 	elif msg.t == Protocol.ERROR and msg.get("code") == "version":
-		last_error = str(msg.get("text", ""))
+		last_error = I18n.server_text(msg)
 		_want_connection = false
 	message.emit(msg)
 

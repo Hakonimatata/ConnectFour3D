@@ -174,6 +174,20 @@ static func button(text: String, on_pressed: Callable, variation := "") -> Butto
 	return b
 
 
+## Tekstfelt som er lett å bruke på mobil: trykk markerer all tekst, og en
+## liten x-knapp tømmer feltet.
+static func line_edit(text: String, placeholder := "", max_length := 0) -> LineEdit:
+	var e := LineEdit.new()
+	e.text = text
+	e.placeholder_text = placeholder
+	if max_length > 0:
+		e.max_length = max_length
+	e.select_all_on_focus = true
+	e.clear_button_enabled = true
+	e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return e
+
+
 static func vbox(sep := 12) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", sep)
@@ -256,7 +270,9 @@ static func toggle_row(text: String, hint: String, value: bool, on_change: Calla
 
 
 static func section(text: String) -> Label:
-	var l := label(text.to_upper(), "Muted")
+	# Oversett før store bokstaver (oversettelsen slår opp på den vanlige teksten).
+	var l := label(I18n.t(text).to_upper(), "Muted")
+	l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	l.add_theme_font_size_override("font_size", 13)
 	return l
 

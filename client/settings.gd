@@ -9,6 +9,10 @@ const DEFAULT_LOCAL_SERVER := "ws://localhost:8080"
 
 var player_name := ""
 var skin_id := Skins.DEFAULT_P1
+var decal_id := "none"        ## Merke på toppen av brikken (Skins.DECALS)
+var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
+var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardmeldinger på valgt språk.
+var language := "auto"        ## "auto", "nb" eller "en"
 var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
 var persist := true           ## false = ikke skriv til disk (brukes av testene)
 var sound := true
@@ -23,6 +27,10 @@ func _ready() -> void:
 	if cfg.load(PATH) == OK:
 		player_name = str(cfg.get_value("player", "name", ""))
 		skin_id = str(cfg.get_value("player", "skin", skin_id))
+		decal_id = str(cfg.get_value("player", "decal", decal_id))
+		win_fx_id = str(cfg.get_value("player", "win_fx", win_fx_id))
+		chat_presets.assign(cfg.get_value("player", "chat_presets", []))
+		language = str(cfg.get_value("app", "language", language))
 		avatar = str(cfg.get_value("player", "avatar", ""))
 		sound = bool(cfg.get_value("app", "sound", sound))
 		vibration = bool(cfg.get_value("app", "vibration", vibration))
@@ -34,6 +42,36 @@ func _ready() -> void:
 		save()
 	if not Skins.is_valid(skin_id):
 		skin_id = Skins.DEFAULT_P1
+	I18n.apply(language)
+
+
+## Standard hurtigmeldinger (oversettes til valgt språk).
+const DEFAULT_CHAT: Array[String] = ["Lykke til!", "Bra trekk!", "Oi!", "GG"]
+
+
+## Hurtigmeldingene som vises i chatten: egne hvis satt, ellers standard.
+func chat_messages() -> Array[String]:
+	if not chat_presets.is_empty():
+		return chat_presets.duplicate()
+	var out: Array[String] = []
+	for m in DEFAULT_CHAT:
+		out.append(tr(m))
+	return out
+
+
+## Lagrer egne hurtigmeldinger. Er de like standardmeldingene, lagres ingenting,
+## slik at de følger språket.
+func set_chat_messages(msgs: Array[String]) -> void:
+	chat_presets.clear()
+	var defaults := chat_messages()
+	if msgs != defaults:
+		for m in msgs:
+			chat_presets.append(m.substr(0, 40))
+
+
+## Spillerens eget utseende (skin, merke, seiersanimasjon).
+func look() -> Dictionary:
+	return Skins.look(skin_id, decal_id, win_fx_id)
 
 
 func save() -> void:
@@ -43,6 +81,10 @@ func save() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("player", "name", player_name)
 	cfg.set_value("player", "skin", skin_id)
+	cfg.set_value("player", "decal", decal_id)
+	cfg.set_value("player", "win_fx", win_fx_id)
+	cfg.set_value("player", "chat_presets", chat_presets)
+	cfg.set_value("app", "language", language)
 	cfg.set_value("player", "avatar", avatar)
 	cfg.set_value("app", "sound", sound)
 	cfg.set_value("app", "vibration", vibration)

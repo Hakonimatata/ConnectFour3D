@@ -133,3 +133,24 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - **Testet over den ekte tunnelen:** nettsiden svarte 200, spillfilen ble lastet komprimert (10,1 MB i stedet for 39,5 MB, 4,5 s), og WebSocket koblet opp (`101 Switching Protocols`).
 - Serverens filserver komprimerer nå `wasm`, `js` og `pck` med gzip (beregnes én gang og holdes i minnet). Det har egen test.
 - Hjelpeskript: `scripts\web.cmd` (eksport + server med HTTPS på wifi) og `scripts\online.cmd` (eksport + server + tunnel).
+
+## Runde 5 – Språk, mobil, hurtigmeldinger og skins
+
+| Ønske | Løsning |
+|---|---|
+| Engelsk og norsk | *Innstillinger → Språk*: Automatisk (følger enheten), Norsk eller English. All tekst i UI-et er oversatt (`client/i18n.gd`), også meldinger fra serveren. En test sjekker at ingen tekst mangler engelsk. |
+| Chatten over tastaturet (mobil) | Når et tekstfelt har fokus og skjermtastaturet er oppe, krymper UI-et nedenfra, så chatten og tekstfeltet havner over tastaturet. I lister rulles feltet frem. |
+| Markere hele navnet | Tekstfeltene markerer all tekst når du trykker i dem, og har en x-knapp som tømmer feltet. |
+| Egne hurtigmeldinger | *Innstillinger → Hurtigmeldinger i chatten*: opptil 6 egne meldinger. «Tilbakestill» gir standardmeldingene på valgt språk. |
+| Hjemme- og bortedrakt | Hver skin har to drakter. Har begge samme skin, bruker spiller 2 (gjesten online) bortedrakten. Begge klientene regner likt, og en test sjekker at alle kombinasjoner av skins er lette å skille. |
+| Metall og «heftige» shadere | 12 skins: Havblå, Glør, Lime (glatt med gradient), Gull og Krom (metall), Galakse (blinkende stjerner), Lava (glødende sprekker som beveger seg), Neon (lysende kanter), Holografisk (perlemor-regnbue), Marmor, Karbon og Racing (striper). |
+| Merker | Stjerne, prikk, ring, kryss, diamant og hjerte på toppen av brikken. |
+| Seiersanimasjoner | Klassisk, fyrverkeri, konfetti, sjokkbølge (de andre brikkene hopper) og lyn. Vinnerens valg vises, også for motstanderen online. |
+| Forhåndsvisning | Innstillingene viser en roterende 3D-forhåndsvisning av hjemme- og bortedrakten. Skin-knappene har gradient-ikoner. |
+
+**Testet:**
+- 70 automatiske tester, alle grønne.
+- Skjermbilder av alle skins, de nye seiersanimasjonene og innstillingene på norsk og engelsk.
+- Etter skjermbildene ble neon, holografisk og den myke toon-skyggen justert.
+
+**Ikke testet:** tastaturhåndteringen på ekte telefon. Den bruker nettleserens `visualViewport` og kan trenge justering på iPhone.

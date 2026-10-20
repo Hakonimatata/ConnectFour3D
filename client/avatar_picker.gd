@@ -59,8 +59,8 @@ func _pick_desktop() -> void:
 	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	dialog.access = FileDialog.ACCESS_FILESYSTEM
 	dialog.use_native_dialog = true
-	dialog.title = "Velg profilbilde"
-	dialog.filters = PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; Bilder"])
+	dialog.title = tr("Velg profilbilde")
+	dialog.filters = PackedStringArray(["*.png, *.jpg, *.jpeg, *.webp ; " + tr("Bilder")])
 	dialog.file_selected.connect(func(path: String) -> void:
 		picked.emit(FileAccess.get_file_as_bytes(path))
 		dialog.queue_free()

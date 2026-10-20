@@ -60,7 +60,8 @@ func _on_disconnected() -> void:
 func _show(room: Dictionary) -> void:
 	_room = room
 	_code_label.text = str(room.get("code", ""))
-	_desc_label.text = str(room.get("description", ""))
+	var opts = room.get("options", {})
+	_desc_label.text = GameOptions.from_dict(opts if opts is Dictionary else {}).describe()
 	var you := int(room.get("you", 1))
 	_options_button.visible = you == 1
 	for c in _players_box.get_children():
@@ -78,7 +79,8 @@ func _show(room: Dictionary) -> void:
 			var avatar := AvatarView.new(34)
 			avatar.set_avatar(str(info.get("avatar", "")), str(info.name), Skins.color_of(str(info.skin)))
 			row.add_child(avatar)
-			var name_label := UI.label(str(info.name) + (" (deg)" if int(info.seat) == you else ""))
+			var name_label := UI.label(tr("%s (deg)") % str(info.name) if int(info.seat) == you else str(info.name))
+			name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)
 			var state_text := "klar" if bool(info.ready) else "ikke klar"
@@ -118,7 +120,7 @@ func _on_message(msg: Dictionary) -> void:
 				color = Skins.color_of(str(players[seat - 1].skin))
 			_chat.add_message(str(msg.get("from", "")), str(msg.get("text", "")), color)
 		Protocol.NOTICE, Protocol.ERROR:
-			_chat.add_system(str(msg.get("text", "")))
+			_chat.add_system(I18n.server_text(msg))
 		Protocol.GAME_START, Protocol.GAME_SYNC:
 			app.start_match(OnlineMatch.new(msg))
 

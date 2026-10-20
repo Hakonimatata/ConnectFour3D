@@ -20,6 +20,7 @@ func _ready() -> void:
 	_streams["win"] = _make(_w_win, 0.8)
 	_streams["lose"] = _make(_w_lose, 0.7)
 	_streams["boom"] = _make(_w_boom, 0.6)
+	_streams["zap"] = _make(_w_zap, 0.35)
 
 
 func play(name: String, pitch := 1.0) -> void:
@@ -80,3 +81,8 @@ func _w_lose(t: float) -> float:
 
 func _w_boom(t: float) -> float:
 	return (randf() * 2.0 - 1.0) * exp(-t * 9.0) * 0.6 + sin(TAU * 55.0 * t) * exp(-t * 6.0) * 0.6
+
+
+func _w_zap(t: float) -> float:
+	var crackle := 1.0 if fmod(t * 70.0 + sin(t * 900.0), 1.0) < 0.5 else 0.25
+	return (randf() * 2.0 - 1.0) * crackle * exp(-t * 11.0) * 0.55

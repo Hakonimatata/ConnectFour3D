@@ -64,12 +64,12 @@ static func from_dict(d: Dictionary) -> GameOptions:
 func describe() -> String:
 	var parts: Array[String] = ["%d×%d×%d" % [size, size, size]]
 	if must_block:
-		parts.append("Må blokkere")
+		parts.append(tr("Må blokkere"))
 	if no_gift:
-		parts.append("Ikke gi bort seier")
+		parts.append(tr("Ikke gi bort seier"))
 	if has_clock():
 		parts.append("%d+%d" % [time_base_s / 60, time_increment_s] if time_base_s % 60 == 0 \
 			else "%ds+%d" % [time_base_s, time_increment_s])
 	else:
-		parts.append("Uten klokke")
+		parts.append(tr("Uten klokke"))
 	return " · ".join(parts)

@@ -27,10 +27,10 @@ const PICK_LAYER := 2
 var size := 4
 var camera_rig: CameraRig
 var input_enabled := false
-var colors := { 1: Skins.color_of(Skins.DEFAULT_P1), 2: Skins.color_of(Skins.DEFAULT_P2) }
+var looks := { 1: Skins.look(Skins.DEFAULT_P1), 2: Skins.look(Skins.DEFAULT_P2) }
+var colors := { 1: Skins.color_of(Skins.DEFAULT_P1), 2: Skins.color_of(Skins.DEFAULT_P2) }   ## UI-farge per spiller
 
 var _piece_mesh: Mesh = preload("res://assets/models/piece.obj")
-var _toon: Shader = preload("res://assets/shaders/toon.gdshader")
 var _board_top: Shader = preload("res://assets/shaders/board_top.gdshader")
 var _static_root: Node3D
 var _pieces_root: Node3D
@@ -126,8 +126,10 @@ func setup(p_size: int) -> void:
 		camera_rig.frame_board(width, size * LAYER)
 
 
-func set_colors(p1: Color, p2: Color) -> void:
-	colors = { 1: p1, 2: p2 }
+## Setter utseendet (skin, drakt, merke) for spiller 1 og 2.
+func set_looks(l1: Dictionary, l2: Dictionary) -> void:
+	looks = { 1: l1, 2: l2 }
+	colors = { 1: Skins.ui_color(l1), 2: Skins.ui_color(l2) }
 
 
 func grid_to_world(p: Vector3i) -> Vector3:
@@ -164,10 +166,7 @@ func add_piece(pos: Vector3i, player: int, animate := true) -> void:
 	var piece := MeshInstance3D.new()
 	piece.mesh = _piece_mesh
 	piece.scale = Vector3.ONE * PIECE_SCALE
-	var mat := ShaderMaterial.new()
-	mat.shader = _toon
-	mat.set_shader_parameter("base_color", colors[player])
-	piece.material_override = mat
+	piece.material_override = Skins.make_material(looks[player])
 	piece.set_meta("player", player)
 	root.add_child(piece)
 	_pieces[pos] = piece
@@ -215,9 +214,21 @@ func dim_except(positions: Array) -> void:
 		if p in positions:
 			continue
 		var piece: MeshInstance3D = _pieces[p]
-		var mat: ShaderMaterial = piece.material_override
-		var player: int = piece.get_meta("player")
-		mat.set_shader_parameter("base_color", Color(colors[player]).darkened(0.55))
+		(piece.material_override as ShaderMaterial).set_shader_parameter("dim", 1.0)
+
+
+## Lar alle brikker (unntatt de i `except`) hoppe, litt senere jo lenger fra `center` de står.
+func hop_pieces(center: Vector3, except: Array) -> void:
+	for pos in _pieces:
+		if pos in except:
+			continue
+		var root: Node3D = (_pieces[pos] as Node3D).get_parent()
+		var base := grid_to_world(pos)
+		var delay := Vector2(base.x - center.x, base.z - center.z).length() * 0.12
+		var t := root.create_tween()
+		t.tween_interval(delay)
+		t.tween_property(root, "position:y", base.y + 0.35, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(root, "position:y", base.y, 0.32).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
 func _set_emission(value: float, mat: ShaderMaterial) -> void:

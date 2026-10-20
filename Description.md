@@ -92,10 +92,35 @@
 
 - Hvordan teste på telefon i chrome?
 
+## Runde 5
+
+- Engelsk og norsk språk
+
+- i mobil så er det ett par forbedringer: Chat bør komme over tastatur når tastaturet kommer opp. Markere hele navnet feks i innstillinger funker ikke helt.
+
+- Egne presets for chat knyttet til brukeren.
+
+- Brikkene bør være en hjemme og borte, så vi ser de unike. Gjerne få inn litt metalic, eller noen heftige shadere som er unike for en spiller. Skins skal drive litt av moroa, i tillegg til vinneranimasjoner. Lag noen. Farger kan ha en liten gradient feks også (men da må de være nære i fargen). Kan ha noen decals på brikkene, eller teksturer som man kan velge imellom.
+
+## Runde 6
+
+- På pc: scrolling i instillinger hopper ganske mye av gangen.
+
+- Holografisk skin ser helt likt ut på hjemme og borte, så har den en litt rar wrap around. 
+
+- Konto
+
+- Stats
+
+- Elo system
+
+- Turneringer
+
+- Sjekk etter punkter i plan.md
+
 
 ## Til senere
 
-- Spør om hvordan bot fungerer sammenliknet med den første koden jeg ga i python.
+- Custom ikon?
 
-- Turneringsmous. Admin brukere kan lage turneringer? Folk melder seg på innen en frist. Tid velges for å spille kampene. De som ikke møter opp taper umiddelbart. 
 

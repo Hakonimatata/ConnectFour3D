@@ -141,12 +141,12 @@ func _refresh_players() -> void:
 		var info: Dictionary = match_ctrl.players[p]
 		var label: String = info.name
 		if match_ctrl.my_seat() == p:
-			label += " (deg)"
+			label = tr("%s (deg)") % label
 		c.name.text = label
 		c.sub.text = info.get("subtitle", "")
 		c.sub.visible = c.sub.text != ""
 		(c.avatar as AvatarView).set_avatar(str(info.get("avatar", "")), str(info.name), match_ctrl.color_of(p))
-	app.board.set_colors(match_ctrl.color_of(1), match_ctrl.color_of(2))
+	app.board.set_looks(match_ctrl.look_of(1), match_ctrl.look_of(2))
 	_highlight_turn()
 
 
@@ -300,7 +300,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 	if result == GameState.Result.DRAW:
 		_result_title.text = "Uavgjort"
 	elif me == 0:
-		_result_title.text = "%s vant!" % match_ctrl.players[winner].name
+		_result_title.text = tr("%s vant!") % match_ctrl.players[winner].name
 	elif winner == me:
 		_result_title.text = "Du vant!"
 	else:
@@ -322,7 +322,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		var color := match_ctrl.color_of(winner)
 		# Vent til den siste brikken har landet før smellet.
 		await get_tree().create_timer(0.38).timeout
-		WinFx.play(app.board, app.camera, line, color)
+		WinFx.play(app.board, app.camera, line, color, str(match_ctrl.players[winner].get("win_fx", "classic")))
 		_flash.color = Color(color.lerp(Color.WHITE, 0.7), 0.28)
 		var t := create_tween().set_ignore_time_scale(true)
 		t.tween_property(_flash, "color:a", 0.0, 0.4)
@@ -381,11 +381,11 @@ func _update_turn_status() -> void:
 	var text := ""
 	match match_ctrl.mode:
 		"local":
-			text = "%s sin tur" % match_ctrl.players[p].name
+			text = tr("%s sin tur") % match_ctrl.players[p].name
 		"ai":
 			text = "Din tur" if match_ctrl.is_local_turn() else "Boten tenker…"
 		_:
-			text = "Din tur" if match_ctrl.is_local_turn() else "Venter på %s…" % match_ctrl.players[p].name
+			text = tr("Din tur") if match_ctrl.is_local_turn() else tr("Venter på %s…") % match_ctrl.players[p].name
 	_show_status(text, match_ctrl.color_of(p).lerp(Color.WHITE, 0.45), 0.0)
 
 

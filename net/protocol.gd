@@ -10,7 +10,7 @@ const MAX_NAME := 16
 const MAX_CHAT := 200
 
 # Klient -> server
-const HELLO := "hello"               ## { name, skin, avatar?, version, token? }
+const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, version, token? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }
