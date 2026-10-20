@@ -105,7 +105,8 @@ func _read_players(list: Array) -> void:
 		elif not Skins.is_valid(skin):
 			skin = Skins.DEFAULT_P1
 		var sub := "" if bool(info.get("connected", true)) else "frakoblet"
-		players[seat] = { "name": str(info.name), "skin": skin, "local": seat == _seat, "subtitle": sub }
+		players[seat] = { "name": str(info.name), "skin": skin, "avatar": str(info.get("avatar", "")),
+			"local": seat == _seat, "subtitle": sub }
 	players_changed.emit()
 
 

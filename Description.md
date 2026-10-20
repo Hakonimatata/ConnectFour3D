@@ -66,3 +66,36 @@
 - Spørsmål: Kan jeg hoste lokalt på nett så jeg kan spille over wifi med telefon og noen andre? 
 
 - Hold deg til en branch, trenger ikke styre for mye med git. Det fikser jeg.
+
+- Får valget "gi opp" etter å ha vunnet.
+
+- Lag en stilig men ikke for forstyrrende gradient bakgrunn.
+
+- Gjør ting litt mindre saturert, bortsett fra brikkene.
+
+
+## Runde 4
+
+- Fjern endende på rutenettet slik at det liksom blir 6 streker for å lage 4x4 brettet. Ikke noen sirkelskygger der brikkene går. Litt tykkere grid med avrundede ender.
+
+- Litt mindre kontrast på skygger (for mye directional light kanskje)
+
+- Brukere kan legge til et bilde i profilen sin. 
+
+- Lysere bakgrunn
+
+- Slider knapp (on/off) er vanskelig å se er av siden det mørke går i ett med bakgrunnen.
+
+- Å opprette rom gir attempt to call on null reference eller noe sånt. Fiks.
+
+- Hvordan skrive godot i stedet for & "$env:USERPROFILE\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe"?
+
+- Hvordan teste på telefon i chrome?
+
+
+## Til senere
+
+- Spør om hvordan bot fungerer sammenliknet med den første koden jeg ga i python.
+
+- Turneringsmous. Admin brukere kan lage turneringer? Folk melder seg på innen en frist. Tid velges for å spille kampene. De som ikke møter opp taper umiddelbart. 
+

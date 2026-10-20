@@ -31,9 +31,9 @@ func _ready() -> void:
 	v.add_child(UI.spacer(4))
 
 	var who := UI.hbox(8)
-	var dot := UI.dot(Skins.color_of(Settings.skin_id), 12)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	who.add_child(dot)
+	var avatar := AvatarView.new(30)
+	avatar.set_avatar(Settings.avatar, Settings.player_name, Skins.color_of(Settings.skin_id))
+	who.add_child(avatar)
 	who.add_child(UI.label(Settings.player_name, "Muted"))
 	v.add_child(who)
 

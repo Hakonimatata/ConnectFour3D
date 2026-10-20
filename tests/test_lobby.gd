@@ -63,6 +63,20 @@ func test_hello_and_version_check() -> void:
 	check(2 in _closed, "utdatert klient skal kobles fra")
 
 
+func test_avatar_is_shared_and_invalid_ones_dropped() -> void:
+	var img := Image.create(40, 30, false, Image.FORMAT_RGB8)
+	img.fill(Color.ORANGE)
+	var avatar := AvatarData.from_bytes(img.save_png_to_buffer())
+	_msg(1, { "t": "hello", "name": "Ada", "skin": "ocean", "avatar": avatar, "version": Protocol.VERSION })
+	_msg(2, { "t": "hello", "name": "Bo", "skin": "lime", "avatar": Marshalls.raw_to_base64("ikke et bilde".to_utf8_buffer()),
+		"version": Protocol.VERSION })
+	_msg(1, { "t": "create_room", "options": {}, "private": true })
+	_msg(2, { "t": "join_room", "code": _last(1, "room_state").code })
+	var players: Array = _last(2, "room_state").players
+	check_eq(players[0].avatar, avatar, "Ada sitt bilde deles:")
+	check_eq(players[1].avatar, "", "ugyldig bilde droppes:")
+
+
 func test_messages_before_hello_are_rejected() -> void:
 	_msg(1, { "t": "create_room" })
 	check_eq(_last(1, "error").get("code"), "not_logged_in")

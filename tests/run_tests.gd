@@ -39,6 +39,7 @@ func _run() -> void:
 	if not args.is_empty():
 		filter = args[0]
 
+	Settings.persist = false   # testene skal aldri overskrive spillerens innstillinger
 	var errors := ErrorCounter.new()
 	OS.add_logger(errors)
 

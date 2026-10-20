@@ -254,7 +254,12 @@ ConnectFour3D/
   - Trykk på en kolonne viser en spøkelsesbrikke der den vil lande, og trykk igjen bekrefter. Det hindrer feiltrykk.
   - Én finger roterer brettet, og knipebevegelse zoomer.
 - **PC:** hover viser spøkelsesbrikken, klikk plasserer, høyre museknapp roterer og scrollehjulet zoomer.
-- Brettet genereres **i kode** ut fra `size` (bunnplate + stenger) i stedet for den faste `grid.obj`-modellen. Da kommer 5×5×5 nesten gratis, og kameraavstanden tilpasses automatisk.
+- Brettet genereres **i kode** ut fra `size` i stedet for den faste `grid.obj`-modellen. Da kommer 5×5×5 nesten gratis, og kameraavstanden tilpasses automatisk.
+  - *Runde 3:* ingen pinner. Brettet er en flat plate med avrundede hjørner og et rutenett med lav kontrast.
+  - *Runde 4:* bare de indre linjene, med runde ender og uten sirkler.
+- **Plassering (runde 3):** man trykker på flaten man vil legge brikken oppå, altså ruten eller toppen av stabelen. Trykk på siden av en brikke velger også kolonnen.
+  - På PC viser en diskré ring hvor man peker.
+  - På touch viser første trykk ring og gjennomsiktig brikke, og andre trykk legger brikken.
 
 ### 5.3 Utseende
 
@@ -322,7 +327,7 @@ Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "p
 
 | Klient → server | Server → klient |
 |---|---|
-| `hello` {name, skin, version, token?} | `welcome` {player_id, token, resumed} |
+| `hello` {name, skin, avatar?, version, token?} | `welcome` {player_id, token, resumed} |
 | `list_rooms` | `room_list` {rooms} |
 | `create_room` {options, private} | `room_state` {code, private, options, description, you, in_game, players} |
 | `join_room` {code} · `leave_room` | `game_start` {options, first, you, players, clocks, number} |
@@ -337,6 +342,11 @@ Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "p
 ### 7.3 Kjøring og hosting
 
 - **Lokalt:** `godot --headless --path . -- --server` starter serveren på port 8080. Start deretter to klienter, f.eks. med *Debug → Customize Run Instances*.
+- **Lokal testing og spill med venner:** `godot --headless --path . -- --server --web build/web`.
+  - Serveren serverer da web-klienten på port 8000 og sender `/ws` videre til spillserveren, så alt går gjennom én port.
+  - Nettlesere krever en sikker adresse (`https` eller `localhost`) for Godot-spill, så en LAN-adresse over `http` virker ikke.
+  - Hovedløsning: `--https` gjør at serveren kjører HTTPS med local-ip.sh-sertifikatet, og alle på wifi åpner `https://<ip-med-bindestreker>.local-ip.sh:8000`. Testet: sertifikatet godtas, og hele spillet lastes.
+  - Alternativer: `localhost` via Chromes port-videresending over USB, eller en HTTPS-tunnel (`cloudflared tunnel --url http://localhost:8000`) for venner over internett. Se README.
 - **Valgt hosting (runde 2):** én liten VPS med `deploy/docker-compose.yml`.
   - `server`: samme prosjekt kjørt headless.
   - `web`: Caddy serverer web-bygget og sender `/ws` videre til serveren.
@@ -460,11 +470,18 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 - Tilskuere, replays, rangering, app-eksport (Android).
 
 ### Fase 8 – Kontoer med passord (M)
+- *Allerede på plass (runde 4):* kallenavn, farge og profilbilde, som sendes i `hello` og vises for motstanderen. Med kontoer lagres de på serveren i stedet for bare lokalt.
 - Registrering og innlogging med kallenavn + passord, i tillegg til gjestespill som i dag.
 - Serveren lagrer kontoer i en JSON-fil på et Docker-volum (lettvekt, ingen database).
 - Passord lagres aldri i klartekst: tilfeldig salt + mange runder HMAC-SHA256 (Godots `HMACContext` og `Crypto`).
 - Innlogging gir samme token-mekanisme som brukes til gjenkobling i dag.
 - Senere kan kontoene brukes til statistikk eller rangering.
+
+### Fase 9 – Turneringsmodus (L, til senere)
+- Admin-brukere (krever fase 8) oppretter turneringer med påmeldingsfrist, format (f.eks. utslag eller serie), tidskontroll og tidspunkt for kampene.
+- Spillerne melder seg på innen fristen. Serveren setter opp kampene og åpner rommene til avtalt tid.
+- Den som ikke møter innen en kort frist, taper automatisk (bygger på mekanismen for frakobling og walkover).
+- Krever at serveren lagrer data mellom omstarter (samme JSON-lagring som kontoene).
 
 ---
 

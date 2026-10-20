@@ -3,8 +3,9 @@
 /android/
 *.tmp
 
-# Bygg
-/build/
+# Bygg (build/.gdignore beholdes, så Godot ikke importerer filene i build/)
+/build/*
+!/build/.gdignore
 
 # Gamle filer fra før omleggingen (mappen kan slettes)
 /frontend/

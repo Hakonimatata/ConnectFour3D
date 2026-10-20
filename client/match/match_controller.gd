@@ -18,7 +18,7 @@ var options := GameOptions.new()
 var state: GameState
 var clock := ChessClock.new()
 var game_number := 0
-## Spillerne: name, skin (id), local (styres fra denne enheten), subtitle
+## Spillerne: name, skin (id), avatar (base64, kan være ""), local (styres fra denne enheten), subtitle
 var players := {
 	1: { "name": "Spiller 1", "skin": Skins.DEFAULT_P1, "local": true, "subtitle": "" },
 	2: { "name": "Spiller 2", "skin": Skins.DEFAULT_P2, "local": true, "subtitle": "" },

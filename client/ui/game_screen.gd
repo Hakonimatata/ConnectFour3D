@@ -74,7 +74,7 @@ func _build_hud() -> void:
 	var bar := UI.hbox(10)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bottom.add_child(bar)
-	bar.add_child(UI.button("Meny", func() -> void: _menu_overlay.visible = true))
+	bar.add_child(UI.button("Meny", _open_menu))
 	_status = UI.label("", "", HORIZONTAL_ALIGNMENT_CENTER)
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -113,9 +113,8 @@ func _make_card(player: int) -> Control:
 	var row := UI.hbox(10)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(row)
-	var dot := UI.dot(Color.WHITE, 18)
-	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(dot)
+	var avatar := AvatarView.new(36)
+	row.add_child(avatar)
 	var names := UI.vbox(0)
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -132,7 +131,7 @@ func _make_card(player: int) -> Control:
 	clock.add_theme_font_size_override("font_size", 22)
 	clock.autowrap_mode = TextServer.AUTOWRAP_OFF
 	row.add_child(clock)
-	_cards[player] = { "panel": panel, "dot": dot, "name": name_label, "sub": sub, "clock": clock }
+	_cards[player] = { "panel": panel, "avatar": avatar, "name": name_label, "sub": sub, "clock": clock }
 	return panel
 
 
@@ -146,7 +145,7 @@ func _refresh_players() -> void:
 		c.name.text = label
 		c.sub.text = info.get("subtitle", "")
 		c.sub.visible = c.sub.text != ""
-		c.dot.add_theme_stylebox_override("panel", UI._box(match_ctrl.color_of(p), 9))
+		(c.avatar as AvatarView).set_avatar(str(info.get("avatar", "")), str(info.name), match_ctrl.color_of(p))
 	app.board.set_colors(match_ctrl.color_of(1), match_ctrl.color_of(2))
 	_highlight_turn()
 
@@ -160,6 +159,16 @@ func _highlight_turn() -> void:
 		if active:
 			box.set_border_width_all(2)
 		_cards[p].panel.add_theme_stylebox_override("panel", box)
+
+
+## Under partiet: pausemeny (med «Gi opp»). Etter partiet: resultatet (spill igjen / meny).
+func _open_menu() -> void:
+	var s := match_ctrl.state
+	if s != null and s.is_over():
+		_menu_overlay.visible = false
+		_result_overlay.visible = true
+	else:
+		_menu_overlay.visible = true
 
 
 func _build_menu_overlay() -> void:
@@ -252,7 +261,7 @@ func _on_started() -> void:
 
 
 func _on_move_applied(_col: Vector2i, pos: Vector3i, player: int) -> void:
-	app.board.hide_ghost()
+	app.board.hide_target()
 	app.board.clear_hints()
 	app.board.add_piece(pos, player)
 	Sfx.play("drop", 1.0 if player == 1 else 0.85)
@@ -269,6 +278,7 @@ func _on_move_rejected(text: String, hints: Array) -> void:
 
 func _on_turn_changed(_player: int) -> void:
 	_highlight_turn()
+	app.board.refresh_hover()
 	_update_turn_status()
 	var s := match_ctrl.state
 	# Med «må blokkere» viser vi med en gang hvor man må legge.
@@ -280,7 +290,7 @@ func _on_turn_changed(_player: int) -> void:
 
 func _on_finished(result: int, reason: int, line: Array) -> void:
 	app.board.input_enabled = false
-	app.board.hide_ghost()
+	app.board.hide_target()
 	app.board.clear_hints()
 	_highlight_turn()
 	var s := match_ctrl.state
@@ -313,9 +323,9 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		# Vent til den siste brikken har landet før smellet.
 		await get_tree().create_timer(0.38).timeout
 		WinFx.play(app.board, app.camera, line, color)
-		_flash.color = Color(color.lerp(Color.WHITE, 0.6), 0.55)
+		_flash.color = Color(color.lerp(Color.WHITE, 0.7), 0.28)
 		var t := create_tween().set_ignore_time_scale(true)
-		t.tween_property(_flash, "color:a", 0.0, 0.6)
+		t.tween_property(_flash, "color:a", 0.0, 0.4)
 		delay = 1.6
 	if me != 0 and winner != me and result != GameState.Result.DRAW:
 		Sfx.play("lose")
@@ -338,9 +348,9 @@ func _on_chat(from_name: String, text: String) -> void:
 func _on_column_hovered(col: Vector2i) -> void:
 	var s := match_ctrl.state
 	if col == BoardView.NO_COLUMN or not match_ctrl.is_local_turn() or not s.is_column_open(col):
-		app.board.hide_ghost()
+		app.board.hide_target()
 		return
-	app.board.show_ghost(s.landing_pos(col), s.current_player, col)
+	app.board.show_target(s.landing_pos(col), s.current_player, col)
 
 
 func _on_column_tapped(col: Vector2i, from_touch: bool) -> void:
@@ -351,8 +361,8 @@ func _on_column_tapped(col: Vector2i, from_touch: bool) -> void:
 		_on_move_rejected(GameState.error_text(GameState.MoveError.COLUMN_FULL), [])
 		return
 	# På touch: første trykk viser hvor brikken lander, andre trykk legger den.
-	if from_touch and app.board.ghost_column() != col:
-		app.board.show_ghost(s.landing_pos(col), s.current_player, col)
+	if from_touch and (app.board.target_column() != col or not app.board.ghost_visible()):
+		app.board.show_target(s.landing_pos(col), s.current_player, col, true)
 		Sfx.play("click")
 		if not _touch_hint_shown:
 			_touch_hint_shown = true
@@ -416,5 +426,7 @@ func _update_clocks() -> void:
 func _on_back() -> void:
 	if _result_overlay.visible:
 		app.show_menu()
+	elif _menu_overlay.visible:
+		_menu_overlay.visible = false
 	else:
-		_menu_overlay.visible = not _menu_overlay.visible
+		_open_menu()

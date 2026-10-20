@@ -9,6 +9,8 @@ const DEFAULT_LOCAL_SERVER := "ws://localhost:8080"
 
 var player_name := ""
 var skin_id := Skins.DEFAULT_P1
+var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
+var persist := true           ## false = ikke skriv til disk (brukes av testene)
 var sound := true
 var vibration := true
 var server_url := ""          ## Tom = standard (se resolved_server_url)
@@ -21,6 +23,7 @@ func _ready() -> void:
 	if cfg.load(PATH) == OK:
 		player_name = str(cfg.get_value("player", "name", ""))
 		skin_id = str(cfg.get_value("player", "skin", skin_id))
+		avatar = str(cfg.get_value("player", "avatar", ""))
 		sound = bool(cfg.get_value("app", "sound", sound))
 		vibration = bool(cfg.get_value("app", "vibration", vibration))
 		server_url = str(cfg.get_value("app", "server_url", ""))
@@ -34,9 +37,13 @@ func _ready() -> void:
 
 
 func save() -> void:
+	if not persist:
+		changed.emit()
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("player", "name", player_name)
 	cfg.set_value("player", "skin", skin_id)
+	cfg.set_value("player", "avatar", avatar)
 	cfg.set_value("app", "sound", sound)
 	cfg.set_value("app", "vibration", vibration)
 	cfg.set_value("app", "server_url", server_url)
@@ -48,7 +55,9 @@ func save() -> void:
 
 ## Adressen til spillserveren. Rekkefølge:
 ## 1) ?server=... i nettleseradressen, 2) lagret i innstillinger,
-## 3) på web: samme domene som siden (/ws), 4) ellers localhost.
+## 3) på web: samme adresse som siden + /ws (Caddy eller serverens egen web-del
+##    sender /ws videre til spillserveren),
+## 4) ellers localhost.
 func resolved_server_url() -> String:
 	if OS.has_feature("web"):
 		var from_query = JavaScriptBridge.eval("new URLSearchParams(window.location.search).get('server') || ''")

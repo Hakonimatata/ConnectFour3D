@@ -4,6 +4,10 @@ extends Screen
 
 var _name_edit: LineEdit
 var _server_edit: LineEdit
+var _avatar_view: AvatarView
+var _remove_avatar: Button
+var _avatar_status: Label
+var _picker: AvatarPicker
 
 
 func _ready() -> void:
@@ -17,6 +21,26 @@ func _ready() -> void:
 	_name_edit.max_length = 16
 	_name_edit.placeholder_text = "Navnet ditt"
 	v.add_child(_name_edit)
+
+	v.add_child(UI.section("Profilbilde"))
+	var avatar_row := UI.hbox(14)
+	_avatar_view = AvatarView.new(72)
+	avatar_row.add_child(_avatar_view)
+	var avatar_buttons := UI.vbox(8)
+	avatar_buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	avatar_buttons.add_child(UI.button("Velg bilde…", _pick_avatar))
+	_remove_avatar = UI.button("Fjern bilde", _clear_avatar)
+	avatar_buttons.add_child(_remove_avatar)
+	avatar_row.add_child(avatar_buttons)
+	v.add_child(avatar_row)
+	_avatar_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_avatar_status.visible = false
+	v.add_child(_avatar_status)
+	_picker = AvatarPicker.new()
+	_picker.picked.connect(_on_avatar_picked)
+	add_child(_picker)
+	_name_edit.text_changed.connect(func(_t: String) -> void: _refresh_avatar())
+	_refresh_avatar()
 
 	v.add_child(UI.section("Brikkefarge"))
 	var grid := HFlowContainer.new()
@@ -42,6 +66,7 @@ func _ready() -> void:
 		b.pressed.connect(func() -> void:
 			Sfx.play("click")
 			Settings.skin_id = id
+			_refresh_avatar()
 		)
 		grid.add_child(b)
 	v.add_child(grid)
@@ -59,6 +84,31 @@ func _ready() -> void:
 
 	v.add_child(UI.spacer(6))
 	v.add_child(UI.button("Lagre", _on_back, "PrimaryButton"))
+
+
+func _refresh_avatar() -> void:
+	_avatar_view.set_avatar(Settings.avatar, _name_edit.text, Skins.color_of(Settings.skin_id))
+	_remove_avatar.disabled = Settings.avatar == ""
+
+
+func _pick_avatar() -> void:
+	_picker.pick()
+
+
+func _on_avatar_picked(bytes: PackedByteArray) -> void:
+	var b64 := AvatarData.from_bytes(bytes)
+	_avatar_status.visible = b64 == ""
+	_avatar_status.text = "Kunne ikke lese bildet. Prøv et PNG- eller JPEG-bilde."
+	if b64 != "":
+		Settings.avatar = b64
+		Settings.save()
+		_refresh_avatar()
+
+
+func _clear_avatar() -> void:
+	Settings.avatar = ""
+	Settings.save()
+	_refresh_avatar()
 
 
 func _on_back() -> void:

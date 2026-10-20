@@ -5,6 +5,11 @@ extends Node3D
 ##
 ## Koordinater: regelmotoren bruker (x, y) = kolonne og z = høyde.
 ## Godot har Y opp, så grid_to_world() oversetter (x, y, z) -> (X, Y=z, Z=y).
+##
+## Velge kolonne: man trykker på flaten man vil legge brikken oppå. Det er enten
+## ruten på brettet eller toppen av den øverste brikken. Hver kolonne har en flat
+## «klikkflate» der neste brikke vil lande, og hver brikke har en egen
+## kollisjonsform, slik at et trykk på siden av en brikke også velger kolonnen.
 
 signal column_tapped(col: Vector2i, from_touch: bool)
 signal column_hovered(col: Vector2i)   ## (-1, -1) = ingen
@@ -13,6 +18,9 @@ const NO_COLUMN := Vector2i(-1, -1)
 const SPACING := 1.0          ## Avstand mellom kolonner
 const LAYER := 0.52           ## Høyde per brikke
 const PIECE_SCALE := 4.0      ## piece.obj er 0,17 bred, 0,126 høy
+const PIECE_RADIUS := 0.35    ## Radius etter skalering
+const BOARD_MARGIN := 0.4     ## Kant utenfor rutenettet
+const BOARD_THICKNESS := 0.22
 const DRAG_THRESHOLD := 10.0  ## Piksler før et trykk regnes som dra (roter)
 const PICK_LAYER := 2
 
@@ -23,12 +31,16 @@ var colors := { 1: Skins.color_of(Skins.DEFAULT_P1), 2: Skins.color_of(Skins.DEF
 
 var _piece_mesh: Mesh = preload("res://assets/models/piece.obj")
 var _toon: Shader = preload("res://assets/shaders/toon.gdshader")
+var _board_top: Shader = preload("res://assets/shaders/board_top.gdshader")
 var _static_root: Node3D
 var _pieces_root: Node3D
 var _hints_root: Node3D
-var _pieces: Dictionary = {}    ## Vector3i -> MeshInstance3D
-var _ghost: MeshInstance3D
-var _ghost_col := NO_COLUMN
+var _pieces: Dictionary = {}    ## Vector3i -> MeshInstance3D (selve brikken)
+var _slots: Dictionary = {}     ## Vector2i -> StaticBody3D (klikkflaten der neste brikke lander)
+var _heights: Dictionary = {}   ## Vector2i -> antall brikker i kolonnen
+var _marker: MeshInstance3D     ## Ring som viser hvor man peker
+var _ghost: MeshInstance3D      ## Gjennomsiktig brikke (valgt kolonne på touch)
+var _target_col := NO_COLUMN
 var _hover_col := NO_COLUMN
 
 # Input-tilstand
@@ -47,16 +59,30 @@ func _ready() -> void:
 	add_child(_static_root)
 	add_child(_pieces_root)
 	add_child(_hints_root)
+
 	_ghost = MeshInstance3D.new()
 	_ghost.mesh = _piece_mesh
 	_ghost.scale = Vector3.ONE * PIECE_SCALE
-	_ghost.visible = false
 	_ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var gm := StandardMaterial3D.new()
-	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_ghost.material_override = gm
+	_ghost.material_override = _transparent(Color(1, 1, 1, 0.3))
+	_ghost.visible = false
 	add_child(_ghost)
+
+	var ring := TorusMesh.new()
+	ring.inner_radius = PIECE_RADIUS * 0.82
+	ring.outer_radius = PIECE_RADIUS * 1.02
+	ring.rings = 48
+	ring.ring_segments = 8
+	_marker = MeshInstance3D.new()
+	_marker.mesh = ring
+	_marker.scale = Vector3(1, 0.12, 1)   # flat ring
+	_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_marker.material_override = _transparent(Color(1, 1, 1, 0.6))
+	_marker.visible = false
+	add_child(_marker)
+	var pulse := _marker.create_tween().set_loops()
+	pulse.tween_method(_set_marker_alpha, 0.35, 0.7, 0.7).set_trans(Tween.TRANS_SINE)
+	pulse.tween_method(_set_marker_alpha, 0.7, 0.35, 0.7).set_trans(Tween.TRANS_SINE)
 
 
 # ---------------------------------------------------------------- Oppsett
@@ -66,58 +92,38 @@ func setup(p_size: int) -> void:
 	clear_pieces()
 	for c in _static_root.get_children():
 		c.queue_free()
+	_slots.clear()
 
-	var width := size * SPACING + 0.5
-	var height := size * LAYER
+	var width := size * SPACING + BOARD_MARGIN * 2.0
+	var board := MeshInstance3D.new()
+	board.mesh = BoardMesh.build(width, BOARD_THICKNESS, 0.38)
+	var top := ShaderMaterial.new()
+	top.shader = _board_top
+	top.set_shader_parameter("cells", float(size))
+	top.set_shader_parameter("spacing", SPACING)
+	board.mesh.surface_set_material(0, top)
+	var side := StandardMaterial3D.new()
+	side.albedo_color = Color("1f232b")
+	side.roughness = 0.7
+	board.mesh.surface_set_material(1, side)
+	_static_root.add_child(board)
 
-	var base := MeshInstance3D.new()
-	var base_mesh := BoxMesh.new()
-	base_mesh.size = Vector3(width, 0.22, width)
-	base.mesh = base_mesh
-	base.position.y = -0.11
-	base.material_override = _material(Color("2a3040"), 0.2, 0.55)
-	_static_root.add_child(base)
-
-	var rim := MeshInstance3D.new()
-	var rim_mesh := BoxMesh.new()
-	rim_mesh.size = Vector3(width + 0.16, 0.08, width + 0.16)
-	rim.mesh = rim_mesh
-	rim.position.y = -0.2
-	rim.material_override = _material(Color("4c8dff"), 0.0, 0.4, 0.6)
-	_static_root.add_child(rim)
-
-	var rod_mesh := CylinderMesh.new()
-	rod_mesh.top_radius = 0.05
-	rod_mesh.bottom_radius = 0.05
-	rod_mesh.height = height + 0.12
-	rod_mesh.radial_segments = 12
-	var rod_mat := _material(Color("8e9ab5"), 0.6, 0.35)
-
-	var pick_shape := CylinderShape3D.new()
-	pick_shape.radius = SPACING * 0.45
-	pick_shape.height = height + 0.5
-
+	var slot_shape := BoxShape3D.new()
+	slot_shape.size = Vector3(SPACING * 0.94, 0.06, SPACING * 0.94)
 	for x in size:
 		for y in size:
-			var floor_pos := grid_to_world(Vector3i(x, y, 0))
-			var rod := MeshInstance3D.new()
-			rod.mesh = rod_mesh
-			rod.material_override = rod_mat
-			rod.position = floor_pos + Vector3(0, rod_mesh.height / 2.0, 0)
-			_static_root.add_child(rod)
-
-			var body := StaticBody3D.new()
-			body.collision_layer = PICK_LAYER
-			body.collision_mask = 0
-			body.set_meta("col", Vector2i(x, y))
-			body.position = floor_pos + Vector3(0, pick_shape.height / 2.0, 0)
+			var col := Vector2i(x, y)
+			var slot := _pick_body(col)
 			var shape := CollisionShape3D.new()
-			shape.shape = pick_shape
-			body.add_child(shape)
-			_static_root.add_child(body)
+			shape.shape = slot_shape
+			slot.add_child(shape)
+			_static_root.add_child(slot)
+			_slots[col] = slot
+			_heights[col] = 0
+			_place_slot(col)
 
 	if camera_rig:
-		camera_rig.frame_board(width, height)
+		camera_rig.frame_board(width, size * LAYER)
 
 
 func set_colors(p1: Color, p2: Color) -> void:
@@ -142,12 +148,19 @@ func clear_pieces() -> void:
 	for c in _pieces_root.get_children():
 		c.queue_free()
 	_pieces.clear()
+	for col in _slots:
+		_heights[col] = 0
+		_place_slot(col)
 	clear_hints()
-	hide_ghost()
+	hide_target()
 
 
 ## Legger til en brikke. Med animate faller den ned og spretter.
 func add_piece(pos: Vector3i, player: int, animate := true) -> void:
+	var col := Vector2i(pos.x, pos.y)
+	var root := Node3D.new()        # uskalert, så kollisjonsformen ikke skaleres
+	_pieces_root.add_child(root)
+
 	var piece := MeshInstance3D.new()
 	piece.mesh = _piece_mesh
 	piece.scale = Vector3.ONE * PIECE_SCALE
@@ -156,16 +169,29 @@ func add_piece(pos: Vector3i, player: int, animate := true) -> void:
 	mat.set_shader_parameter("base_color", colors[player])
 	piece.material_override = mat
 	piece.set_meta("player", player)
-	_pieces_root.add_child(piece)
+	root.add_child(piece)
 	_pieces[pos] = piece
+
+	var body := _pick_body(col)
+	var shape := CollisionShape3D.new()
+	var cyl := CylinderShape3D.new()
+	cyl.radius = PIECE_RADIUS
+	cyl.height = LAYER * 0.96
+	shape.shape = cyl
+	shape.position.y = LAYER * 0.48
+	body.add_child(shape)
+	root.add_child(body)
+
+	_heights[col] = maxi(_heights.get(col, 0), pos.z + 1)
+	_place_slot(col)
 
 	var target := grid_to_world(pos)
 	if not animate:
-		piece.position = target
+		root.position = target
 		return
-	piece.position = target + Vector3(0, size * LAYER + 1.2 - pos.z * LAYER * 0.5, 0)
-	var t := piece.create_tween()
-	t.tween_property(piece, "position", target, 0.42).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	root.position = target + Vector3(0, size * LAYER + 1.2 - pos.z * LAYER * 0.5, 0)
+	var t := root.create_tween()
+	t.tween_property(root, "position", target, 0.42).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
 ## Lar vinnerbrikkene pulsere med glød.
@@ -198,24 +224,47 @@ func _set_emission(value: float, mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("emission_energy", value)
 
 
-# ---------------------------------------------------------------- Hint og spøkelsesbrikke
+# ---------------------------------------------------------------- Markør, spøkelsesbrikke og hint
 
-func show_ghost(pos: Vector3i, player: int, col: Vector2i) -> void:
-	_ghost_col = col
-	_ghost.visible = true
-	_ghost.position = grid_to_world(pos)
-	var mat: StandardMaterial3D = _ghost.material_override
-	mat.albedo_color = Color(colors[player], 0.38)
+## Viser hvor neste brikke havner: en rolig ring på flaten.
+## with_ghost viser i tillegg en gjennomsiktig brikke (brukes når en kolonne er valgt på touch).
+func show_target(pos: Vector3i, player: int, col: Vector2i, with_ghost := false) -> void:
+	_target_col = col
+	var at := grid_to_world(pos)
+	var tint: Color = Color(colors[player]).lerp(Color.WHITE, 0.35)
+	_marker.position = at + Vector3(0, 0.012, 0)
+	(_marker.material_override as StandardMaterial3D).albedo_color = Color(tint, _marker_alpha())
+	_marker.visible = true
+	_ghost.visible = with_ghost
+	if with_ghost:
+		_ghost.position = at
+		(_ghost.material_override as StandardMaterial3D).albedo_color = Color(colors[player], 0.32)
 
 
-func hide_ghost() -> void:
-	_ghost_col = NO_COLUMN
-	if _ghost:
+func hide_target() -> void:
+	_target_col = NO_COLUMN
+	_hover_col = NO_COLUMN   # så markøren kommer tilbake (med ny høyde) neste frame
+	if _marker:
+		_marker.visible = false
 		_ghost.visible = false
 
 
-func ghost_column() -> Vector2i:
-	return _ghost_col
+## Kolonnen som er valgt/pekt på, eller NO_COLUMN.
+func target_column() -> Vector2i:
+	return _target_col
+
+
+func ghost_visible() -> bool:
+	return _ghost.visible
+
+
+func _marker_alpha() -> float:
+	return (_marker.material_override as StandardMaterial3D).albedo_color.a
+
+
+func _set_marker_alpha(a: float) -> void:
+	var m := _marker.material_override as StandardMaterial3D
+	m.albedo_color.a = a
 
 
 ## Viser pulserende hvite plasser (f.eks. der man må blokkere).
@@ -226,21 +275,41 @@ func show_hints(positions: Array) -> void:
 		h.mesh = _piece_mesh
 		h.scale = Vector3.ONE * PIECE_SCALE
 		h.position = grid_to_world(p)
-		var m := StandardMaterial3D.new()
-		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		m.albedo_color = Color(1, 1, 1, 0.5)
+		h.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var m := _transparent(Color(1, 1, 1, 0.4))
 		h.material_override = m
 		_hints_root.add_child(h)
 		var t := h.create_tween().set_loops()
-		t.tween_property(m, "albedo_color:a", 0.1, 0.4)
-		t.tween_property(m, "albedo_color:a", 0.55, 0.4)
+		t.tween_property(m, "albedo_color:a", 0.08, 0.5)
+		t.tween_property(m, "albedo_color:a", 0.4, 0.5)
 
 
 func clear_hints() -> void:
 	if _hints_root:
 		for c in _hints_root.get_children():
 			c.queue_free()
+
+
+# ---------------------------------------------------------------- Klikkflater
+
+func _pick_body(col: Vector2i) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.collision_layer = PICK_LAYER
+	body.collision_mask = 0
+	body.set_meta("col", col)
+	return body
+
+
+## Flytter klikkflaten til toppen av kolonnen. Full kolonne = ingen flate.
+func _place_slot(col: Vector2i) -> void:
+	var slot: StaticBody3D = _slots.get(col)
+	if slot == null:
+		return
+	var h: int = _heights.get(col, 0)
+	var full := h >= size
+	slot.position = grid_to_world(Vector3i(col.x, col.y, h)) + Vector3(0, 0.03, 0)
+	for c in slot.get_children():
+		(c as CollisionShape3D).disabled = full
 
 
 # ---------------------------------------------------------------- Input (mus og touch)
@@ -317,10 +386,25 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _dragging and _touches.size() < 2:
 				camera_rig.orbit(event.relative)
 		elif input_enabled and not _is_touch():
-			var col := pick_column(event.position)
-			if col != _hover_col:
-				_hover_col = col
-				column_hovered.emit(col)
+			_update_hover(event.position)
+
+
+## Kameraet kan bevege seg uten at musen gjør det, så hover sjekkes også hver frame.
+func _process(_delta: float) -> void:
+	if input_enabled and not _pressing and not _is_touch() and camera_rig != null:
+		_update_hover(get_viewport().get_mouse_position())
+
+
+## Tvinger frem en ny hover-melding (f.eks. når det blir din tur igjen).
+func refresh_hover() -> void:
+	_hover_col = NO_COLUMN
+
+
+func _update_hover(screen_pos: Vector2) -> void:
+	var col := pick_column(screen_pos)
+	if col != _hover_col:
+		_hover_col = col
+		column_hovered.emit(col)
 
 
 func _is_touch() -> bool:
@@ -334,13 +418,9 @@ func _touch_spread() -> float:
 	return (pts[0] as Vector2).distance_to(pts[1])
 
 
-func _material(color: Color, metallic: float, roughness: float, emission := 0.0) -> StandardMaterial3D:
+func _transparent(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.albedo_color = color
-	m.metallic = metallic
-	m.roughness = roughness
-	if emission > 0.0:
-		m.emission_enabled = true
-		m.emission = color
-		m.emission_energy_multiplier = emission
 	return m

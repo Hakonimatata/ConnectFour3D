@@ -55,6 +55,8 @@ func is_online() -> bool:
 
 func _open() -> void:
 	_ws = WebSocketPeer.new()
+	_ws.inbound_buffer_size = 256 * 1024   # romstatus kan inneholde profilbilder
+	_ws.outbound_buffer_size = 64 * 1024
 	_socket_open = false
 	status = Status.CONNECTING
 	var err := _ws.connect_to_url(url)
@@ -76,7 +78,7 @@ func _process(delta: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if not _socket_open:
 				_socket_open = true
-				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id,
+				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id, "avatar": Settings.avatar,
 					"version": Protocol.VERSION, "token": _token })
 			while _ws and _ws.get_available_packet_count() > 0:
 				var msg := Protocol.decode(_ws.get_packet().get_string_from_utf8())

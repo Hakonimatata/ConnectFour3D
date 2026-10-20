@@ -75,7 +75,9 @@ func _show(room: Dictionary) -> void:
 			row.add_child(UI.dot(UI.BORDER))
 			row.add_child(UI.label("Venter på motstander…", "Muted"))
 		else:
-			row.add_child(UI.dot(Skins.color_of(str(info.skin))))
+			var avatar := AvatarView.new(34)
+			avatar.set_avatar(str(info.get("avatar", "")), str(info.name), Skins.color_of(str(info.skin)))
+			row.add_child(avatar)
 			var name_label := UI.label(str(info.name) + (" (deg)" if int(info.seat) == you else ""))
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)
@@ -100,11 +102,8 @@ func _toggle_ready() -> void:
 func _edit_options() -> void:
 	var current := GameOptions.from_dict(_room.get("options", {}))
 	Settings.last_options = current.to_dict()
-	var room := _room
-	app.show_setup("online", func(options: GameOptions, _private: bool) -> void:
-		Net.send({ "t": Protocol.SET_OPTIONS, "options": options.to_dict() })
-		app.show_room(room)
-	, func() -> void: app.show_room(room))
+	# Callbackene tilhører app (ClientRoot), som lever videre når denne skjermen slettes.
+	app.show_setup("online", app.online_set_options.bind(_room), app.show_room.bind(_room))
 
 
 func _on_message(msg: Dictionary) -> void:

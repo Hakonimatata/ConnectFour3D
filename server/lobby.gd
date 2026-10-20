@@ -15,6 +15,7 @@ class Player:
 	var id: int
 	var name: String
 	var skin: String
+	var avatar := ""               ## base64-JPEG, sjekket med AvatarData.is_valid
 	var token: String
 	var peer := 0                  ## 0 = frakoblet
 	var room_code := ""
@@ -133,6 +134,8 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		close_peer.call(p.peer)
 	p.name = Protocol.clean_name(msg.get("name", "Spiller"))
 	p.skin = str(msg.get("skin", "ocean")).substr(0, 24)
+	var avatar = msg.get("avatar", "")
+	p.avatar = avatar if AvatarData.is_valid(avatar) else ""
 	p.peer = peer
 	p.disconnected_at = -1
 	_peers[peer] = p.id
@@ -365,7 +368,8 @@ func _players_info(room: Room) -> Array:
 			out.append(null)
 			continue
 		var p: Player = players[id]
-		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "ready": room.ready[seat], "connected": p.peer != 0 })
+		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "avatar": p.avatar,
+			"ready": room.ready[seat], "connected": p.peer != 0 })
 	return out
 
 

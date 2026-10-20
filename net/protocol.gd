@@ -5,12 +5,12 @@ extends RefCounted
 ## som gjør at gamle klienter ikke lenger fungerer.
 
 const VERSION := 1
-const MAX_BYTES := 4096
+const MAX_BYTES := 64 * 1024   ## Meldinger med profilbilder kan bli noen titalls KB
 const MAX_NAME := 16
 const MAX_CHAT := 200
 
 # Klient -> server
-const HELLO := "hello"               ## { name, skin, version, token? }
+const HELLO := "hello"               ## { name, skin, avatar?, version, token? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }

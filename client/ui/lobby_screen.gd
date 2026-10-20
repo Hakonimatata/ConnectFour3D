@@ -114,10 +114,9 @@ func _show_rooms(rooms: Array) -> void:
 
 
 func _on_create() -> void:
-	app.show_setup("online", func(options: GameOptions, private: bool) -> void:
-		Net.send({ "t": Protocol.CREATE_ROOM, "options": options.to_dict(), "private": private })
-		app.show_online()
-	)
+	# NB: callbacken må tilhøre app (ClientRoot), ikke denne skjermen. Skjermen
+	# slettes når oppsettet vises, og en callback bundet til den ville peke på null.
+	app.show_setup("online", app.online_create_room)
 
 
 func _join(code: String) -> void:

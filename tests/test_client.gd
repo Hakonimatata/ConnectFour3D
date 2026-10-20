@@ -80,6 +80,21 @@ func test_ai_game_to_the_end() -> void:
 	check_eq(m.game_number, 2)
 
 
+func test_settings_avatar_pick_and_clear() -> void:
+	app.show_settings()
+	await _frames(2)
+	var screen := _screen() as SettingsScreen
+	var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	img.fill(Color.GREEN)
+	var before := Settings.avatar
+	screen._on_avatar_picked(img.save_png_to_buffer())
+	check(Settings.avatar != "", "bildet skal lagres")
+	check(screen._avatar_view.texture != null, "bildet skal vises")
+	screen._clear_avatar()
+	check_eq(Settings.avatar, "")
+	Settings.avatar = before
+
+
 func test_local_game_touch_needs_two_taps_and_5x5() -> void:
 	var o := GameOptions.new()
 	o.size = 5
@@ -96,6 +111,11 @@ func test_local_game_touch_needs_two_taps_and_5x5() -> void:
 	m.resign()
 	await _frames(1)
 	check_eq(m.state.winner(), 1, "spiller 2 hadde tur og ga opp")
+	# Etter partiet skal «Meny» vise resultatet, ikke pausemenyen med «Gi opp».
+	var gs: GameScreen = _screen()
+	gs._open_menu()
+	check(gs._result_overlay.visible, "resultatet vises")
+	check(not gs._menu_overlay.visible, "pausemenyen (med Gi opp) vises ikke")
 
 
 func test_online_lobby_room_and_game() -> void:
@@ -106,9 +126,22 @@ func test_online_lobby_room_and_game() -> void:
 
 	app.show_online()
 	check(await wait_until(func() -> bool: return Net.is_online()), "lobbyen koblet ikke til")
-	Net.send({ "t": Protocol.CREATE_ROOM, "options": {}, "private": false })
+	# Opprett rom slik brukeren gjør: Lobby -> «Opprett rom» -> oppsett -> «Opprett rom».
+	(_screen() as LobbyScreen)._on_create()
+	await _frames(2)
+	check(_screen() is SetupScreen, "skal vise oppsett")
+	(_screen() as SetupScreen)._on_start()
 	check(await wait_until(func() -> bool: return _screen() is RoomScreen), "kom ikke til venterommet")
 	var code: String = (_screen() as RoomScreen)._room.code
+	# «Endre regler» -> oppsett -> «Lagre» skal gi tilbake til samme rom.
+	(_screen() as RoomScreen)._edit_options()
+	await _frames(2)
+	var setup := _screen() as SetupScreen
+	setup.options.must_block = true
+	setup._on_start()
+	check(await wait_until(func() -> bool:
+		return _screen() is RoomScreen and (_screen() as RoomScreen)._room.get("options", {}).get("must_block", false)
+	), "reglene ble ikke lagret i rommet")
 
 	# En motstander kobler til direkte
 	var b := WebSocketPeer.new()

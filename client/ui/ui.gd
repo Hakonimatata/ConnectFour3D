@@ -3,16 +3,23 @@ extends RefCounted
 ## Felles utseende (tema) og små hjelpefunksjoner for å bygge UI i kode.
 ## Endre farger og størrelser her, så endres hele spillet.
 
-const BG := Color("0f1218")
-const PANEL := Color("181c25")
-const PANEL_LIGHT := Color("222836")
-const BORDER := Color("2c3344")
-const TEXT := Color("e8ecf3")
-const MUTED := Color("8b93a7")
-const ACCENT := Color("4c8dff")
-const ACCENT_HOVER := Color("6aa0ff")
-const DANGER := Color("ff5c5c")
-const SUCCESS := Color("3ddc97")
+const BG_TOP := Color("343a47")        ## Bakgrunnsgradient (se client_root.gd)
+const BG_BOTTOM := Color("1a1d24")
+const BG_GLOW := Color("464d5c")
+const PANEL := Color(0.085, 0.094, 0.115, 0.94)
+const PANEL_LIGHT := Color("1d2129")
+const BORDER := Color("2b303a")
+const BUTTON := Color("2a2f39")
+const BUTTON_HOVER := Color("343a46")
+const BUTTON_PRESSED := Color("22262e")
+const BUTTON_BORDER := Color("3d4452")
+const TEXT := Color("e4e6eb")
+const MUTED := Color("8d93a0")
+const ACCENT := Color("6a83b8")          ## Dempet blå
+const ACCENT_HOVER := Color("7891c4")
+const ACCENT_PRESSED := Color("5a71a3")
+const DANGER := Color("d4706e")
+const SUCCESS := Color("6fb894")
 const RADIUS := 14
 
 
@@ -21,40 +28,45 @@ static func build_theme() -> Theme:
 	t.default_font_size = 18
 
 	t.set_color("font_color", "Label", TEXT)
-	t.set_stylebox("panel", "PanelContainer", _box(PANEL, RADIUS, BORDER))
+	t.set_stylebox("panel", "PanelContainer", _box(PANEL, RADIUS, BORDER, 18, 18, 10))
 	t.set_stylebox("panel", "Panel", _box(PANEL, RADIUS, BORDER))
 
+	# Vanlige knapper: lysere enn panelet, med kant og en svak skygge så de «løfter seg».
 	for type in ["Button", "OptionButton"]:
-		t.set_stylebox("normal", type, _box(PANEL_LIGHT, 10, BORDER, 14, 10))
-		t.set_stylebox("hover", type, _box(Color("2a3142"), 10, Color("3a4357"), 14, 10))
-		t.set_stylebox("pressed", type, _box(Color("1c2130"), 10, ACCENT, 14, 10))
-		t.set_stylebox("disabled", type, _box(Color("191d27"), 10, Color("232938"), 14, 10))
-		t.set_stylebox("focus", type, _box(Color(0, 0, 0, 0), 10, Color(ACCENT, 0.7), 14, 10))
+		t.set_stylebox("normal", type, _box(BUTTON, 10, BUTTON_BORDER, 14, 10, 3))
+		t.set_stylebox("hover", type, _box(BUTTON_HOVER, 10, Color("4b5364"), 14, 10, 4))
+		t.set_stylebox("pressed", type, _box(BUTTON_PRESSED, 10, ACCENT, 14, 10))
+		t.set_stylebox("disabled", type, _box(Color("1b1e24"), 10, Color("262a32"), 14, 10))
+		t.set_stylebox("focus", type, _box(Color(0, 0, 0, 0), 10, Color(ACCENT, 0.6), 14, 10))
 		t.set_color("font_color", type, TEXT)
 		t.set_color("font_hover_color", type, Color.WHITE)
 		t.set_color("font_pressed_color", type, Color.WHITE)
-		t.set_color("font_disabled_color", type, Color(MUTED, 0.6))
+		t.set_color("font_disabled_color", type, Color(MUTED, 0.5))
 
-	# «Primær»-knapp: blå
+	# «Primær»-knapp: dempet blå
 	t.set_type_variation("PrimaryButton", "Button")
-	t.set_stylebox("normal", "PrimaryButton", _box(ACCENT, 10, ACCENT, 14, 10))
-	t.set_stylebox("hover", "PrimaryButton", _box(ACCENT_HOVER, 10, ACCENT_HOVER, 14, 10))
-	t.set_stylebox("pressed", "PrimaryButton", _box(Color("3a74d8"), 10, Color("3a74d8"), 14, 10))
+	t.set_stylebox("normal", "PrimaryButton", _box(ACCENT, 10, ACCENT_HOVER, 14, 10, 4))
+	t.set_stylebox("hover", "PrimaryButton", _box(ACCENT_HOVER, 10, Color("8ea3cf"), 14, 10, 5))
+	t.set_stylebox("pressed", "PrimaryButton", _box(ACCENT_PRESSED, 10, ACCENT_PRESSED, 14, 10))
+	t.set_color("font_color", "PrimaryButton", Color.WHITE)
 
-	# Valgt knapp i en gruppe (segmentert valg)
+	# Valg i en gruppe (segmentert valg). Valgt = fylt med dempet aksentfarge.
 	t.set_type_variation("ChoiceButton", "Button")
-	t.set_stylebox("normal", "ChoiceButton", _box(PANEL_LIGHT, 10, BORDER, 10, 8))
-	t.set_stylebox("pressed", "ChoiceButton", _box(Color(ACCENT, 0.25), 10, ACCENT, 10, 8))
-	t.set_stylebox("hover_pressed", "ChoiceButton", _box(Color(ACCENT, 0.32), 10, ACCENT, 10, 8))
-	t.set_stylebox("hover", "ChoiceButton", _box(Color("2a3142"), 10, Color("3a4357"), 10, 8))
+	t.set_stylebox("normal", "ChoiceButton", _box(BUTTON, 10, BUTTON_BORDER, 10, 8, 2))
+	t.set_stylebox("hover", "ChoiceButton", _box(BUTTON_HOVER, 10, Color("4b5364"), 10, 8, 2))
+	t.set_stylebox("pressed", "ChoiceButton", _box(Color("3c4a66"), 10, ACCENT_HOVER, 10, 8))
+	t.set_stylebox("hover_pressed", "ChoiceButton", _box(Color("445373"), 10, ACCENT_HOVER, 10, 8))
+	t.set_color("font_color", "ChoiceButton", Color(TEXT, 0.85))
+	t.set_color("font_pressed_color", "ChoiceButton", Color.WHITE)
+	t.set_color("font_hover_pressed_color", "ChoiceButton", Color.WHITE)
 
 	t.set_type_variation("GhostButton", "Button")
 	t.set_stylebox("normal", "GhostButton", _box(Color(0, 0, 0, 0), 10, Color(0, 0, 0, 0), 12, 8))
 	t.set_stylebox("hover", "GhostButton", _box(Color(1, 1, 1, 0.06), 10, Color(0, 0, 0, 0), 12, 8))
 	t.set_stylebox("pressed", "GhostButton", _box(Color(1, 1, 1, 0.1), 10, Color(0, 0, 0, 0), 12, 8))
 
-	t.set_stylebox("normal", "LineEdit", _box(Color("12151c"), 10, BORDER, 12, 10))
-	t.set_stylebox("focus", "LineEdit", _box(Color("12151c"), 10, ACCENT, 12, 10))
+	t.set_stylebox("normal", "LineEdit", _box(Color("111317"), 10, BUTTON_BORDER, 12, 10))
+	t.set_stylebox("focus", "LineEdit", _box(Color("111317"), 10, ACCENT, 12, 10))
 	t.set_color("font_color", "LineEdit", TEXT)
 	t.set_color("font_placeholder_color", "LineEdit", Color(MUTED, 0.7))
 
@@ -68,21 +80,67 @@ static func build_theme() -> Theme:
 
 	for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
 		t.set_stylebox(state, "CheckButton", StyleBoxEmpty.new())
+	# Av/på-bryter med tydelig forskjell: av = grå med lys knott til venstre, på = blå med knott til høyre.
+	var off := _switch_icon(false)
+	var on := _switch_icon(true)
+	t.set_icon("unchecked", "CheckButton", off)
+	t.set_icon("checked", "CheckButton", on)
+	t.set_icon("unchecked_mirrored", "CheckButton", off)
+	t.set_icon("checked_mirrored", "CheckButton", on)
+	t.set_icon("unchecked_disabled", "CheckButton", off)
+	t.set_icon("checked_disabled", "CheckButton", on)
+	t.set_icon("unchecked_disabled_mirrored", "CheckButton", off)
+	t.set_icon("checked_disabled_mirrored", "CheckButton", on)
 	t.set_stylebox("panel", "PopupMenu", _box(PANEL, 10, BORDER, 6, 6))
-	t.set_stylebox("scroll", "VScrollBar", _box(Color(0, 0, 0, 0), 4))
-	t.set_stylebox("grabber", "VScrollBar", _box(Color(1, 1, 1, 0.15), 4))
+	# Tynt, diskré scrollefelt
+	t.set_stylebox("scroll", "VScrollBar", _box(Color(0, 0, 0, 0), 3, Color(0, 0, 0, 0), 3, 3))
+	t.set_stylebox("grabber", "VScrollBar", _box(Color(1, 1, 1, 0.12), 3, Color(0, 0, 0, 0), 3, 3))
+	t.set_stylebox("grabber_highlight", "VScrollBar", _box(Color(1, 1, 1, 0.2), 3, Color(0, 0, 0, 0), 3, 3))
+	t.set_stylebox("grabber_pressed", "VScrollBar", _box(Color(1, 1, 1, 0.26), 3, Color(0, 0, 0, 0), 3, 3))
 	t.set_stylebox("normal", "RichTextLabel", StyleBoxEmpty.new())
 	t.set_color("default_color", "RichTextLabel", TEXT)
 	return t
 
 
-static func _box(bg: Color, radius: int, border: Color = Color(0, 0, 0, 0), pad_x := 18, pad_y := 18) -> StyleBoxFlat:
+## Tegner en av/på-bryter (pille med knott) som bilde, med myke kanter.
+static func _switch_icon(on: bool) -> ImageTexture:
+	var w := 52
+	var h := 30
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var track := ACCENT if on else Color("4a505c")
+	var track_border := ACCENT_HOVER if on else Color("6b7280")
+	var knob := Color.WHITE if on else Color("c9cdd5")
+	var r := h / 2.0
+	var knob_x := w - r if on else r
+	for y in h:
+		for x in w:
+			var px := Vector2(x + 0.5, y + 0.5)
+			# Pille: avstand til linjestykket mellom de to halvsirklenes sentre
+			var cx := clampf(px.x, r, w - r)
+			var d_track := px.distance_to(Vector2(cx, r)) - (r - 0.5)
+			var a_track := clampf(0.5 - d_track, 0.0, 1.0)
+			var border := clampf(0.5 - absf(d_track + 1.0) + 0.5, 0.0, 1.0)
+			var c := track.lerp(track_border, border * 0.8)
+			c.a = a_track
+			var d_knob := px.distance_to(Vector2(knob_x, r)) - (r - 4.0)
+			var a_knob := clampf(0.5 - d_knob, 0.0, 1.0)
+			c = Color(c.lerp(knob, a_knob), maxf(c.a, a_knob))
+			img.set_pixel(x, y, c)
+	return ImageTexture.create_from_image(img)
+
+
+## shadow > 0 gir en myk skygge under boksen (piksler).
+static func _box(bg: Color, radius: int, border: Color = Color(0, 0, 0, 0), pad_x := 18, pad_y := 18, shadow := 0) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
 	s.set_corner_radius_all(radius)
 	if border.a > 0:
 		s.set_border_width_all(1)
 		s.border_color = border
+	if shadow > 0:
+		s.shadow_size = shadow
+		s.shadow_offset = Vector2(0, shadow * 0.5)
+		s.shadow_color = Color(0, 0, 0, 0.28)
 	s.content_margin_left = pad_x
 	s.content_margin_right = pad_x
 	s.content_margin_top = pad_y

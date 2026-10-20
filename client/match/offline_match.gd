@@ -12,7 +12,7 @@ func _init(p_options: GameOptions, bot_profile: BotProfile = null) -> void:
 	options = p_options
 	_rng.randomize()
 	var own_skin: String = Settings.skin_id
-	players[1] = { "name": Settings.player_name, "skin": own_skin, "local": true, "subtitle": "" }
+	players[1] = { "name": Settings.player_name, "skin": own_skin, "avatar": Settings.avatar, "local": true, "subtitle": "" }
 	if bot_profile != null:
 		mode = "ai"
 		bot = Bot.new(bot_profile)

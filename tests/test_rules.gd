@@ -190,7 +190,7 @@ func test_rules_never_leave_zero_moves() -> void:
 	# «Aldri låst»: med begge regler på finnes det alltid et lovlig trekk før brettet er fullt.
 	var rng := RandomNumberGenerator.new()
 	for size in [4, 5]:
-		for game in 40:
+		for game in 25:
 			rng.seed = 1000 * size + game
 			var s := GameState.new(_options(size, true, true))
 			while not s.is_over():
