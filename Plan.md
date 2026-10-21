@@ -2,7 +2,14 @@
 
 Dette dokumentet er arbeidsplanen for prosjektet. Det beskriver hva som fantes ved start, hvilke valg vi tar (og hvorfor), hvordan alt henger sammen, og i hvilken rekkefølge vi bygger det.
 
-> **Status etter runde 2:** fase 0–5 er ferdige, og en spillbar prototype finnes (AI, lokalt og online). Fase 6 (drift) gjenstår. Se [Fremgang.md](Fremgang.md) for detaljer og [README.md](README.md) for hvordan man kjører spillet.
+> **Status etter runde 8:**
+> - Fase 0–5 og 8–11 er ferdige: spillet, AI, online, invitasjonslenke, kontoer, statistikk/Elo og turneringer.
+> - Runde 7: reglene er på som standard, 20 skins med flere merker og brett-temaer, og forhåndsvisning på brettet.
+> - Runde 8: aktive turneringer på forsiden, 30 skins og Elo-merker (Bronse → Stormester) ved spillernavn.
+> - Fase 6 (fast server) gjenstår, men skript for wifi og tunnel finnes allerede.
+> - Forslag til videre utvikling står i seksjon 14.
+>
+> Se [Fremgang.md](Fremgang.md) for detaljer og [README.md](README.md) for hvordan man kjører spillet.
 
 ---
 
@@ -75,7 +82,9 @@ Denne seksjonen er **fasiten**. Koden og testene skal følge den. Endrer vi en r
 - **Tid ute = tap.**
 - Man kan **gi opp** når som helst.
 
-### 2.2 Valgfrie regler (velges når rommet opprettes)
+### 2.2 Ekstraregler (velges når rommet opprettes)
+
+Begge er **på som standard** (runde 7), litt som i sjakk der man må parere sjakk. De kan slås av i oppsettet. Spillere som hadde lagrede innstillinger fra før, får dem slått på én gang (`Settings.VERSION`).
 
 | Regel | Navn i kode | Betydning |
 |---|---|---|
@@ -98,8 +107,8 @@ Dermed finnes det alltid minst ett lovlig trekk så lenge brettet ikke er fullt,
 GameOptions
   size            4 | 5
   win_length      4
-  must_block      true | false
-  no_gift         true | false
+  must_block      true (standard) | false
+  no_gift         true (standard) | false
   time_base_s     0 = uten klokke, ellers f.eks. 60, 180, 300
   time_increment  sekunder lagt til etter hvert trekk (f.eks. 0, 2, 5)
   starter         "p1" | "p2" | "random" | "alternate"   (p1 = jeg / verten)
@@ -238,13 +247,13 @@ ConnectFour3D/
 
 | Skjerm | Innhold |
 |---|---|
-| Hovedmeny | Spill mot AI · Lokal 2-spiller · Online · Innstillinger |
+| Hovedmeny | Spill mot AI · Lokal 2-spiller · Online · Innstillinger · **aktive turneringer** (pågår / påmelding åpen) og ditt Elo-merke |
 | Spilloppsett | Brettstørrelse, regler, klokke, hvem starter. **Samme komponent** brukes for AI, lokalt spill og online-rom. |
 | Online-lobby | Kallenavn, liste over åpne rom, «Opprett rom», «Bli med med kode» |
-| Venterom | Innstillingene vises (verten kan endre dem), klar-knapp og chat |
+| Venterom | Innstillingene vises (verten kan endre dem), brikkene slik de blir i partiet, «Bytt skin», klar-knapp og chat |
 | Spill | 3D-brett og HUD: spillere med skin og klokke, turindikator, chat-skuff, «Gi opp» |
 | Resultat | Vinner/uavgjort, «Spill igjen» (rematch), «Til menyen» |
-| Innstillinger | Navn, skin/farge, lyd og vibrasjon |
+| Innstillinger | Navn, profilbilde, skin, merke og merkefarge, seiersanimasjon, brett-tema, hurtigmeldinger, språk, lyd og vibrasjon. Kortet står til venstre (nederst på mobil), og brettet ved siden av er forhåndsvisning. |
 
 ### 5.2 Mobil og PC
 
@@ -264,13 +273,29 @@ ConnectFour3D/
 ### 5.3 Utseende
 
 - **Minimalistisk stil:** mørk bakgrunn, Godots standardfont (kan byttes til f.eks. Inter senere), få farger, myke animasjoner og ett `Theme` for hele UI-et.
-- **Skins (runde 5):** 12 skins i `client/skins.gd`, tegnet av én shader (`assets/shaders/piece.gdshader`):
-  - stiler: glatt, metall, lava, galakse, holografisk, neon, marmor, karbon og racing,
+- **Skins (runde 5, 7 og 8):** 30 skins i `client/skins.gd`, tegnet av én shader (`assets/shaders/piece.gdshader`):
+  - stiler: glatt, metall, lava, galakse, holografisk, neon, marmor, karbon, racing, og fra runde 7 nordlys, is, tre (eik), keramikk, glass og kobber med patina. Solnedgang og Midnatt bruker glatt og racing med nye farger,
+  - runde 8: plasma (elektriske buer), kintsugi (keramikk med gull i sprekkene), damaskusstål, kretskort (baner med pulser), disco (speilfliser), opal (fargespill), piksel (8-bit-klosser), kode (fallende tegn), giftig (selvlysende slim med bobler) og sort hull (virvlende lysring),
   - en gradient mellom to nære farger,
   - hver skin har **hjemme- og bortedrakt**. Ved lik skin bruker spiller 2 (gjesten) bortedrakt, og begge klientene regner likt,
-  - 7 **merker** på toppen (stjerne, prikk, ring, kryss, diamant, hjerte),
-  - 5 **seiersanimasjoner** (klassisk, fyrverkeri, konfetti, sjokkbølge, lyn). Vinnerens valg vises, også online.
+  - 12 **merker** på toppen (stjerne, prikk, ring, kryss, diamant, hjerte, sekskant, måne, krone, lyn, pil), med valgfri **merkefarge** (automatisk, hvit, svart, gull eller draktfarge),
+  - 7 **seiersanimasjoner** (klassisk, fyrverkeri, konfetti, sjokkbølge, lyn, supernova, glitter). Vinnerens valg vises, også online.
+  - 5 **brett-temaer** (skifer, eik med treårer, lys stein, midnatt, filt). Temaet gjelder bare din egen skjerm.
   - Alt er laget i kode, uten teksturer, så det er lett og virker på web og mobil.
+  - *Forhåndsvisning (runde 7):* i innstillingene står dine brikker i hjemmedrakt mot bortedrakt på selve brettet, og seiersanimasjonen kan spilles av der. I venterommet ser begge brikkene slik de blir i partiet, og kan bytte skin før start (`set_look`).
+- **Elo-merker (runde 8):** `client/ui/elo_badge.gd` gir et nivå ut fra Elo og tegner merket i kode:
+
+  | Nivå | Fra Elo | Merke |
+  |---|---|---|
+  | Bronse | 0 | skjold med én vinkel |
+  | Sølv | 1100 | skjold med to vinkler (startverdien 1200 er sølv) |
+  | Gull | 1250 | skjold med tre vinkler |
+  | Platina | 1400 | sekskant med stjerne |
+  | Diamant | 1550 | slipt edelstein |
+  | Mester | 1700 | krone |
+  | Stormester | 1850 | gullkrone på rødt merke |
+
+  Merket vises ved navnet i menyen, lobbyen (rom og «Min profil»), venterommet, på spillerkortene i partiet, på profilen (stort, med «90 Elo til Diamant»), i topplisten og på turneringssiden. Resultatskjermen sier fra ved nytt nivå. Gjester har ikke merke.
 - **Språk (runde 5):** norsk og engelsk (`client/i18n.gd`). Norsk tekst i koden er nøkkelen, og engelsk ligger i en ordliste. En test sjekker at ingen UI-tekst mangler oversettelse. Serveren sender meldinger med nøkkel + argumenter, så de også oversettes.
   - Valgt skin lagres lokalt og sendes til serveren, slik at motstanderen ser den.
   - Velger begge samme farge, bytter klienten automatisk motstanderen til en kontrastfarge.
@@ -328,7 +353,7 @@ Ting å passe på:
   - Klientversjonen sjekkes i `hello`.
 - **Konfigurasjon** via miljøvariabler, f.eks. `PORT`.
 
-### 7.2 Protokoll (implementert i `net/protocol.gd`, versjon 1)
+### 7.2 Protokoll (implementert i `net/protocol.gd`, versjon 2)
 
 Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "ply": 7}`.
 
@@ -341,6 +366,7 @@ Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "p
 | `set_options` {options} · `ready` {ready} | `game_sync` (som game_start + moves, running, over, result, reason, line) |
 | `move` {x, y, ply} | `move_made` {x, y, player, ply, clocks, running} · `move_rejected` {text, hints} |
 | `chat` {text} | `chat` {from, seat, text} (også til avsender) |
+| `set_look` {skin, decal, win_fx, decal_color} | `room_state` til begge (før partiet starter) |
 | `resign` · `rematch` | `game_over` {result, reason, winner, line, clocks} |
 | `ping` | `pong` · `notice` {text} · `error` {code, text} |
 
@@ -431,7 +457,7 @@ DOMAIN=… docker compose -f deploy/docker-compose.yml up -d --build      # alt 
 
 Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir ferdig før online. Størrelse: S = liten, M = middels, L = stor.
 
-**Status etter runde 2:** fase 0–5 ✅ · fase 6 ⏳ (filene er klare, men ikke satt i drift) · fase 7–11 ikke startet (design for 8–11 i seksjon 13).
+**Status etter runde 6:** fase 0–5 ✅ · fase 6 ⏳ (filene er klare, men ikke satt i drift) · fase 7 delvis · fase 8–11 ✅ (se avvik under hver fase).
 
 ### Fase 0 – Opprydding og oppsett (S) ✅
 - Ny gren. Flytt Godot-prosjektet til roten av repoet.
@@ -475,26 +501,44 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 - Angre-knapp mot AI (motoren har allerede `undo()`).
 - P2P via WebRTC.
 - Tilskuere, replays, rangering, app-eksport (Android).
+- Merker på brikken som låses opp av Elo (idé fra runde 7, «til senere»). Elo-nivåene finnes nå (runde 8), så neste steg er å flytte `EloBadge.TIERS` til `core/` og la serveren avvise merker spilleren ikke har låst opp.
 
-### Fase 8 – Invitasjonslenke (S)
+### Fase 8 – Invitasjonslenke (S) ✅ (runde 6)
 - «Del invitasjon»-knapp i venterommet. Den gir en lenke som `https://<adresse>/?rom=KXRTA`.
 - Åpner man lenken, kobler spillet seg til og blir med i rommet. Har man ikke kallenavn, blir man spurt om det først.
 - Fungerer uten kontoer, og virker med tunnelen, `--https` på wifi og VPS. Detaljer i 13.2.
 
-### Fase 9 – Lagring og kontoer med passord (M)
+### Fase 9 – Lagring og kontoer med passord (M) ✅ (runde 6)
+- *Gjort:*
+  - `server/store.gd`: JSON-filer i `data/` som lastes inn på nytt når du redigerer `users.json`.
+  - `server/password.gd`: PBKDF2-HMAC-SHA256 med 60 000 runder, testet mot standard testvektorer.
+  - `server/accounts.gd`: kontoer, økter og begrensning på innloggingsforsøk.
+  - Admin settes med `"admin": true` i `users.json` eller `--admin`. Glemt passord: `"reset_password"`.
 - Serveren får varig lagring (JSON-filer) i stedet for bare minnet.
 - Registrering og innlogging med brukernavn og passord. Gjestespill med kallenavn virker fortsatt.
 - Profil (navn, farge, bilde) lagres på serveren.
 - *Allerede på plass:* kallenavn, farge og profilbilde sendes i `hello`.
 - Detaljer i 13.1 og 13.3.
 
-### Fase 10 – Statistikk og toppliste (M)
+### Fase 10 – Statistikk og toppliste (M) ✅ (runde 6)
+- *Gjort:*
+  - `core/game_analysis.gd` teller tvungne trekk, doble trusler og tvungen rekke.
+  - Elo (K = 32, start 1200), bare når begge spillerne er innlogget.
+  - Profilskjerm, toppliste (Elo, seire, lengste tvungne seier), Elo på spillerkort og på resultatskjermen.
+- *Ikke gjort ennå:* statistikk per brettstørrelse, og statistikk for AI-partier lokalt.
 - Hvert online-parti lagres med trekkliste.
 - **Per spiller:** seire, tap, uavgjort, vinnerprosent, rekker, raskeste seier, og «tvungne trekk»-tellere (tvungne trekk, lengste tvungne rekke, doble trusler).
 - Profilskjerm, statistikk på spillerkortet og en toppliste.
 - Detaljer i 13.4.
 
-### Fase 11 – Turneringer med admin i spillet (L)
+### Fase 11 – Turneringer med admin i spillet (L) ✅ (runde 6)
+- *Gjort:*
+  - `server/tournaments.gd`: utslag og alle-mot-alle, oppsett etter Elo, fri runde, walkover ved manglende oppmøte, omspill ved uavgjort i utslag, tabell, og at alt overlever omstart.
+  - Klient: turneringsliste, turneringsside, admin-skjema og varselet «Gå til kamp».
+- *Ikke gjort ennå:*
+  - beste av 3,
+  - admin-verktøy for å endre et resultat eller diskvalifisere,
+  - varsel utenfor spillet (e-post eller push).
 - Admin oppretter turneringer i spillet med:
   - format (utslag eller alle-mot-alle) og regler/klokke,
   - påmeldingsfrist og starttid,
@@ -671,3 +715,20 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 | 3 | Lagring og kontoer (fase 9) | M | Grunnmuren for statistikk og admin |
 | 4 | Statistikk og toppliste (fase 10) | M | Bygger på kontoer og lagrede partier |
 | 5 | Turneringer (fase 11) | L | Bygger på alt over |
+
+---
+
+## 14. Forslag til videre utvikling (etter runde 8)
+
+Sortert etter hva som gir mest igjen for innsatsen:
+
+1. **Fast server (fase 6).** En liten VPS (f.eks. Hetzner, ca. 5 €/mnd) med domene og `docker compose up`. Da kan venner spille når som helst, og turneringer går uten at PC-en din står på. Alt annet blir mer verdt med dette på plass.
+2. **Repriser og analyse.** `games.jsonl` har allerede alle trekk og analysen (tvungne trekk, doble trusler). En «Se partiet igjen»-knapp med fram/tilbake og markering av tvungne trekk er lite arbeid og morsomt etter tap.
+3. **Tilskuere på turneringskamper.** Rommet sender allerede `game_sync`. En tilskuer er en tredje mottaker uten sete. Det gjør turneringer sosiale.
+4. **Elo-merker på brikken** (se fase 7). Gir noe å spille for.
+5. **Dagens oppgave.** Boten kan allerede finne tvungne seire (`can_force_win`). Lag en stilling der det finnes en tvungen seier i 3, én per dag, med egen toppliste.
+6. **Sesonger.** Elo nullstilles delvis hver sesong (f.eks. hver 3. måned), og beste nivå i sesongen gir et varig merke på profilen.
+7. **App-følelse på mobil.** Web-manifest og ikon, så spillet kan legges på hjemskjermen. Senere varsel («kampen din starter») via Web Push.
+8. **Drift og trygghet.** Automatisk backup av `data/`, admin-verktøy i spillet (gi nytt navn, utesteng, nullstill passord) og et enkelt filter i chatten.
+9. **Ytelse på svake telefoner.** Shaderen har nå 25 stiler i én fil. Mål FPS på en eldre telefon. Ved behov lages en egen shader-variant per stil, eller en «enkel grafikk»-innstilling.
+10. **Ekspert-AI.** Alfa-beta med transposisjonstabell, fordelt over flere frames, gir en bot som utfordrer også sterke spillere.

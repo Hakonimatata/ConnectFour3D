@@ -30,7 +30,8 @@ COPY . .
 RUN godot --headless --path /app --import || true
 ENV PORT=8080
 EXPOSE 8080
-CMD ["godot", "--headless", "--path", "/app", "--", "--server"]
+VOLUME /data
+CMD ["godot", "--headless", "--path", "/app", "--", "--server", "--data", "/data"]
 
 # ---- Web-klienten (eksport) -------------------------------------------------
 FROM templates AS web-build

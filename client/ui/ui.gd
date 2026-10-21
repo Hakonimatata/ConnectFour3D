@@ -206,6 +206,7 @@ static func centered_card(parent: Control, max_width := 460.0) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	smooth_scroll(scroll)
 	parent.add_child(scroll)
 	var center := CenterContainer.new()
 	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -226,6 +227,33 @@ static func centered_card(parent: Control, max_width := 460.0) -> VBoxContainer:
 	parent.resized.connect(fit)
 	fit.call_deferred()
 	return content
+
+
+## Musehjulet scroller et fast, lite stykke med en myk overgang. Godot scroller ellers en
+## åttendedel av det synlige området per hakk, noe som blir store hopp i høye vinduer.
+static func smooth_scroll(scroll: ScrollContainer, step := 70.0) -> void:
+	scroll.gui_input.connect(func(e: InputEvent) -> void:
+		var mb := e as InputEventMouseButton
+		if mb == null or not mb.pressed:
+			return
+		if mb.button_index != MOUSE_BUTTON_WHEEL_UP and mb.button_index != MOUSE_BUTTON_WHEEL_DOWN:
+			return
+		var bar := scroll.get_v_scroll_bar()
+		var dir := -1.0 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0
+		var factor := mb.factor if mb.factor > 0.0 else 1.0
+		var target: float = scroll.get_meta("scroll_target", float(scroll.scroll_vertical))
+		if absf(target - scroll.scroll_vertical) > step * 6.0:
+			target = scroll.scroll_vertical
+		target = clampf(target + dir * step * factor, 0.0, maxf(0.0, bar.max_value - bar.page))
+		scroll.set_meta("scroll_target", target)
+		var old = scroll.get_meta("scroll_tween", null)
+		if old is Tween and (old as Tween).is_valid():
+			(old as Tween).kill()
+		var tw := scroll.create_tween()
+		tw.tween_property(scroll, "scroll_vertical", int(target), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		scroll.set_meta("scroll_tween", tw)
+		scroll.accept_event()
+	)
 
 
 ## Segmentert valg: en rad med knapper der én er valgt. on_change(indeks).
@@ -285,6 +313,15 @@ static func dot(color: Color, diameter := 16.0) -> Panel:
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return p
+
+
+## Unix-tid som lokal dato og klokkeslett, f.eks. «21.10 20:00».
+static func format_time(unix: int) -> String:
+	if unix <= 0:
+		return "—"
+	var bias := int(Time.get_time_zone_from_system().bias) * 60
+	var d := Time.get_datetime_dict_from_unix_time(unix + bias)
+	return "%02d.%02d %02d:%02d" % [d.day, d.month, d.hour, d.minute]
 
 
 static func spacer(height := 4.0) -> Control:

@@ -19,7 +19,7 @@ var state: GameState
 var clock := ChessClock.new()
 var game_number := 0
 ## Spillerne: name, skin, decal, win_fx, away (se Skins.look), avatar (base64, kan være ""),
-## local (styres fra denne enheten), subtitle
+## local (styres fra denne enheten), subtitle, elo (-1 = ingen konto)
 var players := {
 	1: { "name": "Spiller 1", "skin": Skins.DEFAULT_P1, "local": true, "subtitle": "" },
 	2: { "name": "Spiller 2", "skin": Skins.DEFAULT_P2, "local": true, "subtitle": "" },
@@ -78,7 +78,7 @@ func color_of(player: int) -> Color:
 func look_of(player: int) -> Dictionary:
 	var p: Dictionary = players[player]
 	return Skins.look(str(p.get("skin", "")), str(p.get("decal", "none")), str(p.get("win_fx", "classic")),
-		bool(p.get("away", false)))
+		bool(p.get("away", false)), str(p.get("decal_color", "auto")))
 
 
 ## Gjør spillernes utseende lett å skille (bortedrakt for spiller 2 ved lik skin).

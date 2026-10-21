@@ -6,6 +6,8 @@ extends RefCounted
 ##   confetti   konfetti regner over brettet
 ##   shockwave  sjokkbølge over brettet, og de andre brikkene hopper
 ##   lightning  lyn slår ned i de fire brikkene
+##   supernova  linjen trekkes sammen, så et blendende lysglimt og en kraftig utblåsning
+##   glitter    gull- og sølvdryss som daler stille over brettet
 ## Alle har kamerarist, kort sakte film og vibrasjon.
 
 
@@ -15,6 +17,8 @@ static func play(board: BoardView, camera: CameraRig, line: Array, color: Color,
 		"confetti": _confetti(board, camera, line, color)
 		"shockwave": _shockwave(board, camera, line, color)
 		"lightning": _lightning(board, camera, line, color)
+		"supernova": _supernova(board, camera, line, color)
+		"glitter": _glitter(board, camera, line, color)
 		_: _classic(board, camera, line, color)
 	Settings.vibrate(250)
 	_slow_motion(board)
@@ -215,6 +219,92 @@ static func _bolt(from: Vector3, to: Vector3) -> Node3D:
 		seg.transform = Transform3D(Basis.looking_at(dir, up), (a + b) / 2.0)
 		root.add_child(seg)
 	return root
+
+
+# ---------------------------------------------------------------- Supernova
+
+static func _supernova(board: BoardView, camera: CameraRig, line: Array, color: Color) -> void:
+	var center := board.center_of(line)
+	# 1) Lyskule som vokser i midten
+	var core := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.5
+	sphere.height = 1.0
+	core.mesh = sphere
+	var mat := _glow_material(color.lerp(Color.WHITE, 0.6), 3.0)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	core.material_override = mat
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	board.add_child(core)
+	core.global_position = center
+	core.scale = Vector3.ONE * 0.05
+	var t := core.create_tween()
+	t.tween_property(core, "scale", Vector3.ONE * 0.35, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_callback(func() -> void:
+		# 2) Smell: kula blåser ut, gnister i alle retninger og en ring langs bakken
+		burst(board, center, Color.WHITE, 120, 9.0, 1.4)
+		burst(board, center, color, 160, 6.0, 2.0)
+		camera.add_trauma(1.0)
+		Sfx.play("boom", 0.6)
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.92
+		torus.outer_radius = 1.0
+		torus.rings = 64
+		ring.mesh = torus
+		var ring_mat := _glow_material(color.lerp(Color.WHITE, 0.4), 2.2)
+		ring_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ring.material_override = ring_mat
+		board.add_child(ring)
+		ring.global_position = Vector3(center.x, center.y, center.z)
+		ring.scale = Vector3(0.2, 0.04, 0.2)
+		var reach := board.size * BoardView.SPACING * 1.6
+		var rt := ring.create_tween().set_parallel()
+		rt.tween_property(ring, "scale", Vector3(reach, 0.04, reach), 0.7).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		rt.tween_property(ring_mat, "albedo_color:a", 0.0, 0.7)
+		rt.chain().tween_callback(ring.queue_free)
+	)
+	t.tween_property(core, "scale", Vector3.ONE * 2.6, 0.18).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(mat, "albedo_color:a", 0.0, 0.35)
+	t.tween_callback(core.queue_free)
+	camera.add_trauma(0.25)
+
+
+# ---------------------------------------------------------------- Glitter
+
+static func _glitter(board: BoardView, camera: CameraRig, line: Array, color: Color) -> void:
+	var width := board.size * BoardView.SPACING
+	for i in 2:
+		var p := CPUParticles3D.new()
+		p.one_shot = true
+		p.explosiveness = 0.35
+		p.amount = 140
+		p.lifetime = 3.2
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		p.emission_box_extents = Vector3(width * 0.65, 0.3, width * 0.65)
+		p.direction = Vector3.DOWN
+		p.spread = 20.0
+		p.initial_velocity_min = 0.2
+		p.initial_velocity_max = 0.6
+		p.gravity = Vector3(0, -0.8, 0)
+		p.scale_amount_min = 0.4
+		p.scale_amount_max = 1.0
+		var curve := Curve.new()
+		curve.add_point(Vector2(0.0, 0.0))
+		curve.add_point(Vector2(0.15, 1.0))
+		curve.add_point(Vector2(0.7, 0.8))
+		curve.add_point(Vector2(1.0, 0.0))
+		p.scale_amount_curve = curve
+		var tint := Color("ffd76a") if i == 0 else Color("eef3ff")
+		p.mesh = _spark_mesh(tint, 0.035)
+		board.add_child(p)
+		p.global_position = Vector3(0, board.size * BoardView.LAYER + 1.6, 0)
+		p.emitting = true
+		p.finished.connect(p.queue_free)
+	for pos in line:
+		burst(board, _top_of(board, pos), color.lerp(Color("ffd76a"), 0.5), 24, 2.0, 1.6)
+	camera.add_trauma(0.3)
+	Sfx.play("win", 1.25)
 
 
 # ---------------------------------------------------------------- Felles

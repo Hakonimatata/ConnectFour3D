@@ -8,8 +8,8 @@ const STARTERS: Array[String] = ["p1", "p2", "random", "alternate"]
 
 var size: int = 4                 ## Brettet er size × size × size
 var win_length: int = 4           ## Antall på rad som trengs for å vinne
-var must_block: bool = false      ## «Må blokkere»
-var no_gift: bool = false         ## «Ikke gi bort seier»
+var must_block: bool = true       ## «Må blokkere» (på som standard)
+var no_gift: bool = true          ## «Ikke gi bort seier» (på som standard)
 var time_base_s: int = 0          ## 0 = uten klokke
 var time_increment_s: int = 0     ## Sekunder lagt til etter hvert trekk
 var starter: String = "p1"        ## Hvem starter: p1, p2, random, alternate

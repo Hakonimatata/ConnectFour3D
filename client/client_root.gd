@@ -8,6 +8,10 @@ var camera: CameraRig
 var board: BoardView
 var ui: Control
 var current_match: MatchController
+var lobby_message := ""       ## Vises øverst i lobbyen (f.eks. «Rommet ble lukket»)
+var _banner: Control
+var _pending_join := ""       ## romkode fra ?rom= i lenken
+var _pending_tournament := 0  ## turnering fra ?turnering= i lenken
 var keyboard_height := 0.0    ## Hvor mye av skjermen tastaturet dekker (UI-enheter)
 ## Hvor mye av nettleservinduet som er dekket nederst (tastatur), i fysiske piksler.
 const KEYBOARD_JS := "(function(){var vv=window.visualViewport;if(!vv)return 0;return Math.max(0,window.innerHeight-vv.height-vv.offsetTop)*(window.devicePixelRatio||1);})()"
@@ -27,7 +31,10 @@ func _ready() -> void:
 
 	get_window().size_changed.connect(_update_ui_scale)
 	_update_ui_scale()
+	Net.message.connect(_on_net_message)
+	Net.connected.connect(_on_net_connected)
 	show_menu()
+	_read_link()
 
 
 func _build_world() -> void:
@@ -161,6 +168,118 @@ func show_online() -> void:
 
 func show_room(room_state: Dictionary) -> void:
 	show_screen(RoomScreen.new(self, room_state))
+
+
+func show_account() -> void:
+	show_screen(AccountScreen.new(self))
+
+
+func show_profile(username := "") -> void:
+	show_screen(ProfileScreen.new(self, username))
+
+
+func show_tournaments() -> void:
+	show_screen(TournamentsScreen.new(self))
+
+
+func show_tournament(id: int, back_to_menu := false) -> void:
+	show_screen(TournamentScreen.new(self, id, back_to_menu))
+
+
+func show_tournament_edit() -> void:
+	show_screen(TournamentEditScreen.new(self))
+
+
+func join_room(code: String) -> void:
+	_hide_banner()
+	Net.send({ "t": Protocol.JOIN_ROOM, "code": code })
+
+
+# ---------------------------------------------------------------- Meldinger som gjelder alle skjermer
+
+func _on_net_message(msg: Dictionary) -> void:
+	match msg.t:
+		Protocol.ROOM_STATE:
+			# Ble med i et rom (fra lobbyen, en lenke eller «Gå til kamp»): vis venterommet.
+			if not (_screen is RoomScreen or _screen is GameScreen or _screen is SetupScreen):
+				show_room(msg)
+		Protocol.TOURNAMENT_NOTICE:
+			_show_banner(I18n.server_text(msg), str(msg.get("room", "")))
+		Protocol.ROOM_CLOSED:
+			lobby_message = I18n.server_text(msg)
+			if _screen is RoomScreen:
+				show_online()
+
+
+func _on_net_connected(_resumed: bool) -> void:
+	if _pending_join != "":
+		join_room(_pending_join)
+		_pending_join = ""
+	elif _pending_tournament != 0:
+		show_tournament(_pending_tournament)
+		_pending_tournament = 0
+
+
+## Lenker som https://…/?rom=KXRTA eller ?turnering=3 åpner rommet/turneringen direkte.
+func _read_link() -> void:
+	if not OS.has_feature("web"):
+		return
+	var room = JavaScriptBridge.eval("new URLSearchParams(location.search).get('rom') || ''")
+	var tour = JavaScriptBridge.eval("new URLSearchParams(location.search).get('turnering') || ''")
+	if room is String and room != "":
+		_pending_join = room.to_upper()
+		show_online()
+	elif tour is String and tour.is_valid_int():
+		_pending_tournament = int(tour)
+		show_online()
+
+
+## Lager en delbar lenke (web) eller gir koden (PC), og deler/kopierer den. Gir en statustekst.
+func share_link(param: String, value: String, title: String) -> String:
+	if OS.has_feature("web"):
+		var base = JavaScriptBridge.eval("location.origin + location.pathname")
+		var link := "%s?%s=%s" % [base, param, value]
+		var shared = JavaScriptBridge.eval("(function(){ if (navigator.share) { navigator.share({ title: %s, url: %s }); return true; } return false; })()" \
+			% [JSON.stringify(title), JSON.stringify(link)], true)
+		if shared == true:
+			return ""
+		DisplayServer.clipboard_set(link)
+		return tr("Lenken er kopiert: %s") % link
+	DisplayServer.clipboard_set(value)
+	return tr("Koden %s er kopiert.") % value
+
+
+func _show_banner(text: String, room: String) -> void:
+	_hide_banner()
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	margin.add_theme_constant_override("margin_top", 70)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var center := CenterContainer.new()
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(center)
+	var panel := PanelContainer.new()
+	center.add_child(panel)
+	var row := UI.hbox(12)
+	panel.add_child(row)
+	var label := UI.label(text)
+	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	row.add_child(label)
+	if room != "":
+		row.add_child(UI.button("Gå til kamp", func() -> void: join_room(room), "PrimaryButton"))
+	row.add_child(UI.button("×", _hide_banner, "GhostButton"))
+	ui.add_child(margin)
+	_banner = margin
+	Sfx.play("win", 1.4)
+	Settings.vibrate(120)
+
+
+func _hide_banner() -> void:
+	if _banner and is_instance_valid(_banner):
+		_banner.queue_free()
+	_banner = null
 
 
 ## Kalles fra oppsett-skjermen (online). Ligger her fordi skjermene byttes ut underveis.

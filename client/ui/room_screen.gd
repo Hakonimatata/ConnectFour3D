@@ -1,7 +1,8 @@
 class_name RoomScreen
 extends Screen
-## Venterom: romkode, spillere, innstillinger, «klar»-knapp og chat.
+## Venterom: romkode, spillere, brikkene slik de blir i partiet, innstillinger, «klar»-knapp og chat.
 ## Når begge er klare starter serveren partiet (game_start).
+## Er kontrasten mellom brikkene dårlig, kan du bytte skin her (motstanderen ser det med en gang).
 
 var _room: Dictionary
 var _code_label: Label
@@ -11,6 +12,11 @@ var _ready_button: Button
 var _options_button: Button
 var _chat: ChatPanel
 var _is_ready := false
+var _hint_label: Label
+var _invite_button: Button
+var _preview: PiecePreview
+var _preview_names: Label
+var _skin_picker: HFlowContainer
 
 
 func _init(p_app: ClientRoot, room_state: Dictionary) -> void:
@@ -24,13 +30,43 @@ func _ready() -> void:
 	v.add_child(UI.label("Rom", "Muted"))
 	_code_label = UI.label("", "Title")
 	v.add_child(_code_label)
-	v.add_child(UI.label("Gi koden til en venn, så kan de bli med.", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+	_hint_label = UI.label("Gi koden til en venn, så kan de bli med.", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	v.add_child(_hint_label)
+	_invite_button = UI.button("Del invitasjon", func() -> void:
+		_hint_label.text = app.share_link("rom", str(_room.get("code", "")), tr("Bli med i rommet mitt!"))
+	)
+	v.add_child(_invite_button)
 	_desc_label = UI.label("", "", HORIZONTAL_ALIGNMENT_LEFT, true)
 	v.add_child(_desc_label)
 
 	v.add_child(UI.section("Spillere"))
 	_players_box = UI.vbox(8)
 	v.add_child(_players_box)
+
+	# Brikkene slik de blir i partiet (sete 1 til venstre), og bytte av egen skin
+	_preview = PiecePreview.new(110)
+	v.add_child(_preview)
+	_preview_names = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_CENTER, true)
+	_preview_names.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(_preview_names)
+	v.add_child(UI.button("Bytt skin", func() -> void: _skin_picker.visible = not _skin_picker.visible))
+	_skin_picker = HFlowContainer.new()
+	_skin_picker.add_theme_constant_override("h_separation", 6)
+	_skin_picker.add_theme_constant_override("v_separation", 6)
+	_skin_picker.visible = false
+	var group := ButtonGroup.new()
+	for skin in Skins.ALL:
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = skin.id == Settings.skin_id
+		b.theme_type_variation = "ChoiceButton"
+		b.icon = Skins.swatch(skin.id, 26)
+		b.tooltip_text = skin.name
+		b.custom_minimum_size = Vector2(44, 40)
+		b.pressed.connect(_pick_skin.bind(str(skin.id)))
+		_skin_picker.add_child(b)
+	v.add_child(_skin_picker)
 
 	var row := UI.hbox(10)
 	_ready_button = UI.button("Klar!", _toggle_ready, "PrimaryButton")
@@ -63,7 +99,13 @@ func _show(room: Dictionary) -> void:
 	var opts = room.get("options", {})
 	_desc_label.text = GameOptions.from_dict(opts if opts is Dictionary else {}).describe()
 	var you := int(room.get("you", 1))
-	_options_button.visible = you == 1
+	var tournament = room.get("tournament")
+	var is_tournament: bool = tournament is Dictionary
+	_options_button.visible = you == 1 and not is_tournament
+	_ready_button.visible = not is_tournament
+	_invite_button.visible = not is_tournament
+	if is_tournament:
+		_hint_label.text = tr("Turneringskamp i «%s». Kampen starter når begge er her.") % tournament.name
 	for c in _players_box.get_children():
 		c.queue_free()
 	var players: Array = room.get("players", [])
@@ -79,7 +121,12 @@ func _show(room: Dictionary) -> void:
 			var avatar := AvatarView.new(34)
 			avatar.set_avatar(str(info.get("avatar", "")), str(info.name), Skins.color_of(str(info.skin)))
 			row.add_child(avatar)
-			var name_label := UI.label(tr("%s (deg)") % str(info.name) if int(info.seat) == you else str(info.name))
+			if info.get("elo") != null:
+				row.add_child(EloBadge.make(int(info.elo), 22))
+			var shown := tr("%s (deg)") % str(info.name) if int(info.seat) == you else str(info.name)
+			if info.get("elo") != null:
+				shown += "  ·  Elo %d" % int(info.elo)
+			var name_label := UI.label(shown)
 			name_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)
@@ -95,6 +142,36 @@ func _show(room: Dictionary) -> void:
 		_players_box.add_child(row)
 	_ready_button.text = "Ikke klar likevel" if _is_ready else "Klar!"
 	_ready_button.disabled = not both
+	_show_matchup(players, you)
+
+
+## Viser brikkene som de blir i partiet. Sete 1 har hjemmedrakt; gjesten får bortedrakt
+## (eller en annen skin) ved lik farge, akkurat som i OnlineMatch.
+func _show_matchup(players: Array, you: int) -> void:
+	var looks := {}
+	var names := {}
+	for info in players:
+		if not info is Dictionary:
+			continue
+		var seat := int(info.seat)
+		looks[seat] = Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
+			str(info.get("win_fx", "classic")), false, str(info.get("decal_color", "auto")))
+		names[seat] = tr("Deg") if seat == you else str(info.name)
+	if looks.size() < 2:
+		_preview.set_look(looks.get(you, Settings.look()))
+		_preview_names.text = tr("Hjemme- og bortedrakten din")
+		return
+	var pair := Skins.resolve_pair(looks[1], looks[2])
+	_preview.set_pair(pair[0], pair[1])
+	_preview_names.text = "%s   ·   %s" % [names[1], names[2]]
+
+
+func _pick_skin(id: String) -> void:
+	Sfx.play("click")
+	Settings.skin_id = id
+	Settings.save()
+	Net.send_look()
+	_skin_picker.visible = false
 
 
 func _toggle_ready() -> void:

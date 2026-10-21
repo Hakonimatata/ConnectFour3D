@@ -33,21 +33,7 @@ func _ready() -> void:
 		v.add_child(UI.section("Vanskelighetsgrad"))
 		v.add_child(UI.choice(BotProfile.level_names(), Settings.ai_level, func(i: int) -> void: Settings.ai_level = i))
 
-	v.add_child(UI.section("Brett"))
-	v.add_child(UI.choice(["4×4×4", "5×5×5"], SIZES.find(options.size),
-		func(i: int) -> void: options.size = SIZES[i]))
-
-	v.add_child(UI.section("Regler"))
-	v.add_child(UI.toggle_row("Må blokkere", "Kan motstanderen vinne på neste trekk, må du stoppe det.",
-		options.must_block, func(on: bool) -> void: options.must_block = on))
-	v.add_child(UI.toggle_row("Ikke gi bort seier", "Du kan ikke legge slik at motstanderen kan vinne rett over.",
-		options.no_gift, func(on: bool) -> void: options.no_gift = on))
-
-	v.add_child(UI.section("Klokke (minutter + sekunder per trekk)"))
-	v.add_child(UI.choice(CLOCK_NAMES, _clock_index(), func(i: int) -> void:
-		options.time_base_s = CLOCKS[i][0]
-		options.time_increment_s = CLOCKS[i][1]
-	))
+	add_option_fields(v, options)
 
 	v.add_child(UI.section("Hvem starter"))
 	var starter_names := ["Jeg", "Motstander", "Tilfeldig", "Annenhver"]
@@ -77,11 +63,26 @@ func _ready() -> void:
 	v.add_child(buttons)
 
 
-func _clock_index() -> int:
+## Brett, regler og klokke. Brukes også av turneringsskjemaet.
+static func add_option_fields(v: VBoxContainer, opts: GameOptions) -> void:
+	v.add_child(UI.section("Brett"))
+	v.add_child(UI.choice(["4×4×4", "5×5×5"], SIZES.find(opts.size), func(i: int) -> void: opts.size = SIZES[i]))
+
+	v.add_child(UI.section("Regler"))
+	v.add_child(UI.toggle_row("Må blokkere", "Kan motstanderen vinne på neste trekk, må du stoppe det.",
+		opts.must_block, func(on: bool) -> void: opts.must_block = on))
+	v.add_child(UI.toggle_row("Ikke gi bort seier", "Du kan ikke legge slik at motstanderen kan vinne rett over.",
+		opts.no_gift, func(on: bool) -> void: opts.no_gift = on))
+
+	v.add_child(UI.section("Klokke (minutter + sekunder per trekk)"))
+	var clock_index := 0
 	for i in CLOCKS.size():
-		if CLOCKS[i][0] == options.time_base_s and CLOCKS[i][1] == options.time_increment_s:
-			return i
-	return 0
+		if CLOCKS[i][0] == opts.time_base_s and CLOCKS[i][1] == opts.time_increment_s:
+			clock_index = i
+	v.add_child(UI.choice(CLOCK_NAMES, clock_index, func(i: int) -> void:
+		opts.time_base_s = CLOCKS[i][0]
+		opts.time_increment_s = CLOCKS[i][1]
+	))
 
 
 func _on_start() -> void:

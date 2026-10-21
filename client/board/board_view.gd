@@ -32,6 +32,8 @@ var colors := { 1: Skins.color_of(Skins.DEFAULT_P1), 2: Skins.color_of(Skins.DEF
 
 var _piece_mesh: Mesh = preload("res://assets/models/piece.obj")
 var _board_top: Shader = preload("res://assets/shaders/board_top.gdshader")
+var _board_top_mat: ShaderMaterial
+var _board_side_mat: StandardMaterial3D
 var _static_root: Node3D
 var _pieces_root: Node3D
 var _hints_root: Node3D
@@ -97,16 +99,16 @@ func setup(p_size: int) -> void:
 	var width := size * SPACING + BOARD_MARGIN * 2.0
 	var board := MeshInstance3D.new()
 	board.mesh = BoardMesh.build(width, BOARD_THICKNESS, 0.38)
-	var top := ShaderMaterial.new()
-	top.shader = _board_top
-	top.set_shader_parameter("cells", float(size))
-	top.set_shader_parameter("spacing", SPACING)
-	board.mesh.surface_set_material(0, top)
-	var side := StandardMaterial3D.new()
-	side.albedo_color = Color("1f232b")
-	side.roughness = 0.7
-	board.mesh.surface_set_material(1, side)
+	_board_top_mat = ShaderMaterial.new()
+	_board_top_mat.shader = _board_top
+	_board_top_mat.set_shader_parameter("cells", float(size))
+	_board_top_mat.set_shader_parameter("spacing", SPACING)
+	board.mesh.surface_set_material(0, _board_top_mat)
+	_board_side_mat = StandardMaterial3D.new()
+	_board_side_mat.roughness = 0.7
+	board.mesh.surface_set_material(1, _board_side_mat)
 	_static_root.add_child(board)
+	set_theme(Settings.board_theme)
 
 	var slot_shape := BoxShape3D.new()
 	slot_shape.size = Vector3(SPACING * 0.94, 0.06, SPACING * 0.94)
@@ -130,6 +132,24 @@ func setup(p_size: int) -> void:
 func set_looks(l1: Dictionary, l2: Dictionary) -> void:
 	looks = { 1: l1, 2: l2 }
 	colors = { 1: Skins.ui_color(l1), 2: Skins.ui_color(l2) }
+
+
+## Gir brikkene som allerede står på brettet nytt utseende (etter set_looks).
+func refresh_pieces() -> void:
+	for pos in _pieces:
+		var piece: MeshInstance3D = _pieces[pos]
+		piece.material_override = Skins.make_material(looks[int(piece.get_meta("player"))])
+
+
+## Brett-tema (Skins.BOARDS).
+func set_theme(id: String) -> void:
+	if _board_top_mat == null:
+		return
+	var b := Skins.get_board(id)
+	_board_top_mat.set_shader_parameter("base_color", b.base)
+	_board_top_mat.set_shader_parameter("line_color", b.line)
+	_board_top_mat.set_shader_parameter("grain", b.grain)
+	_board_side_mat.albedo_color = b.side
 
 
 func grid_to_world(p: Vector3i) -> Vector3:

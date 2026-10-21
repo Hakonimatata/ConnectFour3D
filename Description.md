@@ -104,11 +104,11 @@
 
 ## Runde 6
 
-- På pc: scrolling i instillinger hopper ganske mye av gangen.
+- På pc: scrolling i instillinger hopper ganske mye av gangen. Fiks dette.
 
-- Holografisk skin ser helt likt ut på hjemme og borte, så har den en litt rar wrap around. 
+- Holografisk skin ser helt likt ut på hjemme og borte, så har den en litt rar wrap around. Gjør dem mer distinkt.
 
-- Konto
+- Konto med brukernavn og passord
 
 - Stats
 
@@ -116,11 +116,50 @@
 
 - Turneringer
 
-- Sjekk etter punkter i plan.md
+- Sjekk etter punkter i plan.md for gjennomførelse
 
+- Brukerdata må lagres ett sted, og jeg vil gjerne lett endre på det. Kanskje en json fil. Her kan jeg fkes sette en bruker som admin.
+
+
+## Runde 7
+
+- Scroll i innstillinger er fortsatt veldig store hopp.
+
+- Bør ha innstillinger til siden og brettet til andre siden så man ser skins og animasjoner som preview.
+
+- Ikke lov å gi bort seier og må blokke bør være på som standard (litt som sjakk)
+
+- Enda flere skins og customization. Overraks meg! Hold det relativt stilrent, men kult.
+
+- Muligheten til å se skinet til motstander før man starter (om kontrasten er for dårlig kan man bytte)
+
+
+## Runde 8
+
+- Aktive turneringer må være på forsiden!
+
+- Lag flere skins! Gjør dem rå og kreative.
+
+- Elo merker. Skal vises ved spillernavn.
+
+
+## Runde 9
+
+- repriser. Alle trekk og analysen lagres allerede i games.jsonl. En «Se partiet igjen»-knapp der tvungne trekk er markert, er lite arbeid.
+
+- Tilskuere på turneringskamper. Det gjør turneringene sosiale, og serveren sender allerede det som trengs.
+
+- Merker på brikken som låses opp av Elo (ditt «til senere»-punkt). Nivåene finnes nå, så det som gjenstår er å la serveren sjekke hvilke merker spilleren har låst opp.
+
+- Dagens oppgave. Boten finner allerede tvungne seire, så den kan lage en daglig «finn seieren i 3 trekk eller flere» med egen toppliste.
+
+- Antall spillere online og en global chat som vises hele tiden i startmeny. Her publiseres achievevments osv.
 
 ## Til senere
 
-- Custom ikon?
+- Fast server
+
+- Decal på brikken styres av elo?
+
 
 

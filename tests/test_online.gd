@@ -47,6 +47,7 @@ func _poll_until(cond: Callable, timeout_s := 5.0) -> bool:
 
 func test_full_online_game() -> void:
 	server = ServerMain.new()
+	server.data_dir = ":memory:"   # testene skal aldri skrive til de ekte brukerdataene
 	server.port = PORT
 	root.add_child(server)
 	var url := "ws://127.0.0.1:%d" % PORT
@@ -55,7 +56,7 @@ func test_full_online_game() -> void:
 	a.open(url)
 	check(await _poll_until(func() -> bool: return a.ws.get_ready_state() == WebSocketPeer.STATE_OPEN), "A koblet ikke til")
 	a.send({ "t": "hello", "name": "Ada", "skin": "gold", "version": Protocol.VERSION })
-	a.send({ "t": "create_room", "options": {}, "private": true })
+	a.send({ "t": "create_room", "options": { "must_block": false, "no_gift": false }, "private": true })
 	check(await _poll_until(func() -> bool: return not a.last("room_state").is_empty()), "fikk ikke romstatus")
 	var code: String = a.last("room_state").code
 

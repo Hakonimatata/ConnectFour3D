@@ -240,6 +240,13 @@ func test_end_with_loss() -> void:
 	check_eq(s.check_move(Vector2i(0, 0)), GameState.MoveError.GAME_OVER)
 
 
+func test_rules_are_on_by_default() -> void:
+	var o := GameOptions.new()
+	check(o.must_block, "må blokkere på som standard")
+	check(o.no_gift, "ikke gi bort seier på som standard")
+	check(GameOptions.from_dict({}).must_block, "også når innstillingene mangler")
+
+
 func test_options_from_dict_sanitizes() -> void:
 	var o := GameOptions.from_dict({"size": 9, "time_base_s": -5, "starter": "hacker", "must_block": true})
 	check_eq(o.size, 4)

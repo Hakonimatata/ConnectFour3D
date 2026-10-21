@@ -14,21 +14,25 @@ func _setup(state: GameState, pieces: Array) -> void:
 		state.history.append(Vector2i(p[0], p[1]))
 
 
+func _no_rules() -> GameOptions:
+	return GameOptions.from_dict({ "must_block": false, "no_gift": false })
+
+
 func test_takes_immediate_win() -> void:
-	var s := GameState.new()
+	var s := GameState.new(_no_rules())
 	play_all(s, [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 2]])
 	check_eq(_bot().choose_move(s), Vector2i(3, 0))
 
 
 func test_blocks_immediate_win() -> void:
-	var s := GameState.new()
+	var s := GameState.new(_no_rules())
 	play_all(s, [[0, 0], [0, 3], [1, 0], [1, 2], [2, 0]])
 	check_eq(_bot().choose_move(s), Vector2i(3, 0))
 
 
 func test_finds_forced_win_from_old_notebook() -> void:
 	# Stillingen fra «Bug Test» i den gamle notebooken. Boten (P2) skal spille (1, 2).
-	var s := GameState.new()
+	var s := GameState.new(_no_rules())
 	_setup(s, [
 		[0, 0, 1], [0, 3, 1], [0, 3, 2], [0, 3, 2],
 		[1, 1, 1], [1, 3, 1],
@@ -45,7 +49,7 @@ func test_finds_forced_win_from_old_notebook() -> void:
 
 
 func test_bot_leaves_board_unchanged() -> void:
-	var s := GameState.new()
+	var s := GameState.new(_no_rules())
 	play_all(s, [[0, 0], [1, 1], [2, 2], [1, 2]])
 	var cells := s.cells.duplicate()
 	var counts := s.counts.duplicate()

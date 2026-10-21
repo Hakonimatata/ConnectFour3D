@@ -6,6 +6,7 @@ extends Node
 signal connected(resumed: bool)
 signal disconnected
 signal message(msg: Dictionary)
+signal account_changed          ## innlogget/utlogget (se `user`)
 
 enum Status { OFFLINE, CONNECTING, ONLINE }
 
@@ -15,21 +16,37 @@ var status := Status.OFFLINE
 var url := ""
 var player_id := 0
 var last_error := ""
+var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stats }, eller tom
 
 var _ws: WebSocketPeer
 var _token := ""
 var _want_connection := false
+var _keep_trying := true        ## false = bare en titt (menyen): gi opp hvis serveren ikke svarer
 var _retry_in := 0.0
 var _retry_delay := 1.0
 var _ping_in := PING_INTERVAL_S
 var _socket_open := false
 
 
-func connect_to_server(p_url: String = "") -> void:
+func connect_to_server(p_url: String = "", keep_trying := true) -> void:
 	url = p_url if p_url != "" else Settings.resolved_server_url()
 	_want_connection = true
+	_keep_trying = keep_trying
 	_retry_delay = 1.0
 	_open()
+
+
+## Sørger for at vi er (eller blir) tilkoblet riktig server, og prøver igjen ved brudd.
+## Brukes av lobbyen og turneringssidene, også når menyen allerede har en «titt»-tilkobling.
+func ensure_connected() -> void:
+	var wanted := Settings.resolved_server_url()
+	if status != Status.OFFLINE and url == wanted:
+		_keep_trying = true
+		_want_connection = true
+		return
+	if status != Status.OFFLINE:
+		close()
+	connect_to_server(wanted)
 
 
 func close() -> void:
@@ -39,6 +56,7 @@ func close() -> void:
 		_ws.close()
 	_ws = null
 	_socket_open = false
+	_set_user(null)   # økten huskes i Settings og brukes neste gang vi kobler til
 	if status != Status.OFFLINE:
 		status = Status.OFFLINE
 		disconnected.emit()
@@ -79,8 +97,9 @@ func _process(delta: float) -> void:
 			if not _socket_open:
 				_socket_open = true
 				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id,
-					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "avatar": Settings.avatar,
-					"version": Protocol.VERSION, "token": _token })
+					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id,
+					"avatar": Settings.avatar,
+					"version": Protocol.VERSION, "token": _token, "session": Settings.session_token })
 			while _ws and _ws.get_available_packet_count() > 0:
 				var msg := Protocol.decode(_ws.get_packet().get_string_from_utf8())
 				if not msg.is_empty():
@@ -103,17 +122,58 @@ func _handle(msg: Dictionary) -> void:
 		status = Status.ONLINE
 		_retry_delay = 1.0
 		last_error = ""
+		_set_user(msg.get("user"))
 		connected.emit(resumed)
+	elif msg.t == Protocol.SESSION:
+		Settings.session_token = str(msg.get("token", ""))
+		Settings.save()
+		_set_user(msg.get("user"))
+	elif msg.t == Protocol.LOGGED_OUT:
+		_set_user(null)
+	elif msg.t == Protocol.STATS and msg.get("user") is Dictionary and str(msg.user.get("username", "")) == str(user.get("username", "-")):
+		_set_user(msg.user)
 	elif msg.t == Protocol.ERROR and msg.get("code") == "version":
 		last_error = I18n.server_text(msg)
 		_want_connection = false
 	message.emit(msg)
 
 
+## Sender nytt utseende til serveren (f.eks. byttet skin i venterommet).
+func send_look() -> void:
+	send({ "t": Protocol.SET_LOOK, "skin": Settings.skin_id, "decal": Settings.decal_id,
+		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id })
+
+
+func is_logged_in() -> bool:
+	return not user.is_empty()
+
+
+func logout() -> void:
+	send({ "t": Protocol.LOGOUT, "session": Settings.session_token })
+	Settings.session_token = ""
+	Settings.save()
+	_set_user(null)
+
+
+## Passord sendes bare over kryptert forbindelse (wss://) eller til denne maskinen.
+func can_send_password() -> bool:
+	return url.begins_with("wss://") or url.contains("://localhost") or url.contains("://127.0.0.1")
+
+
+func _set_user(u: Variant) -> void:
+	var new_user: Dictionary = u if u is Dictionary else {}
+	if new_user == user:
+		return
+	user = new_user
+	account_changed.emit()
+
+
 func _on_closed() -> void:
 	var was_online := status == Status.ONLINE
 	_ws = null
 	_socket_open = false
+	if not _keep_trying:
+		_want_connection = false    # bare en titt: ikke mas på en server som ikke svarer
 	status = Status.CONNECTING if _want_connection else Status.OFFLINE
 	if was_online:
 		disconnected.emit()

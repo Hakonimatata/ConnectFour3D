@@ -5,14 +5,18 @@ extends Node
 signal changed
 
 const PATH := "user://settings.cfg"
+const VERSION := 2            ## Øk når standardverdier skal endres for eksisterende spillere
 const DEFAULT_LOCAL_SERVER := "ws://localhost:8080"
 
 var player_name := ""
 var skin_id := Skins.DEFAULT_P1
 var decal_id := "none"        ## Merke på toppen av brikken (Skins.DECALS)
 var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
+var decal_color_id := "auto"  ## Farge på merket (Skins.DECAL_COLORS)
+var board_theme := "slate"    ## Brett-tema (Skins.BOARDS), bare for deg selv
 var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardmeldinger på valgt språk.
-var language := "auto"        ## "auto", "nb" eller "en"
+var language := "auto"
+var session_token := ""       ## Husket innlogging (nøkkel fra serveren)        ## "auto", "nb" eller "en"
 var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
 var persist := true           ## false = ikke skriv til disk (brukes av testene)
 var sound := true
@@ -29,8 +33,15 @@ func _ready() -> void:
 		skin_id = str(cfg.get_value("player", "skin", skin_id))
 		decal_id = str(cfg.get_value("player", "decal", decal_id))
 		win_fx_id = str(cfg.get_value("player", "win_fx", win_fx_id))
+		decal_color_id = str(cfg.get_value("player", "decal_color", decal_color_id))
+		board_theme = str(cfg.get_value("app", "board_theme", board_theme))
 		chat_presets.assign(cfg.get_value("player", "chat_presets", []))
 		language = str(cfg.get_value("app", "language", language))
+		session_token = str(cfg.get_value("account", "session", ""))
+		if int(cfg.get_value("app", "version", 1)) < 2:
+			# Runde 7: «Må blokkere» og «Ikke gi bort seier» er nå på som standard.
+			last_options["must_block"] = true
+			last_options["no_gift"] = true
 		avatar = str(cfg.get_value("player", "avatar", ""))
 		sound = bool(cfg.get_value("app", "sound", sound))
 		vibration = bool(cfg.get_value("app", "vibration", vibration))
@@ -71,7 +82,7 @@ func set_chat_messages(msgs: Array[String]) -> void:
 
 ## Spillerens eget utseende (skin, merke, seiersanimasjon).
 func look() -> Dictionary:
-	return Skins.look(skin_id, decal_id, win_fx_id)
+	return Skins.look(skin_id, decal_id, win_fx_id, false, decal_color_id)
 
 
 func save() -> void:
@@ -83,8 +94,12 @@ func save() -> void:
 	cfg.set_value("player", "skin", skin_id)
 	cfg.set_value("player", "decal", decal_id)
 	cfg.set_value("player", "win_fx", win_fx_id)
+	cfg.set_value("player", "decal_color", decal_color_id)
+	cfg.set_value("app", "board_theme", board_theme)
 	cfg.set_value("player", "chat_presets", chat_presets)
 	cfg.set_value("app", "language", language)
+	cfg.set_value("app", "version", VERSION)
+	cfg.set_value("account", "session", session_token)
 	cfg.set_value("player", "avatar", avatar)
 	cfg.set_value("app", "sound", sound)
 	cfg.set_value("app", "vibration", vibration)

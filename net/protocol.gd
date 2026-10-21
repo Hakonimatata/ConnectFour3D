@@ -4,13 +4,13 @@ extends RefCounted
 ## Se Plan.md, seksjon 7.2. Øk VERSION når meldingene endres på en måte
 ## som gjør at gamle klienter ikke lenger fungerer.
 
-const VERSION := 1
+const VERSION := 2
 const MAX_BYTES := 64 * 1024   ## Meldinger med profilbilder kan bli noen titalls KB
 const MAX_NAME := 16
 const MAX_CHAT := 200
 
 # Klient -> server
-const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, version, token? }
+const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, version, token?, session? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }
@@ -22,20 +22,43 @@ const CHAT := "chat"                 ## { text }
 const RESIGN := "resign"
 const REMATCH := "rematch"
 const PING := "ping"
+# Kontoer, statistikk og turneringer
+const REGISTER := "register"         ## { username, password }
+const LOGIN := "login"               ## { username, password }
+const LOGOUT := "logout"             ## { session }
+const GET_STATS := "get_stats"       ## { username? }  (tom = deg selv)
+const GET_LEADERBOARD := "get_leaderboard"
+const LIST_TOURNAMENTS := "list_tournaments"
+const GET_TOURNAMENT := "get_tournament"       ## { id }
+const TOURNAMENT_JOIN := "tournament_join"     ## { id }
+const TOURNAMENT_LEAVE := "tournament_leave"   ## { id }
+const TOURNAMENT_CREATE := "tournament_create" ## { data }        (admin)
+const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (admin)
+const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publish, start, cancel, delete)
+const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color }  (f.eks. byttet skin i venterommet)
 
 # Server -> klient
-const WELCOME := "welcome"           ## { player_id, token, resumed }
+const WELCOME := "welcome"           ## { player_id, token, resumed, user? }
 const ROOM_LIST := "room_list"       ## { rooms: [{ code, host, options }] }
 const ROOM_STATE := "room_state"     ## { code, private, options, you, in_game, players: [...] }
 const GAME_START := "game_start"     ## { options, first, you, players, clocks, number }
 const GAME_SYNC := "game_sync"       ## som game_start + { moves, running, over, result, reason, line }
 const MOVE_MADE := "move_made"       ## { x, y, player, ply, clocks, running }
 const MOVE_REJECTED := "move_rejected" ## { text, hints }
-const GAME_OVER := "game_over"       ## { result, reason, winner, line }
+const GAME_OVER := "game_over"       ## { result, reason, winner, line, elo? { "1": {before, after}, ... } }
 const CHAT_MSG := "chat"             ## { from, seat, text }
 const NOTICE := "notice"             ## { text }  (statusmeldinger)
 const ERROR := "error"               ## { code, text }
 const PONG := "pong"
+const SESSION := "session"           ## { token, user }  (innlogget)
+const AUTH_ERROR := "auth_error"     ## { key, text }
+const LOGGED_OUT := "logged_out"
+const STATS := "stats"               ## { user }
+const LEADERBOARD := "leaderboard"   ## { elo: [...], wins: [...], forced: [...] }
+const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin }
+const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
+const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room }  («Gå til kamp»)
+const ROOM_CLOSED := "room_closed"   ## { key, args }
 
 
 static func encode(msg: Dictionary) -> String:

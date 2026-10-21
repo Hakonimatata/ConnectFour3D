@@ -4,9 +4,10 @@ extends RefCounted
 ##
 ## Hver skin har to drakter, «hjemme» og «borte». Velger begge spillerne samme
 ## (eller veldig lik) skin, bruker spiller 2 bortedrakten, som i fotball.
-## Et «look» er en Dictionary: { skin, decal, win_fx, away }.
+## Et «look» er en Dictionary: { skin, decal, win_fx, away, decal_color }.
 
-enum Style { SMOOTH, METAL, LAVA, GALAXY, HOLO, NEON, MARBLE, CARBON, STRIPES }
+enum Style { SMOOTH, METAL, LAVA, GALAXY, HOLO, NEON, MARBLE, CARBON, STRIPES, AURORA, ICE, WOOD, CERAMIC,
+	GLASS, PATINA, PLASMA, KINTSUGI, DAMASCUS, CIRCUIT, DISCO, OPAL, PIXEL, CODE, TOXIC, BLACK_HOLE }
 
 const DEFAULT_P1 := "ocean"
 const DEFAULT_P2 := "ember"
@@ -22,10 +23,30 @@ static var ALL: Array[Dictionary] = [
 	_skin("violet", "Galakse", Style.GALAXY, ["1a0838", "7a3ae0", "9b5cff"], ["061430", "2f7ae0", "4f9bff"]),
 	_skin("lava", "Lava", Style.LAVA, ["ff5a12", "2a0d06", "ff6a1a"], ["3ad6ff", "061c2a", "4fdcff"]),
 	_skin("mint", "Neon", Style.NEON, ["12e6b4", "3cf0ff", "25e8c8"], ["ff3df0", "ff8af5", "ff5cf2"]),
-	_skin("rose", "Holografisk", Style.HOLO, ["ffd1ea", "ff7ac0", "ff8ac8"], ["cffaff", "5fd8ee", "6fdcf0"]),
+	_skin("rose", "Holografisk", Style.HOLO, ["ff9fd0", "ffd27a", "ff9fc8"], ["5ce1f0", "8f7bff", "6fc6f5"]),
 	_skin("snow", "Marmor", Style.MARBLE, ["f2f1ee", "8c9096", "e9e9e6"], ["18191c", "d9dadd", "9da1a8"]),
 	_skin("carbon", "Karbon", Style.CARBON, ["e8340c", "e8340c", "ff5a2a"], ["1e88ff", "1e88ff", "3a9bff"]),
 	_skin("racing", "Racing", Style.STRIPES, ["f2f2f2", "e3261b", "e3261b"], ["1c2640", "ffd23a", "ffd23a"]),
+	# Runde 7
+	_skin("aurora", "Nordlys", Style.AURORA, ["0b1d2a", "3cf0a0", "3cf0a0"], ["170a26", "c05cff", "c05cff"]),
+	_skin("ice", "Is", Style.ICE, ["d6f1ff", "7fc8ff", "a8dcff"], ["ffe8f0", "ff8fb3", "ff9fbf"]),
+	_skin("oak", "Eik", Style.WOOD, ["b07a45", "dcae78", "c98b52"], ["3e2416", "6e4127", "7a4a2c"]),
+	_skin("ceramic", "Keramikk", Style.CERAMIC, ["f4efe6", "e6d9c6", "efe6d8"], ["2f6f73", "3f8a8f", "3f8a8f"]),
+	_skin("glass", "Glass", Style.GLASS, ["5fc0ff", "d8f3ff", "8fd8ff"], ["ff9a3c", "ffe2c4", "ffb36b"]),
+	_skin("copper", "Kobber", Style.PATINA, ["a85a26", "f0a36a", "e08a4a"], ["2f8f7a", "8fdcc6", "5fbfa5"]),
+	_skin("sunset", "Solnedgang", Style.SMOOTH, ["ff5e62", "ffb347", "ff7f50"], ["5b4bd0", "ff6fa5", "9f6bd8"]),
+	_skin("midnight", "Midnatt", Style.STRIPES, ["141c3a", "e9c46a", "e9c46a"], ["f4f1e8", "141c3a", "3a4670"]),
+	# Runde 8
+	_skin("plasma", "Plasma", Style.PLASMA, ["12062e", "c77dff", "b46bff"], ["021a24", "5ff4ff", "4fe0ff"]),
+	_skin("kintsugi", "Kintsugi", Style.KINTSUGI, ["1c1d22", "f0c050", "caa04a"], ["efebe4", "d9a33a", "f4efe6"]),
+	_skin("damascus", "Damaskus", Style.DAMASCUS, ["3a4048", "c9d2db", "9aa6b2"], ["24180f", "e0a050", "d48a3a"]),
+	_skin("circuit", "Kretskort", Style.CIRCUIT, ["0b2a1a", "3cff8a", "35e07a"], ["160d26", "ff9a1f", "ff9a1f"]),
+	_skin("disco", "Disco", Style.DISCO, ["c0c6d0", "ff4fd8", "e6e9ef"], ["d9a640", "4fd8ff", "f2c14e"]),
+	_skin("opal", "Opal", Style.OPAL, ["eef3f7", "bfe3ff", "dde8f2"], ["10182a", "3a5ccc", "4a6ad8"]),
+	_skin("pixel", "Piksel", Style.PIXEL, ["ff3d7f", "ffd23f", "ff5c8a"], ["1fa9ff", "b6f0ff", "3cb8ff"]),
+	_skin("code", "Kode", Style.CODE, ["020a04", "3cff6a", "3cff6a"], ["0a0204", "ff3c5a", "ff3c5a"]),
+	_skin("toxic", "Giftig", Style.TOXIC, ["7cff1a", "e6ff5a", "9cff2a"], ["b04cff", "ff7af0", "c060ff"]),
+	_skin("blackhole", "Sort hull", Style.BLACK_HOLE, ["ff8a1f", "fff0c0", "ff9a3a"], ["4f7bff", "d6e4ff", "6f8fff"]),
 ]
 
 ## Merker på toppen av brikken (indeksen brukes i shaderen)
@@ -37,6 +58,29 @@ const DECALS: Array[Dictionary] = [
 	{ "id": "cross", "name": "Kryss" },
 	{ "id": "diamond", "name": "Diamant" },
 	{ "id": "heart", "name": "Hjerte" },
+	{ "id": "hexagon", "name": "Sekskant" },
+	{ "id": "moon", "name": "Måne" },
+	{ "id": "crown", "name": "Krone" },
+	{ "id": "bolt", "name": "Lyn" },
+	{ "id": "chevron", "name": "Pil" },
+]
+
+## Farge på merket
+const DECAL_COLORS: Array[Dictionary] = [
+	{ "id": "auto", "name": "Automatisk" },
+	{ "id": "white", "name": "Hvit" },
+	{ "id": "black", "name": "Svart" },
+	{ "id": "gold", "name": "Gull" },
+	{ "id": "kit", "name": "Draktfarge" },
+]
+
+## Brett-temaer (bare for deg selv). grain = treverk.
+static var BOARDS: Array[Dictionary] = [
+	{ "id": "slate", "name": "Skifer", "base": Color("2b2f37"), "line": Color("3c4049"), "side": Color("1f232b"), "grain": 0.0 },
+	{ "id": "oak", "name": "Eik", "base": Color("8a6440"), "line": Color("6b4a2e"), "side": Color("553a23"), "grain": 1.0 },
+	{ "id": "marble", "name": "Lys stein", "base": Color("d4d3ce"), "line": Color("b4b3ae"), "side": Color("a3a29d"), "grain": 0.0 },
+	{ "id": "midnight", "name": "Midnatt", "base": Color("18213d"), "line": Color("2b3a66"), "side": Color("10162b"), "grain": 0.0 },
+	{ "id": "felt", "name": "Filt", "base": Color("1f4d3b"), "line": Color("2e6b53"), "side": Color("163a2c"), "grain": 0.0 },
 ]
 
 ## Seiersanimasjoner (se client/fx/win_fx.gd)
@@ -46,6 +90,8 @@ const WIN_FX: Array[Dictionary] = [
 	{ "id": "confetti", "name": "Konfetti" },
 	{ "id": "shockwave", "name": "Sjokkbølge" },
 	{ "id": "lightning", "name": "Lyn" },
+	{ "id": "supernova", "name": "Supernova" },
+	{ "id": "glitter", "name": "Glitter" },
 ]
 
 static var _shader: Shader
@@ -86,6 +132,17 @@ static func is_valid_fx(id: String) -> bool:
 	return WIN_FX.any(func(d: Dictionary) -> bool: return d.id == id)
 
 
+static func is_valid_decal_color(id: String) -> bool:
+	return DECAL_COLORS.any(func(d: Dictionary) -> bool: return d.id == id)
+
+
+static func get_board(id: String) -> Dictionary:
+	for b in BOARDS:
+		if b.id == id:
+			return b
+	return BOARDS[0]
+
+
 static func decal_index(id: String) -> int:
 	for i in DECALS.size():
 		if DECALS[i].id == id:
@@ -94,12 +151,13 @@ static func decal_index(id: String) -> int:
 
 
 ## Et komplett look med gyldige verdier.
-static func look(skin: String, decal := "none", win_fx := "classic", away := false) -> Dictionary:
+static func look(skin: String, decal := "none", win_fx := "classic", away := false, decal_color := "auto") -> Dictionary:
 	return {
 		"skin": skin if is_valid(skin) else DEFAULT_P1,
 		"decal": decal if is_valid_decal(decal) else "none",
 		"win_fx": win_fx if is_valid_fx(win_fx) else "classic",
 		"away": away,
+		"decal_color": decal_color if is_valid_decal_color(decal_color) else "auto",
 	}
 
 
@@ -175,5 +233,15 @@ static func make_material(l: Dictionary) -> ShaderMaterial:
 	m.set_shader_parameter("color_a", v.a)
 	m.set_shader_parameter("color_b", v.b)
 	m.set_shader_parameter("decal", decal_index(str(l.get("decal", "none"))))
-	m.set_shader_parameter("decal_color", Color(v.decal, 0.92))
+	m.set_shader_parameter("decal_color", Color(decal_color_of(l), 0.92))
 	return m
+
+
+static func decal_color_of(l: Dictionary) -> Color:
+	var v := variant(l)
+	match str(l.get("decal_color", "auto")):
+		"white": return Color(1, 1, 1)
+		"black": return Color("16181d")
+		"gold": return Color("e8c35a")
+		"kit": return v.ui
+	return v.decal

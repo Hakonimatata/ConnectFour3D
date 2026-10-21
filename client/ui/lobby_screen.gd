@@ -7,6 +7,7 @@ var _rooms_box: VBoxContainer
 var _code_edit: LineEdit
 var _buttons: Array[Button] = []
 var _refresh_timer: Timer
+var _account_row: HBoxContainer
 
 
 func _ready() -> void:
@@ -15,6 +16,18 @@ func _ready() -> void:
 	v.add_child(UI.label("Spill online", "Heading"))
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	v.add_child(_status)
+	_account_row = UI.hbox(8)
+	v.add_child(_account_row)
+	var more := UI.hbox(8)
+	var tour := UI.button("Turneringer", func() -> void: app.show_tournaments())
+	tour.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stats := UI.button("Statistikk og toppliste", func() -> void: app.show_profile())
+	stats.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	more.add_child(tour)
+	more.add_child(stats)
+	_buttons.append(tour)
+	_buttons.append(stats)
+	v.add_child(more)
 
 	var create := UI.button("Opprett rom", _on_create, "PrimaryButton")
 	v.add_child(create)
@@ -40,16 +53,15 @@ func _ready() -> void:
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)
 	Net.disconnected.connect(_update_status)
+	Net.account_changed.connect(_update_status)
 	_refresh_timer = Timer.new()
 	_refresh_timer.wait_time = 3.0
 	_refresh_timer.autostart = true
 	_refresh_timer.timeout.connect(_refresh)
 	add_child(_refresh_timer)
 
-	if Net.status == Net.Status.OFFLINE:
-		Net.connect_to_server()
-	else:
-		_refresh()
+	Net.ensure_connected()
+	_refresh()
 	_update_status()
 	_show_rooms([])
 
@@ -63,13 +75,38 @@ func _update_status() -> void:
 	var online := Net.is_online()
 	for b in _buttons:
 		b.disabled = not online
+	_rebuild_account_row()
 	match Net.status:
 		Net.Status.ONLINE:
-			_status.text = tr("Tilkoblet som %s") % Settings.player_name
+			if Net.is_logged_in():
+				_status.text = tr("Innlogget som %s · Elo %d") % [Net.user.username, int(Net.user.elo)]
+			else:
+				_status.text = tr("Tilkoblet som %s (gjest)") % Settings.player_name
 		Net.Status.CONNECTING:
 			_status.text = tr("Kobler til %s…%s") % [Net.url, ("\n" + Net.last_error) if Net.last_error != "" else ""]
 		_:
 			_status.text = Net.last_error if Net.last_error != "" else tr("Frakoblet")
+	if app.lobby_message != "" and Net.is_online():
+		_status.text = app.lobby_message + "\n" + _status.text
+
+
+func _rebuild_account_row() -> void:
+	for c in _account_row.get_children():
+		c.queue_free()
+	if not Net.is_online():
+		return
+	if Net.is_logged_in():
+		var profile := UI.button("Min profil", func() -> void: app.show_profile())
+		profile.icon = EloBadge.icon(int(Net.user.elo), 20)
+		profile.tooltip_text = EloBadge.describe(int(Net.user.elo))
+		profile.add_theme_constant_override("icon_max_width", 20)
+		profile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_account_row.add_child(profile)
+		_account_row.add_child(UI.button("Logg ut", func() -> void: Net.logout(), "GhostButton"))
+	else:
+		var login := UI.button("Logg inn / ny konto", func() -> void: app.show_account(), "GhostButton")
+		login.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_account_row.add_child(login)
 
 
 func _on_connected(_resumed: bool) -> void:
@@ -86,8 +123,6 @@ func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.ROOM_LIST:
 			_show_rooms(msg.get("rooms", []))
-		Protocol.ROOM_STATE:
-			app.show_room(msg)
 		Protocol.ERROR:
 			_status.text = I18n.server_text(msg)
 
@@ -100,6 +135,8 @@ func _show_rooms(rooms: Array) -> void:
 		return
 	for r in rooms:
 		var row := UI.hbox(10)
+		if r.get("host_elo") != null:
+			row.add_child(EloBadge.make(int(r.host_elo), 22))
 		var texts := UI.vbox(2)
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.add_child(UI.label(tr("%s sitt rom") % str(r.get("host", "?"))))
@@ -125,5 +162,6 @@ func _join(code: String) -> void:
 
 
 func _on_back() -> void:
+	app.lobby_message = ""
 	Net.close()
 	app.show_menu()

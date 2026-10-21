@@ -44,7 +44,7 @@ func _count(peer: int, t: String) -> int:
 
 
 ## Oppretter et rom med to spillere som er klare. Gir romkoden.
-func _start_game(options := {}) -> String:
+func _start_game(options := { "must_block": false, "no_gift": false }) -> String:
 	_hello(1, "Ada")
 	_hello(2, "Bo")
 	_msg(1, { "t": "create_room", "options": options, "private": false })
@@ -103,6 +103,16 @@ func test_create_list_and_join_room() -> void:
 	check_eq(_last(2, "room_list").rooms.size(), 0, "fullt rom skal ikke listes:")
 
 
+func test_room_list_has_host_elo_for_accounts_only() -> void:
+	_hello(1, "Ada")
+	_hello(2, "Bo")
+	_msg(1, { "t": "create_room", "options": {}, "private": false })
+	_msg(2, { "t": "list_rooms" })
+	var listed: Array = _last(2, "room_list").rooms
+	check_eq(listed.size(), 1)
+	check(listed[0].has("host_elo") and listed[0].host_elo == null, "gjester har ingen Elo")
+
+
 func test_private_rooms_are_hidden_but_joinable() -> void:
 	_hello(1, "Ada")
 	_hello(2, "Bo")
@@ -118,6 +128,22 @@ func test_join_unknown_room() -> void:
 	_hello(1, "Ada")
 	_msg(1, { "t": "join_room", "code": "ZZZZZ" })
 	check_eq(_last(1, "error").get("code"), "no_room")
+
+
+func test_set_look_is_shown_to_the_other_player_before_start() -> void:
+	_hello(1, "Ada")
+	_hello(2, "Bo")
+	_msg(1, { "t": "set_look", "skin": "ice" })   # utenfor rom: bare lagres
+	_msg(1, { "t": "create_room", "options": {}, "private": true })
+	check_eq(_last(1, "room_state").players[0].skin, "ice")
+	_msg(2, { "t": "join_room", "code": _last(1, "room_state").code })
+	_msg(2, { "t": "set_look", "skin": "aurora", "decal": "crown", "win_fx": "glitter", "decal_color": "gold" })
+	var bo: Dictionary = _last(1, "room_state").players[1]
+	check_eq(bo.skin, "aurora", "verten ser den nye skinen:")
+	check_eq(bo.decal, "crown")
+	check_eq(bo.win_fx, "glitter")
+	check_eq(bo.decal_color, "gold")
+	check_eq(_last(2, "room_state").players[1].skin, "aurora")
 
 
 func test_game_starts_when_both_ready() -> void:
@@ -141,7 +167,7 @@ func test_full_game_with_win() -> void:
 
 
 func test_rejects_wrong_turn_illegal_and_duplicate_moves() -> void:
-	_start_game({ "must_block": true })
+	_start_game({ "must_block": true, "no_gift": false })
 	_msg(2, { "t": "move", "x": 0, "y": 0, "ply": 0 })
 	check_eq(_last(2, "move_rejected").text, "Det er ikke din tur.")
 	_msg(1, { "t": "move", "x": 9, "y": 9, "ply": 0 })
@@ -161,7 +187,7 @@ func test_rejects_wrong_turn_illegal_and_duplicate_moves() -> void:
 
 
 func test_timeout_loses() -> void:
-	_start_game({ "time_base_s": 60 })
+	_start_game({ "time_base_s": 60, "must_block": false, "no_gift": false })
 	now += 61_000
 	lobby.tick(now)
 	var over := _last(1, "game_over")
@@ -170,7 +196,7 @@ func test_timeout_loses() -> void:
 
 
 func test_resign_and_rematch() -> void:
-	_start_game({ "starter": "alternate" })
+	_start_game({ "starter": "alternate", "must_block": false, "no_gift": false })
 	_msg(1, { "t": "resign" })
 	check_eq(_last(2, "game_over").get("winner"), 2.0)
 	_msg(1, { "t": "rematch" })

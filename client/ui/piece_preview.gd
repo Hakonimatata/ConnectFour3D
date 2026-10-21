@@ -53,8 +53,13 @@ func set_look(l: Dictionary) -> void:
 	home.away = false
 	var away := l.duplicate()
 	away.away = true
-	_home.material_override = Skins.make_material(home)
-	_away.material_override = Skins.make_material(away)
+	set_pair(home, away)
+
+
+## To vilkårlige looks side om side (f.eks. deg og motstanderen).
+func set_pair(left: Dictionary, right: Dictionary) -> void:
+	_home.material_override = Skins.make_material(left)
+	_away.material_override = Skins.make_material(right)
 
 
 func _process(delta: float) -> void:

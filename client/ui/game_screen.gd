@@ -124,14 +124,20 @@ func _make_card(player: int) -> Control:
 	name_label.clip_text = true
 	var sub := UI.label("", "Muted")
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
-	names.add_child(name_label)
+	var name_row := UI.hbox(6)
+	name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var badge := EloBadge.make(-1, 18)
+	name_row.add_child(badge)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_row.add_child(name_label)
+	names.add_child(name_row)
 	names.add_child(sub)
 	row.add_child(names)
 	var clock := UI.label("")
 	clock.add_theme_font_size_override("font_size", 22)
 	clock.autowrap_mode = TextServer.AUTOWRAP_OFF
 	row.add_child(clock)
-	_cards[player] = { "panel": panel, "avatar": avatar, "name": name_label, "sub": sub, "clock": clock }
+	_cards[player] = { "panel": panel, "avatar": avatar, "name": name_label, "sub": sub, "clock": clock, "badge": badge }
 	return panel
 
 
@@ -145,6 +151,7 @@ func _refresh_players() -> void:
 		c.name.text = label
 		c.sub.text = info.get("subtitle", "")
 		c.sub.visible = c.sub.text != ""
+		EloBadge.set_elo(c.badge, int(info.get("elo", -1)), 18)
 		(c.avatar as AvatarView).set_avatar(str(info.get("avatar", "")), str(info.name), match_ctrl.color_of(p))
 	app.board.set_looks(match_ctrl.look_of(1), match_ctrl.look_of(2))
 	_highlight_turn()
@@ -312,7 +319,19 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		GameState.EndReason.RESIGN: "Ga opp",
 		GameState.EndReason.DISCONNECT: "Motstanderen forlot partiet",
 	}
-	_result_reason.text = reasons.get(reason, "")
+	_result_reason.text = tr(reasons.get(reason, ""))
+	var online := match_ctrl as OnlineMatch
+	if online and not online.last_elo.is_empty():
+		var before := int(online.last_elo.before)
+		var after := int(online.last_elo.after)
+		_result_reason.text += "\nElo %d → %d (%s%d)" % [before, after, "+" if after >= before else "", after - before]
+		var new_tier := EloBadge.tier(after)
+		if new_tier.id != EloBadge.tier(before).id:
+			var text := tr("Nytt nivå: %s!") if after > before else tr("Ned til %s")
+			_result_reason.text += "\n" + text % tr(new_tier.name)
+	if online and not online.tournament.is_empty():
+		_rematch_button.visible = false
+		_result_reason.text += "\n" + tr("Turnering: %s") % online.tournament.name
 	_show_status(_result_title.text, UI.TEXT, 0.0)
 
 	var delay := 0.4

@@ -10,6 +10,8 @@ services:
     restart: unless-stopped
     environment:
       - PORT=8080
+    volumes:
+      - game_data:/data      # brukere, statistikk og turneringer
 
   web:
     build:
@@ -28,3 +30,4 @@ services:
 
 volumes:
   caddy_data:
+  game_data:

@@ -50,6 +50,26 @@ func test_menu_setup_and_settings_screens() -> void:
 	check(_screen() is MainMenu)
 
 
+func test_menu_shows_active_tournaments() -> void:
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	menu.show_tournaments([
+		{ "id": 1, "name": "Ferdig cup", "status": "finished", "format": "knockout", "start_time": 0, "players": 4, "max_players": 8 },
+		{ "id": 2, "name": "Vårcupen", "status": "open", "format": "knockout", "start_time": 2000000000, "players": 3, "max_players": 16 },
+		{ "id": 3, "name": "Fredagsligaen", "status": "running", "format": "round_robin", "start_time": 1000, "players": 6, "max_players": 8 },
+	])
+	await _frames(1)
+	check(menu._tour_box.visible, "aktive turneringer skal vises")
+	var buttons := menu._tour_list.get_children().filter(func(c: Node) -> bool: return c is Button and not c.is_queued_for_deletion())
+	check_eq(buttons.size(), 2, "ferdige turneringer vises ikke:")
+	check((buttons[0] as Button).text.begins_with("Fredagsligaen"), "pågående først")
+	menu.show_tournaments([])
+	check(not menu._tour_box.visible, "skjules når ingen er aktive")
+	# Menyen tar bare en titt på serveren: svarer den ikke, prøver den ikke igjen og igjen
+	check(await wait_until(func() -> bool: return Net.status != Net.Status.CONNECTING, 6.0),
+		"menyen skal gi opp når serveren ikke svarer")
+
+
 func test_ai_game_to_the_end() -> void:
 	var o := GameOptions.new()
 	o.must_block = true
@@ -95,8 +115,39 @@ func test_settings_avatar_pick_and_clear() -> void:
 	Settings.avatar = before
 
 
+func test_settings_preview_board_theme_and_fx() -> void:
+	var old := [Settings.skin_id, Settings.decal_id, Settings.decal_color_id, Settings.board_theme, Settings.win_fx_id]
+	app.show_settings()
+	await _frames(2)
+	var screen := _screen() as SettingsScreen
+	check_eq(app.board._pieces.size(), SettingsScreen.DEMO_LINE.size() + SettingsScreen.DEMO_P2.size(), "demo-stillingen vises:")
+	Settings.skin_id = "glass"
+	Settings.decal_id = "bolt"
+	Settings.decal_color_id = "kit"
+	screen._apply_looks()
+	var piece: MeshInstance3D = app.board._pieces[Vector3i(0, 0, 0)]
+	check_eq((piece.material_override as ShaderMaterial).get_shader_parameter("decal"), Skins.decal_index("bolt"))
+	var away_piece: MeshInstance3D = app.board._pieces[Vector3i(1, 0, 0)]
+	check_eq((away_piece.material_override as ShaderMaterial).get_shader_parameter("color_a"), Skins.get_skin("glass").away.a,
+		"spiller 2 vises i bortedrakt:")
+	app.board.set_theme("oak")
+	check_eq(app.board._board_top_mat.get_shader_parameter("grain"), 1.0)
+	for fx in ["supernova", "glitter"]:
+		Settings.win_fx_id = fx
+		screen.play_fx_preview()
+		await tree.create_timer(0.6, true, false, true).timeout
+	check(app.camera.view_offset != Vector2.ZERO, "brettet flyttes bort fra kortet")
+	Settings.skin_id = old[0]
+	Settings.decal_id = old[1]
+	Settings.decal_color_id = old[2]
+	Settings.board_theme = old[3]
+	Settings.win_fx_id = old[4]
+	app.show_menu()
+	check(await wait_until(func() -> bool: return Engine.time_scale == 1.0, 2.0), "sakte film skal ikke henge igjen")
+
+
 func test_every_win_animation_runs() -> void:
-	var m := OfflineMatch.new(GameOptions.new())
+	var m := OfflineMatch.new(GameOptions.from_dict({ "must_block": false, "no_gift": false }))
 	app.start_match(m)
 	await _frames(2)
 	for mv in [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 3], [3, 0]]:
@@ -162,6 +213,7 @@ func test_local_game_touch_needs_two_taps_and_5x5() -> void:
 
 func test_online_lobby_room_and_game() -> void:
 	server = ServerMain.new()
+	server.data_dir = ":memory:"   # testene skal aldri skrive til de ekte brukerdataene
 	server.port = PORT
 	root.add_child(server)
 	Settings.server_url = "ws://127.0.0.1:%d" % PORT
@@ -196,6 +248,20 @@ func test_online_lobby_room_and_game() -> void:
 	check(await wait_until(poll_b), "motstander koblet ikke til")
 	b.send_text(Protocol.encode({ "t": "hello", "name": "Bo", "skin": "lime", "version": Protocol.VERSION }))
 	b.send_text(Protocol.encode({ "t": "join_room", "code": code }))
+	# Venterommet viser motstanderens skin, og eget bytte går til serveren
+	check(await wait_until(func() -> bool:
+		poll_b.call()
+		return (_screen() as RoomScreen)._preview_names.text.ends_with("Bo")
+	), "venterommet viser ikke motstanderen")
+	var old_skin := Settings.skin_id
+	(_screen() as RoomScreen)._pick_skin("copper")
+	check(await wait_until(func() -> bool:
+		poll_b.call()
+		var ps: Array = (_screen() as RoomScreen)._room.get("players", [])
+		return ps.size() > 0 and ps[0] is Dictionary and ps[0].skin == "copper"
+	), "skin-bytte i venterommet kom ikke fram")
+	Settings.skin_id = old_skin
+	Settings.save()
 	b.send_text(Protocol.encode({ "t": "ready", "ready": true }))
 	await wait_until(func() -> bool:
 		poll_b.call()
@@ -208,6 +274,7 @@ func test_online_lobby_room_and_game() -> void:
 	), "partiet startet ikke")
 	var m: OnlineMatch = app.current_match
 	check_eq(m.players[2].name, "Bo")
+	check_eq(m.players[2].skin, "lime")
 	if m.is_local_turn():
 		app.board.column_tapped.emit(Vector2i(1, 1), false)
 		check(await wait_until(func() -> bool:
@@ -215,3 +282,55 @@ func test_online_lobby_room_and_game() -> void:
 			return m.state.history.size() == 1
 		), "trekket kom ikke tilbake fra serveren")
 	b.close()
+
+
+func test_account_profile_and_tournament_screens() -> void:
+	server = ServerMain.new()
+	server.port = PORT + 2   # egen port: Windows holder forrige tests port opptatt en stund
+	server.data_dir = ":memory:"   # testene skal aldri skrive til de ekte brukerdataene
+	root.add_child(server)
+	server.lobby.accounts.iterations = 10
+	var old_session := Settings.session_token
+	Settings.server_url = "ws://127.0.0.1:%d" % (PORT + 2)
+	app.show_online()
+	check(await wait_until(func() -> bool: return Net.is_online()), "lobbyen koblet ikke til")
+
+	# Registrer konto via skjermen
+	app.show_account()
+	await _frames(2)
+	var acc := _screen() as AccountScreen
+	acc._register = true
+	acc._refresh()
+	check(not acc._submit.disabled, "innlogging tillatt mot localhost")
+	acc._user_edit.text = "Testadmin"
+	acc._pass_edit.text = "hemmelig123"
+	acc._pass2_edit.text = "hemmelig123"
+	acc._on_submit()
+	check(await wait_until(func() -> bool: return Net.is_logged_in()), "ble ikke logget inn")
+	check(await wait_until(func() -> bool: return _screen() is LobbyScreen), "tilbake til lobbyen")
+
+	# Profil og toppliste
+	app.show_profile()
+	check(await wait_until(func() -> bool:
+		return (_screen() as ProfileScreen)._stats_box.get_child_count() > 3
+	), "statistikken vises")
+
+	# Gjør brukeren til admin (som å sette "admin": true i users.json) og lag en turnering
+	server.lobby.accounts.set_admin("Testadmin", true)
+	app.show_tournaments()
+	check(await wait_until(func() -> bool: return (_screen() as TournamentsScreen)._new_button.visible), "admin ser «Ny turnering»")
+	app.show_tournament_edit()
+	await _frames(2)
+	var edit := _screen() as TournamentEditScreen
+	edit._name.text = "Testcup"
+	edit._on_create()
+	check(await wait_until(func() -> bool: return _screen() is TournamentScreen), "turneringssiden vises")
+	var ts := _screen() as TournamentScreen
+	check(await wait_until(func() -> bool: return ts._t.get("status") == "open"), "publisert")
+	ts._send(Protocol.TOURNAMENT_JOIN)
+	check(await wait_until(func() -> bool:
+		return (ts._t.get("player_list", []) as Array).size() == 1
+	), "påmeldt")
+	Net.logout()
+	await _frames(2)
+	Settings.session_token = old_session

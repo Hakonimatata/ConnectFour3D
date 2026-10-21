@@ -154,3 +154,72 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - Etter skjermbildene ble neon, holografisk og den myke toon-skyggen justert.
 
 **Ikke testet:** tastaturhåndteringen på ekte telefon. Den bruker nettleserens `visualViewport` og kan trenge justering på iPhone.
+
+## Runde 6 – Kontoer, statistikk, Elo og turneringer
+
+| Ønske | Løsning |
+|---|---|
+| Scrolling i innstillinger hopper (PC) | Hvert hakk på musehjulet scroller nå 48 px (før en åttendedel av skjermen). |
+| Holografisk: hjemme og borte like, og en «søm» | Drakten styrer fargene: hjemme er rosa/gull, borte er cyan/fiolett. Sømmen var et hopp i vinkelen rundt brikken (fra +180° til −180°). Shaderen bruker nå sin/cos av vinkelen, så den er borte. |
+| Konto med brukernavn og passord | Registrering og innlogging under *Spill online*. Passord lagres bare som PBKDF2-hash (60 000 runder, testet mot standard testvektorer). Innloggingen huskes. Passord sendes bare over sikker forbindelse (https/wss) eller til localhost. Etter 5 feilforsøk må man vente 10 minutter. |
+| Stats | Partier, seire, tap og uavgjort, vinnerprosent, rekker, raskeste seier, **tvungne trekk**, **doble trusler**, **lengste tvungne seier**, seire på tid/ga opp/walkover og turneringer vunnet. Profilskjerm og toppliste. Hvert parti lagres i `games.jsonl` med trekk og analyse. |
+| Elo | Start 1200, K = 32, bare når begge spillerne er innlogget. Vises i lobbyen, på spillerkortene, i venterommet og som endring på resultatskjermen («Elo 1200 → 1216 (+16)»). |
+| Turneringer | Admin lager dem i spillet (format, regler, klokke, maks deltakere, starttid eller klokkeslett, pause og møtefrist). Påmelding og oppsett etter Elo. Hver kamp får et låst privat rom og varselet «Gå til kamp». Walkover for den som ikke møter, omspill ved uavgjort i utslag, tabell i alle-mot-alle. Overlever omstart av serveren. |
+| Brukerdata i JSON som er lett å endre | `data/users.json` (og `avatars.json`, `sessions.json`, `tournaments.json`, `games.jsonl`). Sett `"admin": true` på en bruker og lagre, så laster serveren filen inn på nytt innen ett sekund. Glemt passord: `"reset_password": "nytt-passord"`. Ugyldig JSON ødelegger ingenting. |
+| Punkter fra planen | Invitasjonslenke (`?rom=…`, `?turnering=…`, del-meny på mobil), lagring (13.1), kontoer (13.3), statistikk (13.4) og turneringer (13.5). Status og hva som gjenstår står i Plan.md under fase 8–11. |
+
+**Testet:**
+- 88 automatiske tester, alle grønne. Nye tester dekker:
+  - PBKDF2-testvektorer,
+  - redigering av `users.json` mens serveren kjører,
+  - nytt passord via `users.json`,
+  - begrensning på innloggingsforsøk,
+  - Elo og statistikk etter et parti,
+  - analyse av tvungne trekk og doble trusler,
+  - et helt utslag med walkover og finale,
+  - omspill ved uavgjort, alle-mot-alle med tabell, og lagring over omstart,
+  - en røyktest av konto-, profil- og turneringsskjermene mot en ekte server.
+- Skjermbilder av holografisk skin, lobbyen, profilen og turneringssiden.
+
+**Merk:** brukerdataene havner i `data/` i prosjektmappen når serveren kjøres derfra. Mappen er i `.gitignore`, så passord-hasher og statistikk aldri kommer i git.
+
+## Runde 7 – Mer customization, forhåndsvisning og regler på som standard
+
+| Ønske | Løsning |
+|---|---|
+| Scroll i innstillinger hopper fortsatt | Grunnen var at Godot scroller en åttendedel av det synlige området per hakk, uansett innstilling. Nå tar UI-et selv imot musehjulet: hvert hakk scroller 70 px med en kort, myk overgang (`UI.smooth_scroll`). Det gjelder alle skjermer med scroll. |
+| Innstillinger på siden, brettet som forhåndsvisning | Kortet står til venstre på PC og nederst på mobil. Brettet ved siden av viser dine brikker i hjemmedrakt mot bortedrakt, og endres med en gang du velger skin, merke eller merkefarge. «Vis seiersanimasjonen» spiller av valgt animasjon på brettet (også når du bytter animasjon). |
+| «Må blokkere» og «Ikke gi bort seier» på som standard | Begge er på i nye partier, rom og turneringer. Lagrede innstillinger fra før blir slått på én gang. De kan fortsatt slås av i oppsettet. |
+| Flere skins, «overrask meg» | 8 nye skins: **Nordlys** (bølgende lysbånd), **Is** (frostede fasetter med glimt), **Eik** (årringer), **Keramikk** (matt glasur med prikker), **Glass**, **Kobber** (med grønn patina), **Solnedgang** og **Midnatt** (marine med gullstriper). 5 nye merker: sekskant, måne, krone, lyn og pil. Ny **merkefarge**: automatisk, hvit, svart, gull eller draktfarge. 2 nye seiersanimasjoner: **Supernova** (lyskule som vokser og eksploderer) og **Glitter** (gull- og sølvdryss). 5 **brett-temaer**: skifer, eik, lys stein, midnatt og filt. |
+| Se motstanderens skin før start | Venterommet viser begge brikkene slik de blir i partiet. Har dere lik farge, ser du at gjesten får bortedrakt. Med «Bytt skin» velger du ny skin der og da, og motstanderen ser byttet med en gang (ny melding `set_look`). |
+| Decal styrt av Elo (til senere) | Lagt i Plan.md under fase 7 som idé. |
+
+**Også fikset:** merkene sto opp ned sett fra spillerens side (hjertet så ut som en spar). Nå står alle rett vei.
+
+**Testet:**
+- 92 automatiske tester, alle grønne. Nye eller endrede tester:
+  - reglene er på som standard,
+  - `set_look` når motstanderen i venterommet,
+  - brett-temaer og merkefarger,
+  - innstillingsskjermen: demo-stilling, bortedrakt, brett-tema og forhåndsvisning av supernova og glitter,
+  - venterommet viser motstanderen, og skin-bytte går via serveren.
+- Testene som spiller en rask vinnersekvens, slår nå reglene av eksplisitt.
+- Skjermbilder av alle skins og merker, innstillinger liggende og stående, brett-temaer, supernova, glitter og venterommet.
+
+## Runde 8 – Turneringer på forsiden, flere skins og Elo-merker
+
+| Ønske | Løsning |
+|---|---|
+| Aktive turneringer på forsiden | Menyen tar en kort «titt» på serveren og viser turneringer som pågår eller er åpne for påmelding, med pågående først (de pulserer svakt). Trykk åpner turneringen, og «Tilbake» går til menyen igjen. Svarer ikke serveren, gir menyen opp med en gang i stedet for å prøve igjen og igjen. Er du innlogget, får du også «Gå til kamp»-varselet mens du står i menyen. |
+| Flere skins, rå og kreative | 10 nye, alle laget i shaderen: **Plasma** (elektriske buer), **Kintsugi** (svart eller hvit keramikk med gull i sprekkene), **Damaskus** (smidd stål med bølgende lag), **Kretskort** (baner med lyspulser), **Disco** (speilfliser som blinker), **Opal** (fargespill som flytter seg med blikket), **Piksel** (8-bit-klosser), **Kode** (fallende tegn), **Giftig** (selvlysende slim med bobler) og **Sort hull** (virvlende lysring på toppen). 30 skins totalt, og rutenettet i innstillingene er gjort mer kompakt (5 per rad). |
+| Elo-merker ved spillernavn | 7 nivåer: Bronse, Sølv, Gull, Platina, Diamant, Mester og Stormester. Merkene tegnes i kode og vises i menyen, lobbyen, venterommet, på spillerkortene i partiet, på profilen (stort, med hvor mye som mangler til neste nivå), i topplisten og på turneringssiden. Resultatskjermen sier «Nytt nivå: Gull!» når du rykker opp. |
+
+**Testet:**
+- 95 automatiske tester, alle grønne. Nye tester:
+  - Elo-nivåer og -merker (grensene, at bildene tegnes og caches, og at gjester ikke får merke),
+  - romlisten har Elo bare for kontoer,
+  - forsiden viser aktive turneringer i riktig rekkefølge og skjuler ferdige,
+  - menyen gir opp når serveren ikke svarer.
+- Skjermbilder av menyen med turneringer, alle de nye skinsene (hjemme og borte), merkene, profilen, venterommet og innstillingene. Damaskus ble justert etter første bilde (mønsteret var for grovt).
+
+**Forslag til videre utvikling:** se Plan.md, seksjon 14.

@@ -5,6 +5,8 @@ extends MatchController
 
 var _seat := 0
 var _start_msg: Dictionary
+var tournament: Dictionary = {}     ## { id, name } hvis dette er en turneringskamp
+var last_elo: Dictionary = {}       ## Elo før/etter for mitt sete etter partiet (tom = ikke rangert)
 var _waiting_for_server := false
 
 
@@ -73,6 +75,8 @@ func leave() -> void:
 func _apply_start(msg: Dictionary) -> void:
 	options = GameOptions.from_dict(msg.get("options", {}))
 	_seat = int(msg.get("you", 1))
+	tournament = msg.get("tournament") if msg.get("tournament") is Dictionary else {}
+	last_elo = {}
 	game_number = int(msg.get("number", 1))
 	_read_players(msg.get("players", []))
 	var moves: Array = msg.get("moves", [])
@@ -96,10 +100,13 @@ func _read_players(list: Array) -> void:
 			continue
 		var seat := int(info.seat)
 		var sub := "" if bool(info.get("connected", true)) else tr("frakoblet")
+		var elo := int(info.elo) if info.get("elo") != null else -1
+		if elo >= 0 and sub == "":
+			sub = EloBadge.describe(elo)
 		players[seat] = { "name": str(info.name), "avatar": str(info.get("avatar", "")),
-			"local": seat == _seat, "subtitle": sub }
+			"local": seat == _seat, "subtitle": sub, "elo": elo }
 		players[seat].merge(Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
-			str(info.get("win_fx", "classic"))), true)
+			str(info.get("win_fx", "classic")), false, str(info.get("decal_color", "auto"))), true)
 	# Begge klientene regner likt: verten (sete 1) har hjemmedrakt, gjesten bortedrakt ved lik skin.
 	resolve_looks()
 	players_changed.emit()
@@ -145,6 +152,9 @@ func _finish_from(msg: Dictionary) -> void:
 	var clocks: Array = msg.get("clocks", [0, 0])
 	if clock.enabled:
 		clock.sync(int(clocks[0]), int(clocks[1]), 0, Time.get_ticks_msec())
+	var elo = msg.get("elo", {})
+	if elo is Dictionary and elo.has(str(_seat)):
+		last_elo = elo[str(_seat)]
 	var line := Protocol.positions_from_json(msg.get("line", []))
 	finished.emit(result, reason, line)
 

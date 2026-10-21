@@ -7,6 +7,9 @@
 /build/*
 !/build/.gdignore
 
+# Brukerdata fra serveren (brukere, passord-hasher, statistikk, turneringer)
+/data/
+
 # Gamle filer fra før omleggingen (mappen kan slettes)
 /frontend/
 

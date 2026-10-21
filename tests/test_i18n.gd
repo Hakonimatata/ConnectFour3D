@@ -3,7 +3,8 @@ extends TestCase
 
 ## Filer med tekst som vises for spilleren
 const SOURCES := ["res://client", "res://core/game_options.gd", "res://core/game_state.gd",
-	"res://ai/bot_profile.gd", "res://net/net_client.gd", "res://server/lobby.gd"]
+	"res://ai/bot_profile.gd", "res://net/net_client.gd", "res://server/lobby.gd", "res://server/accounts.gd",
+	"res://server/tournaments.gd"]
 
 ## Mønstre som fanger tekst som vises i UI-et
 const PATTERNS := [
@@ -14,6 +15,10 @@ const PATTERNS := [
 	"_notice_room\\(room, \"([^\"]+)\"",
 	"_error\\([^,]+, \"[^\"]+\", \"([^\"]+)\"",
 	"MoveError\\.[A-Z_]+: return \"([^\"]+)\"",
+	"\"error\": \"([^\"]+)\"",
+	"_notify_all\\(t, \"([^\"]+)\"",
+	"close_room\\.call\\([^,]+, \"([^\"]+)\"",
+	"\\n\\s*return \"([A-ZÆØÅ][^\"]*\\.)\"",
 ]
 
 var _old_locale := ""

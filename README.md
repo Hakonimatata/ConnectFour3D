@@ -103,6 +103,45 @@ Send adressen til de som skal spille. Den virker på iPhone, Android og PC, ogs�
 - Desktop-versjonen av spillet har ikke HTTPS-kravet. Den kan koble direkte til `ws://<PC-ens IP>:8080` (sett adressen under *Innstillinger → Server*). Windows-brannmuren spør første gang. Tillat Godot på *private nettverk*.
 - For noe permanent: bruk en server med eget domene og HTTPS (under).
 
+## Kontoer, admin og brukerdata
+
+Online kan man spille som gjest, eller logge inn for å få statistikk, Elo-rating og være med i turneringer. Det gjøres under *Spill online → Logg inn / ny konto*.
+
+Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Aktive turneringer vises på forsiden når serveren svarer.
+
+**Hvor ligger dataene?** Serveren lagrer alt som lesbare JSON-filer i én mappe:
+- Kjører serveren fra prosjektet (`scripts\web.cmd`, `scripts\online.cmd` eller `godot … -- --server`), ligger de i `data/` i prosjektmappen. Mappen er i `.gitignore`.
+- I Docker ligger de i volumet `game_data`.
+- Annen mappe: `--data <mappe>`.
+
+| Fil | Innhold |
+|---|---|
+| `users.json` | Brukere: brukernavn, `admin`, Elo, statistikk, profil og passord-hash (aldri passordet selv) |
+| `avatars.json` | Profilbilder |
+| `sessions.json` | Innloggede økter (bare en hash av nøkkelen) |
+| `tournaments.json` | Turneringer |
+| `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse |
+
+**Gjøre noen til admin:** åpne `data/users.json`, finn brukeren og sett `"admin": true`. Lagre filen. Serveren oppdager endringen innen ett sekund, og du trenger ikke starte den på nytt. Du kan også starte serveren med `--admin <brukernavn>`.
+
+```json
+{
+  "id": 1,
+  "username": "Hakon",
+  "admin": true,
+  "elo": 1216,
+  ...
+}
+```
+
+**Glemt passord:** legg til `"reset_password": "nytt-passord"` på brukeren og lagre. Serveren lager en hash av det nye passordet og fjerner klarteksten fra filen med en gang.
+
+**Ugyldig JSON:** lagrer du `users.json` med en skrivefeil, beholder serveren brukerne den har i minnet og skriver en advarsel. Rett feilen og lagre på nytt.
+
+**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Der velger du format (utslag eller alle mot alle), regler, klokke og starttid. Spillerne melder seg på. Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover.
+
+**Invitasjon:** «Del invitasjon» i venterommet gir en lenke som `https://…/?rom=KXRTA`. Turneringer kan deles med `?turnering=3`.
+
 ## Bygge og hoste
 
 **Web-klienten** krever at Godot har eksportmaler: *Editor → Manage Export Templates → Download*. Deretter:
@@ -146,6 +185,6 @@ Reglene er beskrevet i [Plan.md, seksjon 2](Plan.md), og hver regel har egne tes
 - Fire på rad i én av de 13 retningene vinner.
 - Fullt brett er uavgjort, og tid ute er tap.
 
-Når et rom opprettes kan man i tillegg slå på «Må blokkere» og «Ikke gi bort seier».
+I tillegg er «Må blokkere» og «Ikke gi bort seier» på som standard (litt som i sjakk). De kan slås av når rommet opprettes.
 
 Se også [Plan.md](Plan.md) (planen) og [Fremgang.md](Fremgang.md) (hva som er gjort).

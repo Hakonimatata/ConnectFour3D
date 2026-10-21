@@ -83,6 +83,7 @@ func test_lan_addresses_are_private_ipv4() -> void:
 func test_websocket_on_ws_path_reaches_game_server() -> void:
 	server.stop()   # bruk ServerMain sin egen web-del i stedet
 	var game := ServerMain.new()
+	game.data_dir = ":memory:"   # testene skal aldri skrive til de ekte brukerdataene
 	game.port = 18771
 	game.web_dir = DIR
 	game.web_port = 18772

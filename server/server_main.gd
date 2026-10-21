@@ -15,12 +15,16 @@ const HANDSHAKE_TIMEOUT_MS := 10_000
 const IDLE_TIMEOUT_MS := 90_000      ## Klienten sender ping hvert 20. sekund
 
 var port := 0                 ## 0 = les fra --port / PORT / standard
+var standalone := false       ## true = selve serverprogrammet (avslutt ved feil). false = inne i tester.
 var web_dir := ""             ## Tom = ikke server web-klienten
 var web_port := DEFAULT_WEB_PORT
 var https := false            ## --https
 var cert_path := ""           ## --cert (tom = local-ip.sh)
 var key_path := ""            ## --key
 var _web: WebFileServer
+var store := Store.new()
+var data_dir := ""            ## --data <mappe> (standard: data/ i prosjektet, eller user://data i eksport)
+var _store_poll := 0.0
 var lobby := Lobby.new()
 var _tcp := TCPServer.new()
 var _peers: Dictionary = {}   ## peer-id -> { ws, open, since, last_seen }
@@ -31,12 +35,14 @@ var _tick_accum := 0.0
 func _ready() -> void:
 	if port == 0:
 		port = _read_port()
+	_open_store()
 	lobby.send = _send
 	lobby.close_peer = _close
 	var err := _tcp.listen(port, "*")
 	if err != OK:
 		push_error("Kunne ikke lytte på port %d (feil %d)" % [port, err])
-		get_tree().quit(1)
+		if standalone:
+			get_tree().quit(1)
 		return
 	print("Server kjører på port %d (protokoll v%d)" % [port, Protocol.VERSION])
 	_read_web_args()
@@ -98,6 +104,10 @@ func _process(delta: float) -> void:
 
 	if _web:
 		_web.poll()
+	_store_poll += delta
+	if _store_poll >= 1.0:
+		_store_poll = 0.0
+		store.poll()
 
 	_tick_accum += delta
 	if _tick_accum >= 0.2:
@@ -126,6 +136,28 @@ func _read_port() -> int:
 	if env.is_valid_int():
 		return int(env)
 	return DEFAULT_PORT
+
+
+func _open_store() -> void:
+	var args := OS.get_cmdline_user_args()
+	var i := args.find("--data")
+	if data_dir == "" and i >= 0 and i + 1 < args.size():
+		data_dir = args[i + 1]
+	if data_dir == "" and OS.get_environment("DATA_DIR") != "":
+		data_dir = OS.get_environment("DATA_DIR")
+	if data_dir == "":
+		data_dir = "user://data" if OS.has_feature("standalone") else ProjectSettings.globalize_path("res://data")
+	if data_dir == ":memory:":
+		data_dir = ""
+	store.open(data_dir)
+	lobby.use_store(store)
+	print("Brukerdata: %s (%d brukere)" % [ProjectSettings.globalize_path(data_dir) if data_dir != "" else "bare i minnet", store.users.size()])
+	var a := args.find("--admin")
+	if a >= 0 and a + 1 < args.size():
+		if lobby.accounts.set_admin(args[a + 1], true):
+			print("%s er admin." % args[a + 1])
+		else:
+			print("Fant ikke brukeren %s (registrer deg i spillet først)." % args[a + 1])
 
 
 func _read_web_args() -> void:
