@@ -1,12 +1,13 @@
 class_name ProfileScreen
 extends Screen
-## Statistikk for en spiller (deg selv som standard) og topplister.
+## Statistikk for en spiller (deg selv som standard), de siste partiene (med reprise) og topplister.
 
 var username := ""          ## tom = deg selv
 var _stats_box: VBoxContainer
 var _board_box: VBoxContainer
 var _board := "elo"
 var _boards: Dictionary = {}
+var _games_box: VBoxContainer
 
 
 func _init(p_app: ClientRoot, p_username := "") -> void:
@@ -22,9 +23,14 @@ func _ready() -> void:
 	v.add_child(_stats_box)
 	_stats_box.add_child(UI.label("Henter…", "Muted"))
 
+	v.add_child(UI.section("Siste partier"))
+	_games_box = UI.vbox(6)
+	v.add_child(_games_box)
+	_games_box.add_child(UI.label("Henter…", "Muted"))
+
 	v.add_child(UI.section("Toppliste"))
-	v.add_child(UI.choice(["Elo", "Flest seire", "Lengste tvungne seier"], 0, func(i: int) -> void:
-		_board = ["elo", "wins", "forced"][i]
+	v.add_child(UI.choice(["Elo", "Flest seire", "Lengste tvungne seier", "Dagens oppgave"], 0, func(i: int) -> void:
+		_board = ["elo", "wins", "forced", "puzzles"][i]
 		_show_board()
 	))
 	_board_box = UI.vbox(4)
@@ -35,6 +41,7 @@ func _ready() -> void:
 	Net.message.connect(_on_message)
 	Net.send({ "t": Protocol.GET_STATS, "username": username })
 	Net.send({ "t": Protocol.GET_LEADERBOARD })
+	Net.send({ "t": Protocol.LIST_GAMES, "username": username })
 
 
 func _on_message(msg: Dictionary) -> void:
@@ -44,6 +51,11 @@ func _on_message(msg: Dictionary) -> void:
 		Protocol.LEADERBOARD:
 			_boards = msg.get("boards", {})
 			_show_board()
+		Protocol.GAME_LIST:
+			show_games(msg.get("games", []))
+		Protocol.GAME_RECORD:
+			if msg.get("game") is Dictionary:
+				app.show_replay(msg.game, app.show_profile.bind(username))
 
 
 func _show_stats(u: Variant) -> void:
@@ -118,10 +130,43 @@ func _show_board() -> void:
 			"elo": value = str(int(e.elo))
 			"wins": value = tr("%d seire") % int(e.wins)
 			"forced": value = tr("%d trekk") % int(e.best_forced_win)
+			"puzzles": value = tr("%d løst · rekke %d") % [int(e.get("puzzles_solved", 0)), int(e.get("puzzle_streak", 0))]
 		var v := UI.label(value, "Muted")
 		v.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		row.add_child(v)
 		_board_box.add_child(row)
+
+
+## Partiene til spilleren, nyeste først. Trykk for å se partiet igjen.
+func show_games(games: Array) -> void:
+	for c in _games_box.get_children():
+		c.queue_free()
+	if games.is_empty():
+		_games_box.add_child(UI.label("Ingen lagrede partier ennå. Spill online med konto!", "Muted",
+			HORIZONTAL_ALIGNMENT_LEFT, true))
+		return
+	for g in games.slice(0, 10):
+		var names: Array = g.get("players", ["?", "?"])
+		var seat := int(g.get("seat", 0))
+		var result := int(g.get("result", 0))
+		var outcome := tr("Uavgjort")
+		if result != GameState.Result.DRAW and seat != 0:
+			var won := (result == GameState.Result.P1_WON and seat == 1) or (result == GameState.Result.P2_WON and seat == 2)
+			outcome = tr("Seier") if won else tr("Tap")
+		var b := Button.new()
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.clip_text = true
+		b.custom_minimum_size.y = 56
+		b.text = "%s – %s\n%s · %s · %s" % [names[0], names[1] if names.size() > 1 else "?", outcome,
+			tr("%d trekk") % int(g.get("moves", 0)), str(g.get("time", "")).replace("T", " ").substr(0, 16)]
+		var id := int(g.id)
+		b.pressed.connect(func() -> void:
+			Sfx.play("click")
+			Net.send({ "t": Protocol.GET_GAME, "id": id })
+		)
+		_games_box.add_child(b)
 
 
 func _on_back() -> void:

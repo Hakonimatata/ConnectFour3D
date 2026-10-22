@@ -137,10 +137,10 @@ func test_set_look_is_shown_to_the_other_player_before_start() -> void:
 	_msg(1, { "t": "create_room", "options": {}, "private": true })
 	check_eq(_last(1, "room_state").players[0].skin, "ice")
 	_msg(2, { "t": "join_room", "code": _last(1, "room_state").code })
-	_msg(2, { "t": "set_look", "skin": "aurora", "decal": "crown", "win_fx": "glitter", "decal_color": "gold" })
+	_msg(2, { "t": "set_look", "skin": "aurora", "decal": "heart", "win_fx": "glitter", "decal_color": "gold" })
 	var bo: Dictionary = _last(1, "room_state").players[1]
 	check_eq(bo.skin, "aurora", "verten ser den nye skinen:")
-	check_eq(bo.decal, "crown")
+	check_eq(bo.decal, "heart")
 	check_eq(bo.win_fx, "glitter")
 	check_eq(bo.decal_color, "gold")
 	check_eq(_last(2, "room_state").players[1].skin, "aurora")

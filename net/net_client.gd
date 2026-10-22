@@ -11,6 +11,7 @@ signal account_changed          ## innlogget/utlogget (se `user`)
 enum Status { OFFLINE, CONNECTING, ONLINE }
 
 const PING_INTERVAL_S := 20.0
+const CONNECT_TIMEOUT_MS := 5000   ## Gi opp et tilkoblingsforsøk etter så lang tid (Windows kan henge lenge)
 
 var status := Status.OFFLINE
 var url := ""
@@ -26,6 +27,7 @@ var _retry_in := 0.0
 var _retry_delay := 1.0
 var _ping_in := PING_INTERVAL_S
 var _socket_open := false
+var _connect_started_ms := 0
 
 
 func connect_to_server(p_url: String = "", keep_trying := true) -> void:
@@ -77,6 +79,7 @@ func _open() -> void:
 	_ws.outbound_buffer_size = 64 * 1024
 	_socket_open = false
 	status = Status.CONNECTING
+	_connect_started_ms = Time.get_ticks_msec()
 	var err := _ws.connect_to_url(url)
 	if err != OK:
 		last_error = tr("Ugyldig serveradresse: %s") % url
@@ -96,7 +99,7 @@ func _process(delta: float) -> void:
 		WebSocketPeer.STATE_OPEN:
 			if not _socket_open:
 				_socket_open = true
-				send({ "t": Protocol.HELLO, "name": Settings.player_name, "skin": Settings.skin_id,
+				send({ "t": Protocol.HELLO, "name": Settings.display_name(), "skin": Settings.skin_id,
 					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id,
 					"avatar": Settings.avatar,
 					"version": Protocol.VERSION, "token": _token, "session": Settings.session_token })
@@ -112,6 +115,11 @@ func _process(delta: float) -> void:
 			if not _socket_open:
 				last_error = tr("Fikk ikke kontakt med %s") % url
 			_on_closed()
+		WebSocketPeer.STATE_CONNECTING:
+			if Time.get_ticks_msec() - _connect_started_ms > CONNECT_TIMEOUT_MS:
+				last_error = tr("Fikk ikke kontakt med %s") % url
+				_ws.close()
+				_on_closed()
 
 
 func _handle(msg: Dictionary) -> void:
@@ -120,6 +128,7 @@ func _handle(msg: Dictionary) -> void:
 		_token = str(msg.get("token", ""))
 		player_id = int(msg.get("player_id", 0))
 		status = Status.ONLINE
+		_keep_trying = true   # kom vi først inn, prøver vi igjen ved brudd (også etter en «titt»)
 		_retry_delay = 1.0
 		last_error = ""
 		_set_user(msg.get("user"))
@@ -151,6 +160,7 @@ func is_logged_in() -> bool:
 func logout() -> void:
 	send({ "t": Protocol.LOGOUT, "session": Settings.session_token })
 	Settings.session_token = ""
+	Settings.last_username = ""
 	Settings.save()
 	_set_user(null)
 
@@ -165,6 +175,10 @@ func _set_user(u: Variant) -> void:
 	if new_user == user:
 		return
 	user = new_user
+	if user.has("elo") and (int(user.elo) != Settings.last_elo or str(user.username) != Settings.last_username):
+		Settings.last_elo = int(user.elo)
+		Settings.last_username = str(user.username)
+		Settings.save()
 	account_changed.emit()
 
 

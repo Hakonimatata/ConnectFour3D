@@ -173,10 +173,17 @@ static func expected(rating: int, opponent: int) -> float:
 
 ## Topplister: Elo (minst ett parti), flest seire og lengste tvungne seier.
 func leaderboard(limit := 20) -> Dictionary:
+	var solvers: Array = store.users.values().filter(func(u: Dictionary) -> bool: return u.stats.puzzles_solved > 0)
+	solvers.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.stats.puzzles_solved != b.stats.puzzles_solved:
+			return a.stats.puzzles_solved > b.stats.puzzles_solved
+		return a.stats.best_puzzle_streak > b.stats.best_puzzle_streak
+	)
 	var all: Array = store.users.values().filter(func(u: Dictionary) -> bool: return u.stats.games > 0)
 	var row := func(u: Dictionary) -> Dictionary:
 		return { "username": u.username, "elo": u.elo, "games": u.stats.games, "wins": u.stats.wins,
-			"losses": u.stats.losses, "draws": u.stats.draws, "best_forced_win": u.stats.best_forced_win }
+			"losses": u.stats.losses, "draws": u.stats.draws, "best_forced_win": u.stats.best_forced_win,
+			"puzzles_solved": u.stats.puzzles_solved, "puzzle_streak": u.stats.puzzle_streak }
 	var by_elo := all.duplicate()
 	by_elo.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.elo > b.elo)
 	var by_wins := all.duplicate()
@@ -189,6 +196,7 @@ func leaderboard(limit := 20) -> Dictionary:
 		"elo": by_elo.slice(0, limit).map(row),
 		"wins": by_wins.slice(0, limit).map(row),
 		"forced": by_forced.slice(0, limit).map(row),
+		"puzzles": solvers.slice(0, limit).map(row),
 	}
 
 

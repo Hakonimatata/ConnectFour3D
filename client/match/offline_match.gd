@@ -11,7 +11,7 @@ var _rng := RandomNumberGenerator.new()
 func _init(p_options: GameOptions, bot_profile: BotProfile = null) -> void:
 	options = p_options
 	_rng.randomize()
-	players[1] = { "name": Settings.player_name, "avatar": Settings.avatar, "local": true, "subtitle": "" }
+	players[1] = { "name": Settings.display_name(), "avatar": Settings.avatar, "local": true, "subtitle": "" }
 	players[1].merge(Settings.look(), true)
 	if bot_profile != null:
 		mode = "ai"

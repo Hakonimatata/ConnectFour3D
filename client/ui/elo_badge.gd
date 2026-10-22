@@ -8,15 +8,8 @@ extends RefCounted
 ##   Mester              krone
 ##   Stormester          gullkrone på rødt merke
 
-const TIERS: Array[Dictionary] = [
-	{ "id": "bronze", "name": "Bronse", "min": 0, "color": Color("c8814a"), "shape": "shield", "marks": 1 },
-	{ "id": "silver", "name": "Sølv", "min": 1100, "color": Color("c3cad3"), "shape": "shield", "marks": 2 },
-	{ "id": "gold", "name": "Gull", "min": 1250, "color": Color("f2c14e"), "shape": "shield", "marks": 3 },
-	{ "id": "platinum", "name": "Platina", "min": 1400, "color": Color("4fd8c4"), "shape": "hexagon", "marks": 0 },
-	{ "id": "diamond", "name": "Diamant", "min": 1550, "color": Color("6fb4ff"), "shape": "gem", "marks": 0 },
-	{ "id": "master", "name": "Mester", "min": 1700, "color": Color("b67cff"), "shape": "crown", "marks": 0 },
-	{ "id": "grandmaster", "name": "Stormester", "min": 1850, "color": Color("ff5470"), "shape": "seal", "marks": 0 },
-]
+## Nivåene (grenser, farger og former) ligger i core/elo_tiers.gd.
+const TIERS := EloTiers.TIERS
 
 const _SHIELD := [Vector2(-0.8, -0.85), Vector2(0.8, -0.85), Vector2(0.8, 0.1), Vector2(0.6, 0.5), Vector2(0.3, 0.78),
 	Vector2(0.0, 0.92), Vector2(-0.3, 0.78), Vector2(-0.6, 0.5), Vector2(-0.8, 0.1)]
@@ -32,19 +25,12 @@ static var _cache: Dictionary = {}
 
 ## Nivået for en Elo-verdi.
 static func tier(elo: int) -> Dictionary:
-	var out: Dictionary = TIERS[0]
-	for t in TIERS:
-		if elo >= int(t.min):
-			out = t
-	return out
+	return EloTiers.tier(elo)
 
 
 ## Neste nivå over denne Elo-verdien, eller {} på toppen.
 static func next_tier(elo: int) -> Dictionary:
-	for t in TIERS:
-		if int(t.min) > elo:
-			return t
-	return {}
+	return EloTiers.next_tier(elo)
 
 
 ## «Gull · Elo 1312» (oversatt).

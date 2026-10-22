@@ -22,6 +22,8 @@ var open_room: Callable = func(_t: Dictionary, _m: Dictionary) -> String: return
 var presence: Callable = func(_code: String) -> Array: return []
 var notify: Callable = func(_uid: int, _msg: Dictionary) -> void: pass
 var close_room: Callable = func(_code: String, _key: String, _args: Array) -> void: pass
+## announce(nøkkel, args): publiseres i den globale chatten (start og vinner).
+var announce: Callable = func(_key: String, _args: Array) -> void: pass
 var rng := RandomNumberGenerator.new()
 
 
@@ -200,6 +202,7 @@ func _start(t: Dictionary, now: int) -> void:
 	t.current_round = 0
 	_schedule_round(t, 0, now)
 	_notify_all(t, "Turneringen «%s» har startet!", [t.name])
+	announce.call("Turneringen «%s» har startet!", [t.name])
 
 
 ## Alle-mot-alle med «sirkelmetoden»: alle møter alle én gang.
@@ -350,6 +353,7 @@ func _finish(t: Dictionary, winner: int) -> void:
 		store.users[winner].stats.tournaments_won += 1
 		store.save_users()
 		_notify_all(t, "«%s» er ferdig. Vinner: %s!", [t.name, accounts.username_of(winner)])
+		announce.call("%s vant turneringen «%s»!", [accounts.username_of(winner), t.name])
 	else:
 		_notify_all(t, "«%s» er ferdig.", [t.name])
 

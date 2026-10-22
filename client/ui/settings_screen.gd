@@ -12,7 +12,6 @@ const LANGUAGES := ["auto", "nb", "en"]
 const DEMO_LINE: Array[Vector3i] = [Vector3i(0, 0, 0), Vector3i(1, 1, 0), Vector3i(2, 2, 0), Vector3i(3, 3, 0)]
 const DEMO_P2: Array[Vector3i] = [Vector3i(1, 0, 0), Vector3i(2, 1, 0), Vector3i(0, 3, 0), Vector3i(3, 1, 0), Vector3i(1, 0, 1)]
 
-var _name_edit: LineEdit
 var _server_edit: LineEdit
 var _avatar_view: AvatarView
 var _remove_avatar: Button
@@ -45,9 +44,11 @@ func _ready() -> void:
 	_layout.call_deferred()
 
 	v.add_child(UI.label("Innstillinger", "Heading"))
-	v.add_child(UI.section("Kallenavn"))
-	_name_edit = UI.line_edit(Settings.player_name, "Navnet ditt", 16)
-	v.add_child(_name_edit)
+	var who := UI.label(tr("Du spiller som %s.") % Settings.display_name() + " " + (tr("Navnet kommer fra kontoen din.")
+		if Settings.last_username != "" or Net.is_logged_in() else tr("Lag en konto under «Spill online» for å få eget navn.")),
+		"Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	who.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(who)
 
 	# --- Profilbilde
 	v.add_child(UI.section("Profilbilde"))
@@ -67,7 +68,6 @@ func _ready() -> void:
 	_picker = AvatarPicker.new()
 	_picker.picked.connect(_on_avatar_picked)
 	add_child(_picker)
-	_name_edit.text_changed.connect(func(_t: String) -> void: _refresh_avatar())
 
 	# --- Brikke
 	v.add_child(UI.section("Brikke"))
@@ -102,11 +102,10 @@ func _ready() -> void:
 	v.add_child(grid)
 
 	v.add_child(UI.section("Merke på toppen"))
-	var decal_names: Array = Skins.DECALS.map(func(d: Dictionary) -> String: return d.name)
-	v.add_child(UI.choice(decal_names, Skins.decal_index(Settings.decal_id), func(i: int) -> void:
-		Settings.decal_id = Skins.DECALS[i].id
-		_apply_looks()
-	))
+	v.add_child(_decal_picker())
+	var hint := "Noen merker låses opp av Elo-nivået ditt. Logg inn og spill rangerte partier for å låse opp flere." \
+		if Settings.known_elo() < 0 else "Noen merker låses opp av Elo-nivået ditt. Merket viser hvilket nivå som trengs."
+	v.add_child(UI.label(hint, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 	v.add_child(UI.section("Farge på merket"))
 	var color_ids: Array = Skins.DECAL_COLORS.map(func(d: Dictionary) -> String: return d.id)
 	v.add_child(UI.choice(Skins.DECAL_COLORS.map(func(d: Dictionary) -> String: return d.name),
@@ -159,6 +158,38 @@ func _ready() -> void:
 	v.add_child(UI.spacer(6))
 	v.add_child(UI.button("Lagre", _on_back, "PrimaryButton"))
 	_refresh_avatar()
+
+
+## Merkene som knapper. Låste merker er grået ut og viser nivået som trengs.
+func _decal_picker() -> Control:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	var group := ButtonGroup.new()
+	var elo := Settings.known_elo()
+	for d in Skins.DECALS:
+		var id: String = d.id
+		var need := EloTiers.required_tier(id)
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_group = group
+		b.theme_type_variation = "ChoiceButton"
+		b.text = d.name
+		b.button_pressed = id == Settings.decal_id and EloTiers.decal_unlocked(id, elo)
+		if not need.is_empty():
+			b.icon = EloBadge.icon(int(need.min), 16)
+			b.add_theme_constant_override("icon_max_width", 16)
+			var unlocked := EloTiers.decal_unlocked(id, elo)
+			b.disabled = not unlocked
+			b.tooltip_text = tr("Låses opp på %s (%d Elo)") % [tr(need.name), int(need.min)] if not unlocked \
+				else tr("Låst opp på %s") % tr(need.name)
+		b.pressed.connect(func() -> void:
+			Sfx.play("click")
+			Settings.decal_id = id
+			_apply_looks()
+		)
+		flow.add_child(b)
+	return flow
 
 
 ## Bred skjerm: kortet til venstre og brettet til høyre. Smal (mobil): brettet øverst, kortet under.
@@ -219,7 +250,7 @@ func play_fx_preview() -> void:
 func _refresh_avatar() -> void:
 	if _avatar_view == null:
 		return
-	_avatar_view.set_avatar(Settings.avatar, _name_edit.text, Skins.color_of(Settings.skin_id))
+	_avatar_view.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
 	_remove_avatar.disabled = Settings.avatar == ""
 
 
@@ -258,11 +289,8 @@ func _set_language(lang: String) -> void:
 	app.show_settings()   # bygg skjermen på nytt på det nye språket
 
 
-## Lagrer feltene som ikke lagres med en gang (navn, hurtigmeldinger, server).
+## Lagrer feltene som ikke lagres med en gang (hurtigmeldinger, server).
 func _store_fields() -> void:
-	var n := _name_edit.text.strip_edges()
-	if n != "":
-		Settings.player_name = n
 	var msgs: Array[String] = []
 	for e in _preset_edits:
 		var t := e.text.strip_edges()

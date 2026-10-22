@@ -7,6 +7,7 @@ var _seat := 0
 var _start_msg: Dictionary
 var tournament: Dictionary = {}     ## { id, name } hvis dette er en turneringskamp
 var last_elo: Dictionary = {}       ## Elo før/etter for mitt sete etter partiet (tom = ikke rangert)
+var spectators := 0                 ## antall tilskuere (bare turneringskamper)
 var _waiting_for_server := false
 
 
@@ -28,6 +29,11 @@ func my_seat() -> int:
 
 func supports_chat() -> bool:
 	return true
+
+
+## Ser vi på som tilskuer (ikke spiller)?
+func is_spectator() -> bool:
+	return _seat == 0
 
 
 func is_local_turn() -> bool:
@@ -67,7 +73,8 @@ func send_chat(text: String) -> void:
 
 func leave() -> void:
 	Net.send({ "t": Protocol.LEAVE_ROOM })
-	Net.close()
+	if not is_spectator():
+		Net.close()
 
 
 # ---------------------------------------------------------------- Fra serveren
@@ -75,6 +82,7 @@ func leave() -> void:
 func _apply_start(msg: Dictionary) -> void:
 	options = GameOptions.from_dict(msg.get("options", {}))
 	_seat = int(msg.get("you", 1))
+	spectators = int(msg.get("spectators", 0))
 	tournament = msg.get("tournament") if msg.get("tournament") is Dictionary else {}
 	last_elo = {}
 	game_number = int(msg.get("number", 1))
@@ -137,8 +145,12 @@ func _on_message(msg: Dictionary) -> void:
 		Protocol.CHAT_MSG:
 			chat_received.emit(str(msg.get("from", "")), str(msg.get("text", "")))
 		Protocol.ROOM_STATE:
+			spectators = int(msg.get("spectators", spectators))
 			if state != null:
 				_read_players(msg.get("players", []))
+		Protocol.SPECTATORS:
+			spectators = int(msg.get("count", 0))
+			players_changed.emit()
 		Protocol.NOTICE, Protocol.ERROR:
 			info.emit(I18n.server_text(msg))
 

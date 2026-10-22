@@ -155,11 +155,20 @@
 
 - Antall spillere online og en global chat som vises hele tiden i startmeny. Her publiseres achievevments osv.
 
+## Runde 10
+
+- bedre ui for telefon. Meny og chat overlapper hverandre litt. 
+
+- Flere oppgaver man kan løse om man vil. Noen kan være vanskelige.
+
+- Det er en liten lag i starten på ca. 3 sekund når spillet har loada. Fiks dette.
+
+- Navn i innstillinger trenger ikke være der. Kun navn for de som har brukernavn.
+
+- Test at alt fungerer og er klart til hosting senere. Test at turneringen fungerer. Kan jeg bruke maskinen min og kjøpe et domene?
+
+
 ## Til senere
 
 - Fast server
-
-- Decal på brikken styres av elo?
-
-
 

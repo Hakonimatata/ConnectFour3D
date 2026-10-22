@@ -5,10 +5,12 @@ extends Node
 signal changed
 
 const PATH := "user://settings.cfg"
-const VERSION := 2            ## Øk når standardverdier skal endres for eksisterende spillere
+const VERSION := 3            ## Øk når standardverdier skal endres for eksisterende spillere
 const DEFAULT_LOCAL_SERVER := "ws://localhost:8080"
 
-var player_name := ""
+var player_name := ""         ## Gjestenavnet («Gjest 4821»), laget automatisk. Med konto brukes brukernavnet.
+var last_username := ""       ## Brukernavnet fra sist du var innlogget (vises også uten nett)
+var solved_puzzles: Array[String] = []   ## Løste oppgaver fra oppgavebanken (id-er)
 var skin_id := Skins.DEFAULT_P1
 var decal_id := "none"        ## Merke på toppen av brikken (Skins.DECALS)
 var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
@@ -16,7 +18,9 @@ var decal_color_id := "auto"  ## Farge på merket (Skins.DECAL_COLORS)
 var board_theme := "slate"    ## Brett-tema (Skins.BOARDS), bare for deg selv
 var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardmeldinger på valgt språk.
 var language := "auto"
-var session_token := ""       ## Husket innlogging (nøkkel fra serveren)        ## "auto", "nb" eller "en"
+var session_token := ""       ## Husket innlogging (nøkkel fra serveren)
+var last_elo := -1            ## Siste kjente Elo (låser opp merker også uten nett). -1 = aldri innlogget
+var puzzle_day := ""          ## Datoen for sist løste «Dagens oppgave"
 var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
 var persist := true           ## false = ikke skriv til disk (brukes av testene)
 var sound := true
@@ -38,6 +42,10 @@ func _ready() -> void:
 		chat_presets.assign(cfg.get_value("player", "chat_presets", []))
 		language = str(cfg.get_value("app", "language", language))
 		session_token = str(cfg.get_value("account", "session", ""))
+		last_elo = int(cfg.get_value("account", "last_elo", -1))
+		last_username = str(cfg.get_value("account", "last_username", ""))
+		solved_puzzles.assign(cfg.get_value("game", "solved_puzzles", []))
+		puzzle_day = str(cfg.get_value("game", "puzzle_day", ""))
 		if int(cfg.get_value("app", "version", 1)) < 2:
 			# Runde 7: «Må blokkere» og «Ikke gi bort seier» er nå på som standard.
 			last_options["must_block"] = true
@@ -48,8 +56,9 @@ func _ready() -> void:
 		server_url = str(cfg.get_value("app", "server_url", ""))
 		last_options = cfg.get_value("game", "options", {})
 		ai_level = int(cfg.get_value("game", "ai_level", ai_level))
-	if player_name.strip_edges() == "":
-		player_name = "Spiller%d" % (randi() % 900 + 100)
+	# Runde 10: bare kontoer har eget navn. Gjester får «Gjest» og et tall.
+	if not player_name.begins_with("Gjest "):
+		player_name = "Gjest %d" % (randi() % 9000 + 1000)
 		save()
 	if not Skins.is_valid(skin_id):
 		skin_id = Skins.DEFAULT_P1
@@ -80,9 +89,24 @@ func set_chat_messages(msgs: Array[String]) -> void:
 			chat_presets.append(m.substr(0, 40))
 
 
-## Spillerens eget utseende (skin, merke, seiersanimasjon).
+## Spillerens eget utseende (skin, merke, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen».
 func look() -> Dictionary:
-	return Skins.look(skin_id, decal_id, win_fx_id, false, decal_color_id)
+	var decal := decal_id if EloTiers.decal_unlocked(decal_id, known_elo()) else "none"
+	return Skins.look(skin_id, decal, win_fx_id, false, decal_color_id)
+
+
+## Navnet som vises: brukernavnet hvis du har konto, ellers gjestenavnet.
+func display_name() -> String:
+	if Net.is_logged_in():
+		return str(Net.user.get("username", player_name))
+	return last_username if last_username != "" else player_name
+
+
+## Elo-en som låser opp merker: fra serveren når du er innlogget, ellers den sist kjente.
+func known_elo() -> int:
+	if Net.is_logged_in():
+		return int(Net.user.get("elo", last_elo))
+	return last_elo
 
 
 func save() -> void:
@@ -100,6 +124,10 @@ func save() -> void:
 	cfg.set_value("app", "language", language)
 	cfg.set_value("app", "version", VERSION)
 	cfg.set_value("account", "session", session_token)
+	cfg.set_value("account", "last_elo", last_elo)
+	cfg.set_value("account", "last_username", last_username)
+	cfg.set_value("game", "solved_puzzles", solved_puzzles)
+	cfg.set_value("game", "puzzle_day", puzzle_day)
 	cfg.set_value("player", "avatar", avatar)
 	cfg.set_value("app", "sound", sound)
 	cfg.set_value("app", "vibration", vibration)

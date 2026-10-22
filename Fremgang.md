@@ -223,3 +223,44 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - Skjermbilder av menyen med turneringer, alle de nye skinsene (hjemme og borte), merkene, profilen, venterommet og innstillingene. Damaskus ble justert etter første bilde (mønsteret var for grovt).
 
 **Forslag til videre utvikling:** se Plan.md, seksjon 14.
+
+## Runde 9 – Repriser, tilskuere, Elo-merker på brikken, dagens oppgave og global chat
+
+| Ønske | Løsning |
+|---|---|
+| Repriser med tvungne trekk markert | «Se partiet igjen» på resultatskjermen (alle moduser, også mot AI). Avspilleren har hopp, fram/tilbake, spill av og en tidslinje i spillernes farger. Prikker viser tvungne trekk (oransje), doble trusler (rød) og vinnertrekket (gull). På brettet vises plassen motstanderen må blokkere, og en tekst forklarer trekket. Profilen har «Siste partier» fra serveren, som kan ses igjen på samme måte. |
+| Tilskuere på turneringskamper | «Se på» ved kamper som spilles på turneringssiden. Tilskuere ser trekk, chat og resultat i sanntid, men kan ikke spille. Spillerne ser hvor mange som ser på. «Tilbake til turneringen» tar deg tilbake. |
+| Merker på brikken låst av Elo | Nivåene er flyttet til `core/elo_tiers.gd`, og serveren sjekker merket (låste merker vises som «ingen» for motstanderen). Innstillingene viser låste merker grået ut med nivå-merket som trengs. To nye merker: **Flamme** (Mester) og **Laurbær** (Stormester). Klienten husker siste Elo, så merkene virker også uten nett. |
+| Dagens oppgave (finn seieren i 3+ trekk) | Serveren lager én stilling per dag ut fra datoen (`ai/puzzle.gd`). Spilleren som har tur kan tvinge frem seier med 3 eller 4 trekk, men ikke raskere. Motstanderen forsvarer seg så godt den kan, og glipper seieren, kommer «Prøv igjen». «Vis løsning» spiller den av. Serveren sjekker løsningen ved å spille den på nytt, fører listen over dagens løsere og topplisten (løste oppgaver og rekke). Uten nett lages samme oppgave lokalt. |
+| Antall online og global chat i menyen | Chatten står alltid i menyen (nede til høyre på PC, øverst på mobil), med «12 online · 4 spiller nå». Serveren publiserer hendelser der: velkommen til nye kontoer, nytt Elo-nivå, seiersrekker (5, 10, …), seire med 3+ tvungne trekk på rad, turnering startet og vunnet, og hvem som løste dagens oppgave. De siste 50 meldingene lagres. |
+
+**Også fikset:** på Windows kunne et tilkoblingsforsøk til en server som ikke svarer henge i over 12 sekunder. Nå gir klienten opp etter 5 sekunder, så menyen viser «Frakoblet» i stedet for å stå på «Kobler til…». Protokollen er nå versjon 3, så gamle nettleserfaner blir bedt om å laste siden på nytt.
+
+**Testet:**
+- 110 automatiske tester, alle grønne. Nye tester:
+  - oppgaven er lik hele dagen, har tvungen seier i minst 3 trekk og ingen raskere, og godtar bare riktige løsninger (også etter JSON),
+  - forsvareren er forutsigbar,
+  - tidslinjen i repriser stemmer med analysen,
+  - tilskuere ser partiet uten å kunne spille, og bare turneringskamper kan ses på,
+  - global chat med historikk, «online» og grense på hvor ofte man kan skrive,
+  - hendelser for ny konto og nytt nivå,
+  - merker sjekkes mot Elo,
+  - partilisten og henting av et parti,
+  - dagens oppgave hele veien, med rekke over to dager og toppliste.
+- Røyktester av reprisen, oppgaveskjermen, chatten i menyen, låste merker og tilskuer-venterommet.
+- Skjermbilder av menyen med chat (PC og mobil), oppgaven, reprisen, de nye merkene og de låste merkene.
+
+## Runde 10 – Mobil, flere oppgaver, raskere oppstart og klar for hosting
+
+| Ønske | Løsning |
+|---|---|
+| Meny og chat overlapper på telefon | På mobil er chatten nå en smal linje øverst med antall online og siste melding. «Chat» åpner den, og da fyller den bare plassen over menyen. På PC er den som før. |
+| Flere oppgaver, noen vanskelige | Oppgaveskjermen har fem faner: Dagens, Lett (3 trekk), Middels (4), Vanskelig (5) og Ekspert (6). Banken har 60 ferdige oppgaver (`ai/puzzle_bank.gd`), laget av `tools/make_puzzle_bank.gd`. De lastes med en gang og virker uten nett. Fremgangen («Oppgave 4 av 15 · 3 løst») lagres på enheten, og «Neste oppgave» går videre. Et trekk som ikke truer noe, avsløres med en gang, så motstanderen aldri bruker lang tid. Tregeste svar målt til 87 ms. |
+| Lag på ca. 3 sekunder etter oppstart | Målt: det første bildet med brikker hang i 1,8 s første gang. Det var brikke-shaderen, som hadde vokst til 25 stiler og 14 merker i ett program, og som ble kompilert første gang en brikke ble vist. I nettleseren skjer det hver gang. Nå lager spillet en liten shader per kombinasjon av stil og merke (preprosessoren i Godot), så bare koden som brukes kompileres. Alle 30 skins er sjekket i skjermbilde. |
+| Navn i innstillinger trengs ikke | Feltet er fjernet. Med konto brukes brukernavnet (også uten nett, det huskes). Uten konto er du «Gjest» og et tall. Innstillingene sier hvordan du får eget navn. |
+| Klar for hosting? Turnering? Egen maskin og domene? | Ny ende-til-ende-test: en hel utslagsturnering med fire spillere over ekte WebSocket-tilkoblinger. Admin lager turneringen, alle melder seg på, en gjest ser på, det blir finale og vinner, og vinneren publiseres i chatten. Web-eksporten er bygget og serveren er startet slik den kjører på nett (web-klient med gzip, egen datamappe). Svar på spørsmålet: ja. `scripts\online.cmd -Hostname spill.mittdomene.no` gir en fast adresse på ditt eget domene via en navngitt Cloudflare-tunnel. Se README, «Hosting fra din egen PC med eget domene». |
+
+**Testet:**
+- 112 automatiske tester, alle grønne. Nye: oppgavebanken (gyldige oppgaver på alle nivåer), oppgaveskjermen med banken, og hele turneringen over WebSockets.
+- Web-eksporten bygger (37,7 MB wasm, 10 MB komprimert), og den ekte serveren serverer den.
+- Skjermbilder av mobil-menyen (chat lukket og åpen), oppgavene på Ekspert, innstillinger uten navnefelt og alle 30 skins.

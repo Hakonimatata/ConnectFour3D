@@ -2,9 +2,13 @@
 #   scripts\online.cmd             eksporter + start server + tunnel
 #   scripts\online.cmd -NoExport   hopp over eksporten (raskere hvis du ikke har endret noe)
 #   scripts\online.cmd -WebPort 9000 -GamePort 9080   andre porter (hvis 8000/8080 er opptatt)
+#   scripts\online.cmd -Hostname spill.mittdomene.no   fast adresse på ditt eget domene (se README, «Hosting»)
+# Uten -Hostname får du en tilfeldig adresse (trycloudflare.com) som endres hver gang.
+# Med -Hostname brukes en navngitt tunnel: første gang logger du inn hos Cloudflare i nettleseren,
+# så lages tunnelen og DNS-oppføringen automatisk. Domenet må ligge i Cloudflare.
 # Stopp med Ctrl+C. Adressen kopieres til utklippstavlen.
 # Godot hentes fra miljøvariabelen GODOT, ellers fra Nedlastinger-mappen.
-param([switch]$NoExport, [int]$WebPort = 8000, [int]$GamePort = 8080)
+param([switch]$NoExport, [int]$WebPort = 8000, [int]$GamePort = 8080, [string]$Hostname = "", [string]$TunnelName = "fire-paa-rad")
 
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
@@ -55,7 +59,27 @@ if (-not $NoExport) {
 New-Item -ItemType Directory -Force build | Out-Null
 $server = Start-Process $godot -ArgumentList '--headless', '--path', '.', '--', '--server', '--port', "$GamePort", '--web', 'build/web', '--web-port', "$WebPort" `
     -NoNewWindow -PassThru -RedirectStandardOutput build\server.log -RedirectStandardError build\server.err.log
-$tunnel = Start-Process $cf -ArgumentList 'tunnel', '--no-autoupdate', '--url', "http://localhost:$WebPort" `
+$tunnelArgs = @('tunnel', '--no-autoupdate', '--url', "http://localhost:$WebPort")
+if ($Hostname) {
+    # Navngitt tunnel på eget domene: logg inn (første gang), lag tunnelen og pek domenet dit.
+    if (-not (Test-Path "$env:USERPROFILE\.cloudflared\cert.pem")) {
+        Write-Host "Første gang: logg inn hos Cloudflare i nettleseren som åpnes, og velg domenet ditt." -ForegroundColor Yellow
+        & $cf tunnel login
+        if (-not (Test-Path "$env:USERPROFILE\.cloudflared\cert.pem")) {
+            Write-Host "Innloggingen ble ikke fullført." -ForegroundColor Red
+            exit 1
+        }
+    }
+    $existing = & $cf tunnel list --output json 2>$null | ConvertFrom-Json
+    if (-not ($existing | Where-Object { $_.name -eq $TunnelName })) {
+        & $cf tunnel create $TunnelName
+        if ($LASTEXITCODE -ne 0) { Write-Host "Kunne ikke lage tunnelen." -ForegroundColor Red; exit 1 }
+    }
+    & $cf tunnel route dns --overwrite-dns $TunnelName $Hostname
+    if ($LASTEXITCODE -ne 0) { Write-Host "Kunne ikke peke $Hostname til tunnelen. Ligger domenet i Cloudflare?" -ForegroundColor Red; exit 1 }
+    $tunnelArgs = @('tunnel', '--no-autoupdate', 'run', '--url', "http://localhost:$WebPort", $TunnelName)
+}
+$tunnel = Start-Process $cf -ArgumentList $tunnelArgs `
     -NoNewWindow -PassThru -RedirectStandardOutput build\tunnel.out.log -RedirectStandardError build\tunnel.log
 
 try {
@@ -64,6 +88,12 @@ try {
     for ($i = 0; $i -lt 60 -and -not $url; $i++) {
         Start-Sleep -Milliseconds 500
         if ($tunnel.HasExited) { break }
+        if ($Hostname) {
+            if (Select-String -Path build\tunnel.log -Pattern 'Registered tunnel connection' -Quiet -ErrorAction SilentlyContinue) {
+                $url = "https://$Hostname"
+            }
+            continue
+        }
         $m = Select-String -Path build\tunnel.log -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue |
             Select-Object -First 1
         if ($m) { $url = $m.Matches[0].Value }

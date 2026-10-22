@@ -107,7 +107,9 @@ Send adressen til de som skal spille. Den virker på iPhone, Android og PC, ogs�
 
 Online kan man spille som gjest, eller logge inn for å få statistikk, Elo-rating og være med i turneringer. Det gjøres under *Spill online → Logg inn / ny konto*.
 
-Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Aktive turneringer vises på forsiden når serveren svarer.
+Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Nivåene låser også opp merker på brikken (krone, flamme, laurbær m.fl.). Serveren sjekker at du har låst dem opp.
+
+På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier å finne hver dag, med toppliste) og en **global chat** med hvor mange som er online. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
 
 **Hvor ligger dataene?** Serveren lagrer alt som lesbare JSON-filer i én mappe:
 - Kjører serveren fra prosjektet (`scripts\web.cmd`, `scripts\online.cmd` eller `godot … -- --server`), ligger de i `data/` i prosjektmappen. Mappen er i `.gitignore`.
@@ -120,7 +122,9 @@ Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv
 | `avatars.json` | Profilbilder |
 | `sessions.json` | Innloggede økter (bare en hash av nøkkelen) |
 | `tournaments.json` | Turneringer |
-| `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse |
+| `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse (brukes til repriser) |
+| `puzzles.json` | Dagens oppgave og hvem som har løst den, de siste 14 dagene |
+| `global_chat.json` | De siste 50 meldingene og hendelsene i den globale chatten |
 
 **Gjøre noen til admin:** åpne `data/users.json`, finn brukeren og sett `"admin": true`. Lagre filen. Serveren oppdager endringen innen ett sekund, og du trenger ikke starte den på nytt. Du kan også starte serveren med `--admin <brukernavn>`.
 
@@ -157,6 +161,32 @@ DOMAIN=spill.example.no docker compose -f deploy/docker-compose.yml up -d --buil
 ```
 
 Pek domenet (A-record) til serverens IP først. Deretter er spillet på `https://spill.example.no`, og klienten finner serveren selv (`wss://spill.example.no/ws`). Det første bygget laster ned Godot og eksportmalene, så det tar noen minutter.
+
+### Hosting fra din egen PC med eget domene
+
+Det går fint, og er en god mellomløsning før en fast server. Anbefalt oppsett: et domene i
+**Cloudflare** og en **navngitt Cloudflare-tunnel**. Da trenger du ikke åpne porter i ruteren, du får
+HTTPS automatisk, og IP-adressen hjemme vises ikke.
+
+1. Kjøp et domene, f.eks. hos Cloudflare Registrar (ca. 100–150 kr i året for `.com`), eller flytt et
+   domene du har til Cloudflare (gratis plan). `.no`-domener kjøpes hos en norsk forhandler, og så settes
+   navnetjenerne til Cloudflare.
+2. Start spillet med en fast adresse:
+   ```
+   scripts\online.cmd -Hostname spill.mittdomene.no
+   ```
+   Første gang åpnes nettleseren, så du kan logge inn hos Cloudflare og velge domenet. Skriptet lager
+   tunnelen og DNS-oppføringen selv. Senere starter det bare.
+3. Del `https://spill.mittdomene.no`. Adressen er den samme hver gang.
+
+**Ting å tenke på:**
+- PC-en må være på og ikke gå i dvale (*Innstillinger → System → Strøm*). Windows-oppdateringer kan starte den på nytt.
+- Brukerdataene ligger i `data/` i prosjektmappen. Ta en kopi av mappen av og til.
+- Opplastingen hjemme holder i massevis: et parti er noen få kB, og web-klienten (ca. 10 MB komprimert) lastes én gang per besøkende.
+- Når du vil ha den alltid på, flytter du til en VPS med Docker (under). Domenet kan du ta med deg.
+
+**Sjekket i runde 10:** web-eksporten bygger, serveren serverer web-klienten med gzip og `/ws`, og en
+hel turnering er testet over ekte WebSocket-tilkoblinger (`tests/test_tournament_online.gd`).
 
 **CI** (GitHub Actions) kjører testene ved hver push. På `main` eksporterer den også web-bygget og legger det ved som nedlastbar artefakt.
 

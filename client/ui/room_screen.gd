@@ -17,6 +17,8 @@ var _invite_button: Button
 var _preview: PiecePreview
 var _preview_names: Label
 var _skin_picker: HFlowContainer
+var _skin_button: Button
+var _leave_button: Button
 
 
 func _init(p_app: ClientRoot, room_state: Dictionary) -> void:
@@ -49,7 +51,8 @@ func _ready() -> void:
 	_preview_names = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_CENTER, true)
 	_preview_names.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_preview_names)
-	v.add_child(UI.button("Bytt skin", func() -> void: _skin_picker.visible = not _skin_picker.visible))
+	_skin_button = UI.button("Bytt skin", func() -> void: _skin_picker.visible = not _skin_picker.visible)
+	v.add_child(_skin_button)
 	_skin_picker = HFlowContainer.new()
 	_skin_picker.add_theme_constant_override("h_separation", 6)
 	_skin_picker.add_theme_constant_override("v_separation", 6)
@@ -82,7 +85,8 @@ func _ready() -> void:
 	_chat.send_requested.connect(func(t: String) -> void: Net.send({ "t": Protocol.CHAT, "text": t }))
 	v.add_child(_chat)
 
-	v.add_child(UI.button("Forlat rommet", _on_back))
+	_leave_button = UI.button("Forlat rommet", _on_back)
+	v.add_child(_leave_button)
 
 	Net.message.connect(_on_message)
 	Net.disconnected.connect(_on_disconnected)
@@ -106,6 +110,13 @@ func _show(room: Dictionary) -> void:
 	_invite_button.visible = not is_tournament
 	if is_tournament:
 		_hint_label.text = tr("Turneringskamp i «%s». Kampen starter når begge er her.") % tournament.name
+	var spectator := you == 0
+	_skin_button.visible = not spectator
+	_options_button.visible = _options_button.visible and not spectator
+	_ready_button.visible = _ready_button.visible and not spectator
+	_leave_button.text = tr("Slutt å se på") if spectator else tr("Forlat rommet")
+	if spectator:
+		_hint_label.text = tr("Du ser på som tilskuer. Partiet vises når begge spillerne er her.")
 	for c in _players_box.get_children():
 		c.queue_free()
 	var players: Array = room.get("players", [])
@@ -204,4 +215,8 @@ func _on_message(msg: Dictionary) -> void:
 
 func _on_back() -> void:
 	Net.send({ "t": Protocol.LEAVE_ROOM })
-	app.show_online()
+	var tournament = _room.get("tournament")
+	if int(_room.get("you", 1)) == 0 and tournament is Dictionary:
+		app.show_tournament(int(tournament.id))
+	else:
+		app.show_online()

@@ -66,7 +66,10 @@ func test_menu_shows_active_tournaments() -> void:
 	menu.show_tournaments([])
 	check(not menu._tour_box.visible, "skjules når ingen er aktive")
 	# Menyen tar bare en titt på serveren: svarer den ikke, prøver den ikke igjen og igjen
-	check(await wait_until(func() -> bool: return Net.status != Net.Status.CONNECTING, 6.0),
+	Net.close()
+	Settings.server_url = "ws://127.0.0.1:9"   # ingen server her
+	Net.connect_to_server("", false)
+	check(await wait_until(func() -> bool: return Net.status == Net.Status.OFFLINE, 8.0),
 		"menyen skal gi opp når serveren ikke svarer")
 
 
@@ -120,13 +123,15 @@ func test_settings_preview_board_theme_and_fx() -> void:
 	app.show_settings()
 	await _frames(2)
 	var screen := _screen() as SettingsScreen
+	var old_elo := Settings.last_elo
+	Settings.last_elo = 1500   # «Lyn» krever platina
 	check_eq(app.board._pieces.size(), SettingsScreen.DEMO_LINE.size() + SettingsScreen.DEMO_P2.size(), "demo-stillingen vises:")
 	Settings.skin_id = "glass"
 	Settings.decal_id = "bolt"
 	Settings.decal_color_id = "kit"
 	screen._apply_looks()
 	var piece: MeshInstance3D = app.board._pieces[Vector3i(0, 0, 0)]
-	check_eq((piece.material_override as ShaderMaterial).get_shader_parameter("decal"), Skins.decal_index("bolt"))
+	check_eq((piece.material_override as ShaderMaterial).shader, Skins.shader_for(Skins.Style.GLASS, Skins.decal_index("bolt")))
 	var away_piece: MeshInstance3D = app.board._pieces[Vector3i(1, 0, 0)]
 	check_eq((away_piece.material_override as ShaderMaterial).get_shader_parameter("color_a"), Skins.get_skin("glass").away.a,
 		"spiller 2 vises i bortedrakt:")
@@ -142,8 +147,108 @@ func test_settings_preview_board_theme_and_fx() -> void:
 	Settings.decal_color_id = old[2]
 	Settings.board_theme = old[3]
 	Settings.win_fx_id = old[4]
+	Settings.last_elo = old_elo
 	app.show_menu()
 	check(await wait_until(func() -> bool: return Engine.time_scale == 1.0, 2.0), "sakte film skal ikke henge igjen")
+
+
+func test_replay_after_game_and_from_record() -> void:
+	var m := OfflineMatch.new(GameOptions.from_dict({ "must_block": false, "no_gift": false }))
+	app.start_match(m)
+	await _frames(2)
+	for mv in [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 3], [3, 0]]:
+		m.submit_move(Vector2i(mv[0], mv[1]))
+	await _frames(2)
+	var gs := _screen() as GameScreen
+	gs.start_replay()
+	await _frames(1)
+	check(gs._replay != null, "avspilleren vises")
+	gs._replay.seek(3)
+	check_eq(app.board._pieces.size(), 3)
+	check(gs._replay.entries[4].forced, "trekk 5 (tre på rad) er tvunget")
+	gs._replay.seek(7)
+	check_eq(app.board._pieces.size(), 7)
+	gs._replay.closed.emit()
+	await _frames(1)
+	check(gs._replay == null and gs._result_overlay.visible, "«Lukk» gir resultatet tilbake")
+	Engine.time_scale = 1.0
+	# Reprise av et lagret parti (som fra profilen)
+	var record := { "options": { "must_block": false, "no_gift": false }, "first": 1,
+		"moves": [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 3], [3, 0]], "result": 1, "reason": 1,
+		"players": [{ "name": "Ada", "skin": "plasma", "elo": 1300 }, { "name": "Bo" }], "time": "2026-10-21T18:03:00" }
+	app.show_replay(record, app.show_menu)
+	await _frames(2)
+	var rs := _screen() as ReplayScreen
+	check(rs != null, "reprise-skjermen vises")
+	rs.player.seek(7)
+	check_eq(app.board._pieces.size(), 7)
+	rs._on_back()
+	await _frames(2)
+	check(_screen() is MainMenu)
+
+
+func test_puzzle_screen_can_be_solved() -> void:
+	app.show_puzzle()
+	await _frames(2)
+	var ps := _screen() as PuzzleScreen
+	var p := Puzzle.generate("2026-10-21")
+	ps.load_puzzle(p)
+	var sol := Puzzle.solution(p)
+	for i in range(0, sol.size(), 2):
+		ps.play(sol[i])
+		await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
+	check(ps._solved, "oppgaven er løst")
+	check_eq(Settings.puzzle_day, "2026-10-21")
+	ps._retry()
+	check(not ps._solved and ps._attempts == 2, "nytt forsøk")
+	# Oppgavebanken: «Vanskelig» laster en oppgave med fem trekk
+	ps.set_mode(3)
+	check_eq(int(ps._puzzle.depth), 5)
+	check(ps._progress.text.contains("15"), "fremdriften vises")
+	ps.set_mode(0)
+	# Et trekk som ikke truer noe, slipper motstanderen unna
+	var s := Puzzle.start_state(p)
+	for col in s.legal_moves():
+		if not Puzzle._creates_threat(s, col, s.current_player):
+			ps.play(col)
+			break
+	await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
+	check(ps._retry_button.visible, "feil trekk gir «Prøv igjen»")
+	Engine.time_scale = 1.0
+
+
+func test_global_chat_in_menu_and_locked_decals() -> void:
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	menu._chat.add_entry({ "kind": "event", "key": "%s rykket opp til %s!", "args": ["Ada", "Gull"],
+		"text": "Ada rykket opp til Gull!" })
+	menu._chat.add_entry({ "kind": "chat", "from": "Bo", "elo": 1500, "text": "Hei [alle]" })
+	var text := menu._chat._log.get_parsed_text()
+	check(text.contains("Ada rykket opp til Gull!"), "hendelser vises")
+	check(text.contains("Hei [alle]"), "chat vises, med hakeparenteser")
+	var old_elo := Settings.last_elo
+	Settings.last_elo = -1
+	app.show_settings()
+	await _frames(2)
+	var locked := 0
+	for b in _screen().find_children("*", "Button", true, false):
+		if (b as Button).text == "Krone":
+			check((b as Button).disabled, "gjester har ikke krone")
+			locked += 1
+	check_eq(locked, 1)
+	Settings.last_elo = 1600
+	check(EloTiers.decal_unlocked("crown", Settings.known_elo()), "Elo fra sist låser opp uten nett")
+	Settings.last_elo = old_elo
+
+
+func test_spectator_room_hides_player_buttons() -> void:
+	app.show_room({ "code": "ABCDE", "you": 0, "options": {}, "tournament": { "id": 3, "name": "Cup" }, "players": [
+		{ "seat": 1, "name": "Ada", "skin": "ocean", "ready": false, "connected": true, "elo": 1300 },
+		{ "seat": 2, "name": "Bo", "skin": "lava", "ready": false, "connected": true, "elo": 1250 }] })
+	await _frames(2)
+	var room := _screen() as RoomScreen
+	check(not room._ready_button.visible and not room._skin_button.visible, "tilskuere kan ikke spille eller bytte skin")
+	check_eq(room._leave_button.text, "Slutt å se på")
 
 
 func test_every_win_animation_runs() -> void:

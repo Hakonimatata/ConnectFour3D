@@ -39,5 +39,31 @@ static func analyze(options: GameOptions, first_player: int, moves: Array) -> Di
 	return out
 
 
+## Trekk for trekk (til repriser). Hvert element:
+##   { player, col, pos, forced, double, threats, won }
+## forced/double betyr det samme som i analyze(), og threats er cellene motstanderen må blokkere.
+static func timeline(options: GameOptions, first_player: int, moves: Array) -> Array:
+	var out := []
+	var s := GameState.new(options, first_player)
+	for m in moves:
+		var col: Vector2i = m if m is Vector2i else Vector2i(int(m[0]), int(m[1]))
+		var player := s.current_player
+		var r := s.play(col, false)
+		if not r.ok:
+			break
+		var e := { "player": player, "col": col, "pos": r.pos, "forced": false, "double": false,
+			"threats": [], "won": bool(r.won) }
+		if not r.won and not s.is_over():
+			var wins := s.winning_columns(player)
+			if not wins.is_empty() and s.winning_columns(GameState.opponent(player)).is_empty():
+				e.forced = true
+				e.double = wins.size() >= 2
+				e.threats = wins.map(func(c: Vector2i) -> Vector3i: return s.landing_pos(c))
+		out.append(e)
+		if s.is_over():
+			break
+	return out
+
+
 static func _empty() -> Dictionary:
 	return { "forced": 0, "double_threats": 0, "longest_streak": 0, "winning_streak": 0 }

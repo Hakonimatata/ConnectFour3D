@@ -2,7 +2,7 @@ class_name MainMenu
 extends Screen
 ## Hovedmenyen. I bakgrunnen spiller to boter mot hverandre mens kameraet roterer.
 ## Menyen tar en kort «titt» på serveren (uten å mase hvis den ikke svarer), og viser
-## aktive turneringer og Elo-merket ditt hvis du er innlogget.
+## aktive turneringer, den globale chatten (med hvor mange som er online) og Elo-merket ditt.
 
 const MAX_TOURNAMENTS := 3
 
@@ -12,6 +12,8 @@ var _panel: Control
 var _tour_box: VBoxContainer
 var _tour_list: VBoxContainer
 var _badge: TextureRect
+var _chat: GlobalChat
+var _who_name: Label
 
 
 func _ready() -> void:
@@ -35,6 +37,10 @@ func _ready() -> void:
 	v.add_child(UI.button("Spill mot AI", func() -> void: app.show_setup("ai"), "PrimaryButton"))
 	v.add_child(UI.button("To spillere på samme enhet", func() -> void: app.show_setup("local")))
 	v.add_child(UI.button("Spill online", func() -> void: app.show_online()))
+	var solved := Settings.puzzle_day == Time.get_date_string_from_system()
+	var puzzle := UI.button(tr("Dagens oppgave") + ("  ·  " + tr("løst") if solved else ""), func() -> void: app.show_puzzle())
+	puzzle.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(puzzle)
 	v.add_child(UI.button("Innstillinger", func() -> void: app.show_settings()))
 
 	# Aktive turneringer (vises bare når serveren svarer og noe er åpent eller pågår)
@@ -49,11 +55,13 @@ func _ready() -> void:
 
 	var who := UI.hbox(8)
 	var avatar := AvatarView.new(30)
-	avatar.set_avatar(Settings.avatar, Settings.player_name, Skins.color_of(Settings.skin_id))
+	avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
 	who.add_child(avatar)
 	_badge = EloBadge.make(-1, 20)
 	who.add_child(_badge)
-	who.add_child(UI.label(Settings.player_name, "Muted"))
+	_who_name = UI.label(Settings.display_name(), "Muted")
+	_who_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	who.add_child(_who_name)
 	v.add_child(who)
 
 	Net.message.connect(_on_net_message)
@@ -69,6 +77,10 @@ func _ready() -> void:
 	else:
 		_ask_tournaments()
 	_update_badge()
+
+	_chat = GlobalChat.new()
+	_chat.toggled.connect(func(_open: bool) -> void: _layout())
+	add_child(_chat)
 
 	resized.connect(_layout)
 	_layout.call_deferred()
@@ -89,10 +101,28 @@ func _layout() -> void:
 	# Flytt brettet bort fra kortet: opp på mobil, til høyre på PC.
 	if portrait:
 		_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 16)
-		app.camera.view_offset = Vector2(0, -1.4)
+		app.camera.view_offset = Vector2(0, -1.1)
+		# Mobil: chatten er en smal linje øverst (antall online og siste melding). Åpnet dekker den
+		# plassen over menyen, så de aldri overlapper hverandre.
+		_chat.compact = true
+		var card_top := size.y - _panel.get_combined_minimum_size().y - 16.0
+		_chat.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+		_chat.offset_left = 10
+		_chat.offset_right = -10
+		_chat.offset_top = 10
+		_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else 10 + _chat.get_combined_minimum_size().y
 	else:
 		_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 48)
-		app.camera.view_offset = Vector2(-1.8, 0)
+		app.camera.view_offset = Vector2(-1.2, -0.5)
+		# Chatten nede til høyre
+		_chat.compact = false
+		var cw := minf(380.0, size.x * 0.3)
+		var ch := minf(360.0, size.y * 0.48)
+		_chat.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+		_chat.offset_left = -cw - 16
+		_chat.offset_right = -16
+		_chat.offset_top = -ch - 16
+		_chat.offset_bottom = -16
 
 
 func _on_net_connected(_resumed: bool) -> void:
@@ -110,6 +140,7 @@ func _on_net_message(msg: Dictionary) -> void:
 
 
 func _update_badge() -> void:
+	_who_name.text = Settings.display_name()
 	EloBadge.set_elo(_badge, int(Net.user.get("elo", -1)) if Net.is_logged_in() else -1, 20)
 
 

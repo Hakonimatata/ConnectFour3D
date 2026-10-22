@@ -4,7 +4,7 @@ extends RefCounted
 ## Se Plan.md, seksjon 7.2. Øk VERSION når meldingene endres på en måte
 ## som gjør at gamle klienter ikke lenger fungerer.
 
-const VERSION := 2
+const VERSION := 3
 const MAX_BYTES := 64 * 1024   ## Meldinger med profilbilder kan bli noen titalls KB
 const MAX_NAME := 16
 const MAX_CHAT := 200
@@ -36,6 +36,13 @@ const TOURNAMENT_CREATE := "tournament_create" ## { data }        (admin)
 const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (admin)
 const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publish, start, cancel, delete)
 const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color }  (f.eks. byttet skin i venterommet)
+# Runde 9: tilskuere, global chat, dagens oppgave og repriser
+const WATCH := "watch"               ## { code }  (se på en turneringskamp)
+const GLOBAL_CHAT := "global_chat"   ## { text }
+const GET_PUZZLE := "get_puzzle"
+const PUZZLE_SOLVE := "puzzle_solve" ## { day, moves: [[x, y], ...] (bare dine trekk), attempts }
+const LIST_GAMES := "list_games"     ## { username? }  (tom = deg selv)
+const GET_GAME := "get_game"         ## { id }
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user? }
@@ -59,6 +66,14 @@ const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin }
 const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
 const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room }  («Gå til kamp»)
 const ROOM_CLOSED := "room_closed"   ## { key, args }
+const PRESENCE := "presence"         ## { online, playing }
+const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event", time, from?, elo?, text, key?, args? }
+const GLOBAL_HISTORY := "global_history" ## { messages: [...] }  (sendes etter hello)
+const SPECTATORS := "spectators"     ## { count }  (til alle i rommet)
+const PUZZLE := "puzzle"             ## { puzzle, solved, count, solvers: [{ username, attempts, elo }] }
+const PUZZLE_RESULT := "puzzle_result" ## { ok, rank, first } eller { ok: false, text }
+const GAME_LIST := "game_list"       ## { username, games: [{ id, time, players, result, reason, moves, tournament }] }
+const GAME_RECORD := "game_record"   ## { game }  (hele partiet, til reprise)
 
 
 static func encode(msg: Dictionary) -> String:

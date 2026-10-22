@@ -117,7 +117,18 @@ func _rebuild() -> void:
 	for r in (t.rounds as Array).size():
 		_content.add_child(UI.section(tr("Runde %d") % (r + 1)))
 		for m in t.rounds[r]:
-			_content.add_child(_plain(_match_text(m), "Muted" if m.status == "done" else ""))
+			var label := _plain(_match_text(m), "Muted" if m.status == "done" else "")
+			var own_match := _you != 0 and _you in [int(m.p1), int(m.p2)]
+			if m.status == "playing" and str(m.room) != "" and not own_match:
+				var row := UI.hbox(8)
+				label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				row.add_child(label)
+				var code := str(m.room)
+				row.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
+				_content.add_child(row)
+			else:
+				_content.add_child(label)
 
 	# --- Admin
 	if _admin:

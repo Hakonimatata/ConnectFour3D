@@ -18,6 +18,11 @@ var _chat_button: Button
 var _flash: ColorRect
 var _touch_hint_shown := false
 var _last_tick_s := -1
+var _watchers: Label
+var _bottom: Control
+var _replay: ReplayPlayer
+var _resign_button: Button
+var _leave_button: Button
 
 
 func _init(p_app: ClientRoot, p_match: MatchController) -> void:
@@ -65,6 +70,7 @@ func _build_hud() -> void:
 
 	# Bunn: meny, status, chat
 	var bottom := MarginContainer.new()
+	_bottom = bottom
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -84,6 +90,10 @@ func _build_hud() -> void:
 	_status.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
 	_status.add_theme_constant_override("shadow_offset_y", 2)
 	bar.add_child(_status)
+	_watchers = UI.label("", "Muted")
+	_watchers.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_watchers.visible = false
+	bar.add_child(_watchers)
 	_chat_button = UI.button("Chat", _toggle_chat)
 	_chat_button.visible = match_ctrl.supports_chat()
 	bar.add_child(_chat_button)
@@ -153,6 +163,12 @@ func _refresh_players() -> void:
 		c.sub.visible = c.sub.text != ""
 		EloBadge.set_elo(c.badge, int(info.get("elo", -1)), 18)
 		(c.avatar as AvatarView).set_avatar(str(info.get("avatar", "")), str(info.name), match_ctrl.color_of(p))
+	var online := match_ctrl as OnlineMatch
+	if online:
+		_watchers.visible = online.spectators > 0
+		_watchers.text = tr("%d ser på") % online.spectators
+		_resign_button.visible = not online.is_spectator()
+		_leave_button.text = tr("Tilbake til turneringen") if online.is_spectator() else tr("Til hovedmenyen")
 	app.board.set_looks(match_ctrl.look_of(1), match_ctrl.look_of(2))
 	_highlight_turn()
 
@@ -184,11 +200,13 @@ func _build_menu_overlay() -> void:
 	v.add_child(UI.label("Pause", "Heading"))
 	v.add_child(UI.label(match_ctrl.options.describe(), "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 	v.add_child(UI.button("Fortsett", func() -> void: _menu_overlay.visible = false, "PrimaryButton"))
-	v.add_child(UI.button("Gi opp", func() -> void:
+	_resign_button = UI.button("Gi opp", func() -> void:
 		_menu_overlay.visible = false
 		match_ctrl.resign()
-	))
-	v.add_child(UI.button("Til hovedmenyen", func() -> void: app.show_menu()))
+	)
+	v.add_child(_resign_button)
+	_leave_button = UI.button("Til hovedmenyen", _leave)
+	v.add_child(_leave_button)
 
 
 func _build_result_overlay() -> void:
@@ -205,8 +223,48 @@ func _build_result_overlay() -> void:
 		match_ctrl.request_rematch()
 	, "PrimaryButton")
 	v.add_child(_rematch_button)
+	v.add_child(UI.button("Se partiet igjen", start_replay))
 	v.add_child(UI.button("Se på brettet", func() -> void: _result_overlay.visible = false))
-	v.add_child(UI.button("Til hovedmenyen", func() -> void: app.show_menu()))
+	v.add_child(UI.button("Til hovedmenyen", _leave))
+
+
+## Tilskuere går tilbake til turneringen, spillere til hovedmenyen.
+func _leave() -> void:
+	var online := match_ctrl as OnlineMatch
+	if online and online.is_spectator() and not online.tournament.is_empty():
+		var id := int(online.tournament.id)
+		app.end_match()
+		app.show_tournament(id)
+	else:
+		app.show_menu()
+
+
+## «Se partiet igjen»: avspilleren nederst, med tvungne trekk markert. «Lukk» gir resultatet tilbake.
+func start_replay() -> void:
+	var s := match_ctrl.state
+	if s == null or _replay != null:
+		return
+	_result_overlay.visible = false
+	_bottom.visible = false
+	_chat_drawer.visible = false
+	var names := { 1: str(match_ctrl.players[1].name), 2: str(match_ctrl.players[2].name) }
+	var colors := { 1: match_ctrl.color_of(1), 2: match_ctrl.color_of(2) }
+	_replay = ReplayPlayer.new(app.board, match_ctrl.options, s.first_player, s.history.duplicate(), names, colors)
+	var holder := MarginContainer.new()
+	holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	holder.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	for side in ["left", "right", "bottom"]:
+		holder.add_theme_constant_override("margin_" + side, 12)
+	holder.add_child(_replay)
+	add_child(holder)
+	_replay.closed.connect(func() -> void:
+		_replay.seek(_replay.entries.size())
+		app.board.clear_hints()
+		holder.queue_free()
+		_replay = null
+		_bottom.visible = true
+		_result_overlay.visible = true
+	)
 
 
 func _build_chat_drawer() -> void:
@@ -254,6 +312,8 @@ func _overlay() -> ColorRect:
 
 func _on_started() -> void:
 	var s := match_ctrl.state
+	if _replay != null:
+		_replay.closed.emit()
 	_result_overlay.visible = false
 	_rematch_button.disabled = false
 	app.board.setup(s.size)
@@ -329,7 +389,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		if new_tier.id != EloBadge.tier(before).id:
 			var text := tr("Nytt nivå: %s!") if after > before else tr("Ned til %s")
 			_result_reason.text += "\n" + text % tr(new_tier.name)
-	if online and not online.tournament.is_empty():
+	if online and (not online.tournament.is_empty() or online.is_spectator()):
 		_rematch_button.visible = false
 		_result_reason.text += "\n" + tr("Turnering: %s") % online.tournament.name
 	_show_status(_result_title.text, UI.TEXT, 0.0)
@@ -351,7 +411,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 	else:
 		Sfx.play("win")
 	await get_tree().create_timer(delay, true, false, true).timeout
-	if is_inside_tree() and match_ctrl.state == s:
+	if is_inside_tree() and match_ctrl.state == s and _replay == null:
 		_result_overlay.visible = true
 
 
@@ -443,8 +503,10 @@ func _update_clocks() -> void:
 
 
 func _on_back() -> void:
-	if _result_overlay.visible:
-		app.show_menu()
+	if _replay != null:
+		_replay.closed.emit()
+	elif _result_overlay.visible:
+		_leave()
 	elif _menu_overlay.visible:
 		_menu_overlay.visible = false
 	else:

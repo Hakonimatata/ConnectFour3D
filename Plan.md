@@ -2,10 +2,12 @@
 
 Dette dokumentet er arbeidsplanen for prosjektet. Det beskriver hva som fantes ved start, hvilke valg vi tar (og hvorfor), hvordan alt henger sammen, og i hvilken rekkefølge vi bygger det.
 
-> **Status etter runde 8:**
+> **Status etter runde 10:**
 > - Fase 0–5 og 8–11 er ferdige: spillet, AI, online, invitasjonslenke, kontoer, statistikk/Elo og turneringer.
 > - Runde 7: reglene er på som standard, 20 skins med flere merker og brett-temaer, og forhåndsvisning på brettet.
 > - Runde 8: aktive turneringer på forsiden, 30 skins og Elo-merker (Bronse → Stormester) ved spillernavn.
+> - Runde 9: repriser med tvungne trekk markert, tilskuere på turneringskamper, merker på brikken som låses opp av Elo, dagens oppgave med toppliste, og global chat med «online» og hendelser i menyen.
+> - Runde 10: bedre mobil-layout (kompakt chat), 60 ekstra oppgaver i fire nivåer, raskere oppstart (små, spesialiserte shadere), navn bare for kontoer, og klart for hosting (også fra egen PC med eget domene).
 > - Fase 6 (fast server) gjenstår, men skript for wifi og tunnel finnes allerede.
 > - Forslag til videre utvikling står i seksjon 14.
 >
@@ -247,10 +249,12 @@ ConnectFour3D/
 
 | Skjerm | Innhold |
 |---|---|
-| Hovedmeny | Spill mot AI · Lokal 2-spiller · Online · Innstillinger · **aktive turneringer** (pågår / påmelding åpen) og ditt Elo-merke |
+| Hovedmeny | Spill mot AI · Lokal 2-spiller · Online · **Dagens oppgave** · Innstillinger · **aktive turneringer** (pågår / påmelding åpen), ditt Elo-merke og **global chat** med antall online og hendelser |
+| Oppgaver | Dagens oppgave (3–4 trekk, toppliste) og oppgavebanken: Lett (3), Middels (4), Vanskelig (5) og Ekspert (6), 15 av hver, med fremgang lagret på enheten. Motstanderen forsvarer seg. «Prøv igjen», «Vis løsning» og «Neste oppgave» |
+| Reprise | «Se partiet igjen» på resultatskjermen, og partier fra profilen. Fram/tilbake, spill av og en tidslinje der tvungne trekk er markert |
 | Spilloppsett | Brettstørrelse, regler, klokke, hvem starter. **Samme komponent** brukes for AI, lokalt spill og online-rom. |
 | Online-lobby | Kallenavn, liste over åpne rom, «Opprett rom», «Bli med med kode» |
-| Venterom | Innstillingene vises (verten kan endre dem), brikkene slik de blir i partiet, «Bytt skin», klar-knapp og chat |
+| Venterom | Innstillingene vises (verten kan endre dem), brikkene slik de blir i partiet, «Bytt skin», klar-knapp og chat. Tilskuere ser rommet uten knappene |
 | Spill | 3D-brett og HUD: spillere med skin og klokke, turindikator, chat-skuff, «Gi opp» |
 | Resultat | Vinner/uavgjort, «Spill igjen» (rematch), «Til menyen» |
 | Innstillinger | Navn, profilbilde, skin, merke og merkefarge, seiersanimasjon, brett-tema, hurtigmeldinger, språk, lyd og vibrasjon. Kortet står til venstre (nederst på mobil), og brettet ved siden av er forhåndsvisning. |
@@ -296,6 +300,17 @@ ConnectFour3D/
   | Stormester | 1850 | gullkrone på rødt merke |
 
   Merket vises ved navnet i menyen, lobbyen (rom og «Min profil»), venterommet, på spillerkortene i partiet, på profilen (stort, med «90 Elo til Diamant»), i topplisten og på turneringssiden. Resultatskjermen sier fra ved nytt nivå. Gjester har ikke merke.
+- **Merker på brikken låst av Elo (runde 9):** nivåene ligger i `core/elo_tiers.gd`, så klient og server bruker de samme grensene. Serveren sjekker merket og viser «ingen» for merker spilleren ikke har låst opp. Klienten husker siste kjente Elo, så merkene virker også uten nett.
+
+  | Merke | Låses opp på |
+  |---|---|
+  | Ingen, stjerne, prikk, ring, kryss, hjerte | alle (også gjester) |
+  | Diamant, pil | Sølv (1100), altså med en gang for nye kontoer |
+  | Sekskant, måne | Gull (1250) |
+  | Lyn | Platina (1400) |
+  | Krone | Diamant (1550) |
+  | Flamme (nytt) | Mester (1700) |
+  | Laurbær (nytt) | Stormester (1850) |
 - **Språk (runde 5):** norsk og engelsk (`client/i18n.gd`). Norsk tekst i koden er nøkkelen, og engelsk ligger i en ordliste. En test sjekker at ingen UI-tekst mangler oversettelse. Serveren sender meldinger med nøkkel + argumenter, så de også oversettes.
   - Valgt skin lagres lokalt og sendes til serveren, slik at motstanderen ser den.
   - Velger begge samme farge, bytter klienten automatisk motstanderen til en kontrastfarge.
@@ -353,7 +368,7 @@ Ting å passe på:
   - Klientversjonen sjekkes i `hello`.
 - **Konfigurasjon** via miljøvariabler, f.eks. `PORT`.
 
-### 7.2 Protokoll (implementert i `net/protocol.gd`, versjon 2)
+### 7.2 Protokoll (implementert i `net/protocol.gd`, versjon 3)
 
 Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "ply": 7}`.
 
@@ -367,6 +382,10 @@ Alle meldinger er JSON med et typefelt, f.eks. `{"t": "move", "x": 1, "y": 2, "p
 | `move` {x, y, ply} | `move_made` {x, y, player, ply, clocks, running} · `move_rejected` {text, hints} |
 | `chat` {text} | `chat` {from, seat, text} (også til avsender) |
 | `set_look` {skin, decal, win_fx, decal_color} | `room_state` til begge (før partiet starter) |
+| `watch` {code} (bare turneringskamper) | `room_state`/`game_start`/`game_sync` med `you` = 0, `spectators` {count} til rommet |
+| `global_chat` {text} | `global_msg` {kind: chat/event, from, elo, text, key, args} til alle · `global_history` og `presence` {online, playing} etter `hello` |
+| `get_puzzle` · `puzzle_solve` {day, moves, attempts} | `puzzle` {puzzle, solved, count, solvers} · `puzzle_result` {ok, rank, first} |
+| `list_games` {username?} · `get_game` {id} | `game_list` {games} · `game_record` {game} |
 | `resign` · `rematch` | `game_over` {result, reason, winner, line, clocks} |
 | `ping` | `pong` · `notice` {text} · `error` {code, text} |
 
@@ -501,7 +520,7 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 - Angre-knapp mot AI (motoren har allerede `undo()`).
 - P2P via WebRTC.
 - Tilskuere, replays, rangering, app-eksport (Android).
-- Merker på brikken som låses opp av Elo (idé fra runde 7, «til senere»). Elo-nivåene finnes nå (runde 8), så neste steg er å flytte `EloBadge.TIERS` til `core/` og la serveren avvise merker spilleren ikke har låst opp.
+- ~~Merker på brikken som låses opp av Elo~~ (gjort i runde 9, se 5.3).
 
 ### Fase 8 – Invitasjonslenke (S) ✅ (runde 6)
 - «Del invitasjon»-knapp i venterommet. Den gir en lenke som `https://<adresse>/?rom=KXRTA`.
@@ -718,17 +737,20 @@ Hver fase gir noe som virker, og bygger på den forrige. Offline-spillet blir fe
 
 ---
 
-## 14. Forslag til videre utvikling (etter runde 8)
+## 14. Forslag til videre utvikling (etter runde 8, oppdatert etter runde 9)
 
 Sortert etter hva som gir mest igjen for innsatsen:
 
 1. **Fast server (fase 6).** En liten VPS (f.eks. Hetzner, ca. 5 €/mnd) med domene og `docker compose up`. Da kan venner spille når som helst, og turneringer går uten at PC-en din står på. Alt annet blir mer verdt med dette på plass.
-2. **Repriser og analyse.** `games.jsonl` har allerede alle trekk og analysen (tvungne trekk, doble trusler). En «Se partiet igjen»-knapp med fram/tilbake og markering av tvungne trekk er lite arbeid og morsomt etter tap.
-3. **Tilskuere på turneringskamper.** Rommet sender allerede `game_sync`. En tilskuer er en tredje mottaker uten sete. Det gjør turneringer sosiale.
-4. **Elo-merker på brikken** (se fase 7). Gir noe å spille for.
-5. **Dagens oppgave.** Boten kan allerede finne tvungne seire (`can_force_win`). Lag en stilling der det finnes en tvungen seier i 3, én per dag, med egen toppliste.
+2. ~~**Repriser og analyse.**~~ Gjort i runde 9.
+3. ~~**Tilskuere på turneringskamper.**~~ Gjort i runde 9.
+4. ~~**Elo-merker på brikken.**~~ Gjort i runde 9.
+5. ~~**Dagens oppgave.**~~ Gjort i runde 9.
 6. **Sesonger.** Elo nullstilles delvis hver sesong (f.eks. hver 3. måned), og beste nivå i sesongen gir et varig merke på profilen.
 7. **App-følelse på mobil.** Web-manifest og ikon, så spillet kan legges på hjemskjermen. Senere varsel («kampen din starter») via Web Push.
 8. **Drift og trygghet.** Automatisk backup av `data/`, admin-verktøy i spillet (gi nytt navn, utesteng, nullstill passord) og et enkelt filter i chatten.
 9. **Ytelse på svake telefoner.** Shaderen har nå 25 stiler i én fil. Mål FPS på en eldre telefon. Ved behov lages en egen shader-variant per stil, eller en «enkel grafikk»-innstilling.
 10. **Ekspert-AI.** Alfa-beta med transposisjonstabell, fordelt over flere frames, gir en bot som utfordrer også sterke spillere.
+11. **Moderering av den globale chatten** (ny etter runde 9). Admin bør kunne slette meldinger og stenge noen ute fra chatten. Et enkelt ordfilter hjelper også.
+12. **Repriser med analyse fra boten** (ny etter runde 9). Avspilleren kan vise hvor partiet snudde: trekket der en tvungen seier fantes, men ble oversett (`Puzzle.win_depth` kan finne dem).
+13. **Flere oppgaver** (ny etter runde 9). Et arkiv med de siste dagenes oppgaver, og vanskelighetsgrader (3, 4 og 5 trekk).

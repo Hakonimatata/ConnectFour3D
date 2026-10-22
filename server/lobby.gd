@@ -1,6 +1,7 @@
 class_name Lobby
 extends RefCounted
 ## All serverlogikk: spillere, rom, partier, klokker, chat, kontoer og turneringer.
+## Global chat og hendelser ligger i Social, dagens oppgave i Puzzles.
 ## Vet ingenting om nettverk. ServerMain gir meldinger inn (on_message) og
 ## sender det Lobby legger ut via `send`. Tiden (now_ms) gis utenfra.
 ## Derfor kan hele serveren testes uten sockets (se tests/test_lobby.gd).
@@ -9,6 +10,9 @@ const RECONNECT_GRACE_MS := 60_000
 const CHAT_INTERVAL_MS := 350
 const CODE_LETTERS := "ABCDEFGHJKLMNPQRSTUVWXYZ"   # uten I og O
 const CODE_LENGTH := 5
+const PRESENCE_INTERVAL_MS := 1000
+const STREAK_MILESTONES := [5, 10, 15, 20, 30, 50]
+const FORCED_WIN_EVENT := 3       ## seier med minst så mange tvungne trekk på rad blir en hendelse
 
 
 class Player:
@@ -26,6 +30,8 @@ class Player:
 	var last_chat_ms := -100_000
 	var user_id := 0               ## 0 = gjest (ikke innlogget)
 	var guest_name := ""           ## kallenavnet fra hello (brukes igjen etter utlogging)
+	var watching := ""             ## romkoden spilleren ser på som tilskuer
+	var last_global_ms := -100_000
 
 
 class Room:
@@ -45,6 +51,7 @@ class Room:
 	var reserved: Array[int] = [0, 0, 0]       ## bruker-id per sete
 	var replay_at := -1                         ## omspill etter uavgjort (ms)
 	var match_done := false                     ## turneringskampen er avgjort (rommet kan ryddes)
+	var spectators: Array[int] = []             ## spiller-id-er som ser på (bare turneringskamper)
 
 	func in_game() -> bool:
 		return state != null and not state.is_over()
@@ -66,9 +73,13 @@ var rng := RandomNumberGenerator.new()
 var store := Store.new()            ## minne-lagring til use_store() kalles (testene bruker denne)
 var accounts := Accounts.new(store)
 var tournaments := Tournaments.new(store, accounts)
+var social := Social.new(store)
+var puzzles := Puzzles.new(store, accounts)
 ## Veggklokke i unix-sekunder (kan byttes ut i tester).
 var clock_s: Callable = func() -> int: return int(Time.get_unix_time_from_system())
 var _last_ms := 0
+var _presence_dirty := true
+var _presence_sent_ms := -100_000
 
 
 func _init() -> void:
@@ -81,10 +92,14 @@ func use_store(p_store: Store) -> void:
 	store = p_store
 	accounts = Accounts.new(store)
 	tournaments = Tournaments.new(store, accounts)
+	social = Social.new(store)
+	puzzles = Puzzles.new(store, accounts)
 	_hook_tournaments()
 
 
 func _hook_tournaments() -> void:
+	social.broadcast = _broadcast_all
+	tournaments.announce = _announce
 	tournaments.open_room = _open_tournament_room
 	tournaments.presence = _room_presence
 	tournaments.notify = _notify_user
@@ -100,6 +115,8 @@ func on_disconnect(peer: int, now: int) -> void:
 	_peers.erase(peer)
 	p.peer = 0
 	p.disconnected_at = now
+	_presence_dirty = true
+	_unwatch(p)
 	var room := _room_of(p)
 	if room:
 		_notice_room(room, "%s mistet forbindelsen…", [p.name], p.id)
@@ -131,7 +148,17 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.LIST_ROOMS: _list_rooms(p)
 		Protocol.CREATE_ROOM: _create_room(p, msg, now)
 		Protocol.JOIN_ROOM: _join_room(p, str(msg.get("code", "")), now)
-		Protocol.LEAVE_ROOM: _leave_room(p, now)
+		Protocol.LEAVE_ROOM:
+			if p.watching != "":
+				_unwatch(p)
+			else:
+				_leave_room(p, now)
+		Protocol.WATCH: _watch(p, str(msg.get("code", "")), now)
+		Protocol.GLOBAL_CHAT: _global_chat(p, str(msg.get("text", "")), now)
+		Protocol.GET_PUZZLE: send.call(peer, puzzles.info_message(p.user_id, clock_s.call()))
+		Protocol.PUZZLE_SOLVE: _puzzle_solve(p, msg)
+		Protocol.LIST_GAMES: _list_games(p, str(msg.get("username", "")))
+		Protocol.GET_GAME: _send_game(p, int(msg.get("id", 0)))
 		Protocol.SET_OPTIONS: _set_options(p, msg)
 		Protocol.READY: _set_ready(p, bool(msg.get("ready", true)), now)
 		Protocol.MOVE: _move(p, msg, now)
@@ -158,6 +185,10 @@ func tick(now: int) -> void:
 		if p.peer == 0 and p.disconnected_at >= 0 and now - p.disconnected_at > RECONNECT_GRACE_MS:
 			_leave_room(p, now)
 			players.erase(p.id)
+	if _presence_dirty and now - _presence_sent_ms >= PRESENCE_INTERVAL_MS:
+		_presence_dirty = false
+		_presence_sent_ms = now
+		_broadcast_all(presence_message())
 
 
 # ---------------------------------------------------------------- Meldinger
@@ -203,6 +234,9 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 			_sign_in(p, user)
 	send.call(peer, { "t": Protocol.WELCOME, "player_id": p.id, "token": p.token, "resumed": resumed,
 		"user": accounts.public_info(user) if not user.is_empty() else null })
+	send.call(peer, social.history_message())
+	send.call(peer, presence_message())
+	_presence_dirty = true
 
 	var room := _room_of(p)
 	if room:
@@ -284,6 +318,7 @@ func _leave_room(p: Player, now: int) -> void:
 	room.ready.fill(false)
 	room.rematch.fill(false)
 	if room.is_empty() and (room.match_id == "" or room.match_done):
+		_drop_spectators(room, "Kampen er ferdig.")
 		rooms.erase(room.code)
 		return
 	if room.match_id != "":
@@ -353,12 +388,12 @@ func _move(p: Player, msg: Dictionary, now: int) -> void:
 
 
 func _chat(p: Player, text: String, now: int) -> void:
-	var room := _room_of(p)
+	var room := _room_of(p) if p.watching == "" else rooms.get(p.watching) as Room
 	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
 	if room == null or text == "" or now - p.last_chat_ms < CHAT_INTERVAL_MS:
 		return
 	p.last_chat_ms = now
-	_send_room(room, { "t": Protocol.CHAT_MSG, "from": p.name, "seat": room.seat_of(p.id), "text": text })
+	_send_room(room, { "t": Protocol.CHAT_MSG, "from": p.name, "seat": maxi(0, room.seat_of(p.id)), "text": text })
 
 
 func _resign(p: Player, now: int) -> void:
@@ -400,10 +435,15 @@ func _start_game(room: Room, now: int) -> void:
 			var msg := _start_message(room, seat, now)
 			msg["t"] = Protocol.GAME_START
 			send.call(p.peer, msg)
+	for id in room.spectators:
+		var msg := _start_message(room, 0, now)
+		msg["t"] = Protocol.GAME_START
+		send.call(players[id].peer, msg)
+	_presence_dirty = true
 
 
 func _send_sync(room: Room, p: Player, now: int) -> void:
-	var msg := _start_message(room, room.seat_of(p.id), now)
+	var msg := _start_message(room, maxi(0, room.seat_of(p.id)), now)
 	msg["t"] = Protocol.GAME_SYNC
 	var moves := []
 	for m in room.state.history:
@@ -422,6 +462,7 @@ func _start_message(room: Room, seat: int, now: int) -> Dictionary:
 		"options": room.options.to_dict(), "first": room.state.first_player, "you": seat,
 		"players": _players_info(room), "clocks": _clocks(room, now), "number": room.number,
 		"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+		"spectators": room.spectators.size(),
 	}
 
 
@@ -434,6 +475,8 @@ func _game_over(room: Room, now: int) -> void:
 		moves.append([m.x, m.y])
 	var analysis := GameAnalysis.analyze(room.options, s.first_player, moves)
 	var elo := accounts.record_game(ids, s.winner(), s.end_reason, analysis, s.history.size())
+	_publish_achievements(ids, s, analysis, elo)
+	_presence_dirty = true
 	store.append_game({
 		"time": Time.get_datetime_string_from_unix_time(clock_s.call(), true), "options": room.options.to_dict(),
 		"players": [_seat_record(room, 1), _seat_record(room, 2)], "first": s.first_player, "moves": moves,
@@ -479,7 +522,7 @@ func _players_info(room: Room) -> Array:
 			continue
 		var p: Player = players[id]
 		var user: Dictionary = store.users.get(p.user_id, {}) if p.user_id != 0 else {}
-		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "decal": p.decal, "win_fx": p.win_fx,
+		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "decal": _decal_for(p), "win_fx": p.win_fx,
 			"decal_color": p.decal_color, "avatar": p.avatar,
 			"ready": room.ready[seat], "connected": p.peer != 0, "account": p.user_id != 0,
 			"elo": user.get("elo") if not user.is_empty() else null })
@@ -495,6 +538,14 @@ func _broadcast_room_state(room: Room) -> void:
 			"t": Protocol.ROOM_STATE, "code": room.code, "private": room.private, "options": room.options.to_dict(),
 			"description": room.options.describe(), "you": seat, "in_game": room.in_game(), "players": _players_info(room),
 			"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+			"spectators": room.spectators.size(),
+		})
+	for id in room.spectators:
+		send.call(players[id].peer, {
+			"t": Protocol.ROOM_STATE, "code": room.code, "private": room.private, "options": room.options.to_dict(),
+			"description": room.options.describe(), "you": 0, "in_game": room.in_game(), "players": _players_info(room),
+			"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+			"spectators": room.spectators.size(),
 		})
 
 
@@ -503,6 +554,8 @@ func _send_room(room: Room, msg: Dictionary) -> void:
 		var id := room.seats[seat]
 		if id != 0 and players[id].peer != 0:
 			send.call(players[id].peer, msg)
+	for id in room.spectators:
+		send.call(players[id].peer, msg)
 
 
 ## key er en norsk tekst med %s for args. Klienten oversetter key, og «text» er ferdig utfylt.
@@ -539,6 +592,8 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 		send.call(p.peer, { "t": Protocol.AUTH_ERROR, "key": res.error, "text": res.error })
 		return
 	_sign_in(p, res.user)
+	if t == Protocol.REGISTER:
+		social.event("Velkommen, %s!", [str(res.user.username)], clock_s.call())
 	var token := accounts.create_session(res.user.id, clock_s.call())
 	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user) })
 	var room := _room_of(p)
@@ -587,7 +642,8 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 	if id == 0 or not players.has(id):
 		return {}
 	var p: Player = players[id]
-	return { "name": p.name, "user": p.user_id }
+	return { "name": p.name, "user": p.user_id, "skin": p.skin, "decal": _decal_for(p), "decal_color": p.decal_color,
+		"elo": _elo_of(p) }
 
 
 # ---------------------------------------------------------------- Turneringer
@@ -682,5 +738,161 @@ func _close_room(code: String, key: String, args: Array) -> void:
 			p.room_code = ""
 			if p.peer != 0:
 				send.call(p.peer, { "t": Protocol.ROOM_CLOSED, "key": key, "args": args, "text": key % args if not args.is_empty() else key })
+	_drop_spectators(room, key, args)
 	rooms.erase(code)
 
+
+# ---------------------------------------------------------------- Tilskuere
+
+## Se på en turneringskamp. Tilskuere får det samme som spillerne (trekk, chat, resultat), med «you» = 0.
+func _watch(p: Player, code: String, now: int) -> void:
+	code = code.strip_edges().to_upper()
+	var room: Room = rooms.get(code)
+	if room == null:
+		_error(p.peer, "no_room", "Fant ikke rommet %s.", [code])
+		return
+	if room.match_id == "":
+		_error(p.peer, "not_watchable", "Du kan bare se på turneringskamper.")
+		return
+	if p.room_code != "":
+		_error(p.peer, "in_room", "Forlat rommet du er i først.")
+		return
+	_unwatch(p)
+	p.watching = code
+	room.spectators.append(p.id)
+	_broadcast_room_state(room)
+	if room.state != null:
+		_send_sync(room, p, now)
+	_send_room(room, { "t": Protocol.SPECTATORS, "count": room.spectators.size() })
+
+
+func _unwatch(p: Player) -> void:
+	if p.watching == "":
+		return
+	var room: Room = rooms.get(p.watching)
+	p.watching = ""
+	if room and room.spectators.has(p.id):
+		room.spectators.erase(p.id)
+		_send_room(room, { "t": Protocol.SPECTATORS, "count": room.spectators.size() })
+
+
+func _drop_spectators(room: Room, key: String, args: Array = []) -> void:
+	for id in room.spectators:
+		var p: Player = players.get(id)
+		if p == null:
+			continue
+		p.watching = ""
+		if p.peer != 0:
+			send.call(p.peer, { "t": Protocol.ROOM_CLOSED, "key": key, "args": args,
+				"text": key % args if not args.is_empty() else key })
+	room.spectators.clear()
+
+
+# ---------------------------------------------------------------- Global chat, online og hendelser
+
+func presence_message() -> Dictionary:
+	var online := 0
+	for p: Player in players.values():
+		if p.peer != 0:
+			online += 1
+	var playing := 0
+	for room: Room in rooms.values():
+		if room.in_game():
+			for seat in [1, 2]:
+				if room.seats[seat] != 0:
+					playing += 1
+	return { "t": Protocol.PRESENCE, "online": online, "playing": playing }
+
+
+func _announce(key: String, args: Array) -> void:
+	social.event(key, args, clock_s.call())
+
+
+func _broadcast_all(msg: Dictionary) -> void:
+	for p: Player in players.values():
+		if p.peer != 0:
+			send.call(p.peer, msg)
+
+
+func _global_chat(p: Player, text: String, now: int) -> void:
+	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
+	if text == "" or now - p.last_global_ms < Social.CHAT_INTERVAL_MS:
+		return
+	p.last_global_ms = now
+	social.chat(p.name, _elo_of(p), text, clock_s.call())
+
+
+## Hendelser etter et parti: nytt Elo-nivå, seiersrekker og seire med mange tvungne trekk.
+func _publish_achievements(ids: Array, s: GameState, analysis: Dictionary, elo: Dictionary) -> void:
+	var now_s: int = clock_s.call()
+	for seat in [1, 2]:
+		var uid: int = ids[seat]
+		if uid == 0 or not store.users.has(uid):
+			continue
+		var name := accounts.username_of(uid)
+		if elo.has(seat):
+			var before: Dictionary = EloTiers.tier(int(elo[seat].before))
+			var after: Dictionary = EloTiers.tier(int(elo[seat].after))
+			if int(after.min) > int(before.min):
+				social.event("%s rykket opp til %s!", [name, str(after.name)], now_s)
+		if s.winner() != seat:
+			continue
+		var forced := int(analysis.get(seat, {}).get("winning_streak", 0))
+		if forced >= FORCED_WIN_EVENT:
+			social.event("%s vant med %d tvungne trekk på rad!", [name, forced], now_s)
+		var streak := int(store.users[uid].stats.current_streak)
+		if streak in STREAK_MILESTONES:
+			social.event("%s har vunnet %d partier på rad!", [name, streak], now_s)
+
+
+## Merket spilleren får bruke: låste merker (for lav Elo, eller gjest) vises som «ingen».
+func _decal_for(p: Player) -> String:
+	return p.decal if EloTiers.decal_unlocked(p.decal, _elo_of(p)) else "none"
+
+
+func _elo_of(p: Player) -> int:
+	return int(store.users.get(p.user_id, {}).get("elo", -1)) if p.user_id != 0 else -1
+
+
+# ---------------------------------------------------------------- Dagens oppgave
+
+func _puzzle_solve(p: Player, msg: Dictionary) -> void:
+	var moves = msg.get("moves", [])
+	var res := puzzles.solve(p.user_id, str(msg.get("day", "")), moves if moves is Array else [],
+		int(msg.get("attempts", 1)), clock_s.call())
+	if res.has("error"):
+		send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": false, "text": res.error, "key": res.error })
+		return
+	send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": true, "rank": res.rank, "first": res.first })
+	if res.first:
+		social.event("%s løste dagens oppgave (nr. %d i dag).", [p.name, int(res.rank)], clock_s.call())
+	send.call(p.peer, puzzles.info_message(p.user_id, clock_s.call()))
+
+
+# ---------------------------------------------------------------- Repriser
+
+## De siste partiene til en bruker (deg selv hvis username er tomt).
+func _list_games(p: Player, username: String) -> void:
+	var u: Dictionary = store.find_user(username) if username != "" else store.users.get(p.user_id, {})
+	var out := []
+	if not u.is_empty():
+		for g in store.games_of(int(u.id)):
+			var names := []
+			var seat := 0
+			for i in (g.get("players", []) as Array).size():
+				var rec = g.players[i]
+				names.append(str(rec.get("name", "?")) if rec is Dictionary else "?")
+				if rec is Dictionary and int(rec.get("user", 0)) == int(u.id):
+					seat = i + 1
+			out.append({ "id": g.id, "time": g.get("time", ""), "players": names, "seat": seat,
+				"result": int(g.get("result", 0)), "reason": int(g.get("reason", 0)),
+				"moves": (g.get("moves", []) as Array).size(), "tournament": str(g.get("tournament", "")) != "" })
+	send.call(p.peer, { "t": Protocol.GAME_LIST, "username": str(u.get("username", "")), "games": out })
+
+
+func _send_game(p: Player, id: int) -> void:
+	var g := store.get_game(id)
+	if g.is_empty():
+		_error(p.peer, "no_game", "Fant ikke partiet.")
+		return
+	send.call(p.peer, { "t": Protocol.GAME_RECORD, "game": g })

@@ -49,7 +49,7 @@ static var ALL: Array[Dictionary] = [
 	_skin("blackhole", "Sort hull", Style.BLACK_HOLE, ["ff8a1f", "fff0c0", "ff9a3a"], ["4f7bff", "d6e4ff", "6f8fff"]),
 ]
 
-## Merker på toppen av brikken (indeksen brukes i shaderen)
+## Merker på toppen av brikken (indeksen brukes i shaderen). Noen låses opp av Elo (EloTiers.DECAL_TIERS).
 const DECALS: Array[Dictionary] = [
 	{ "id": "none", "name": "Ingen" },
 	{ "id": "star", "name": "Stjerne" },
@@ -63,6 +63,9 @@ const DECALS: Array[Dictionary] = [
 	{ "id": "crown", "name": "Krone" },
 	{ "id": "bolt", "name": "Lyn" },
 	{ "id": "chevron", "name": "Pil" },
+	# Runde 9: merker for de høyeste Elo-nivåene (se core/elo_tiers.gd)
+	{ "id": "flame", "name": "Flamme" },
+	{ "id": "laurel", "name": "Laurbær" },
 ]
 
 ## Farge på merket
@@ -94,7 +97,8 @@ const WIN_FX: Array[Dictionary] = [
 	{ "id": "glitter", "name": "Glitter" },
 ]
 
-static var _shader: Shader
+static var _base_code := ""
+static var _shaders: Dictionary = {}     ## stil * 100 + merke -> Shader
 static var _swatches: Dictionary = {}
 
 
@@ -223,18 +227,27 @@ static func swatch(id: String, size := 30) -> Texture2D:
 
 ## Lager et materiale for en brikke med dette lookets skin, drakt og merke.
 static func make_material(l: Dictionary) -> ShaderMaterial:
-	if _shader == null:
-		_shader = load("res://assets/shaders/piece.gdshader")
-	var m := ShaderMaterial.new()
-	m.shader = _shader
 	var s := get_skin(str(l.get("skin", DEFAULT_P1)))
 	var v := variant(l)
-	m.set_shader_parameter("style", int(s.style))
+	var m := ShaderMaterial.new()
+	m.shader = shader_for(int(s.style), decal_index(str(l.get("decal", "none"))))
 	m.set_shader_parameter("color_a", v.a)
 	m.set_shader_parameter("color_b", v.b)
-	m.set_shader_parameter("decal", decal_index(str(l.get("decal", "none"))))
 	m.set_shader_parameter("decal_color", Color(decal_color_of(l), 0.92))
 	return m
+
+
+## Brikke-shaderen spesialisert for én stil og ett merke (se toppen av piece.gdshader).
+## Små shadere kompileres raskt, så det første bildet med brikker ikke henger.
+static func shader_for(style: int, decal: int) -> Shader:
+	var key := style * 100 + decal
+	if not _shaders.has(key):
+		if _base_code == "":
+			_base_code = (load("res://assets/shaders/piece.gdshader") as Shader).code
+		var sh := Shader.new()
+		sh.code = _base_code.replace("// @SPECIALIZE", "#define STYLE %d\n#define DECAL %d" % [style, decal])
+		_shaders[key] = sh
+	return _shaders[key]
 
 
 static func decal_color_of(l: Dictionary) -> Color:

@@ -81,7 +81,7 @@ func _update_status() -> void:
 			if Net.is_logged_in():
 				_status.text = tr("Innlogget som %s · Elo %d") % [Net.user.username, int(Net.user.elo)]
 			else:
-				_status.text = tr("Tilkoblet som %s (gjest)") % Settings.player_name
+				_status.text = tr("Tilkoblet som %s (gjest)") % Settings.display_name()
 		Net.Status.CONNECTING:
 			_status.text = tr("Kobler til %s…%s") % [Net.url, ("\n" + Net.last_error) if Net.last_error != "" else ""]
 		_:

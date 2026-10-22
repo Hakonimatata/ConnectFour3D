@@ -5,7 +5,9 @@ extends RefCounted
 ##   avatars.json      profilbilder (base64), adskilt så users.json er lett å lese
 ##   sessions.json     innloggede økter (bare en hash av nøkkelen lagres)
 ##   tournaments.json  turneringer
-##   games.jsonl       ett ferdig parti per linje (kan brukes til replays senere)
+##   games.jsonl       ett ferdig parti per linje (repriser; id = linjenummer)
+##   puzzles.json      dagens oppgave og hvem som har løst den, de siste dagene
+##   global_chat.json  de siste meldingene og hendelsene i den globale chatten
 ##
 ## Endrer du users.json (f.eks. setter "admin": true) mens serveren kjører, merker serveren
 ## det innen et sekund og laster filen inn på nytt.
@@ -19,6 +21,9 @@ var users: Dictionary = {}          ## id (int) -> bruker
 var avatars: Dictionary = {}        ## id (int) -> base64
 var sessions: Dictionary = {}       ## hash av nøkkel -> { user, created }
 var tournaments: Array = []         ## turneringer (eies av Tournaments)
+var games: Array = []               ## ferdige partier (også i minnet, for repriser). id = indeks + 1
+var puzzles: Dictionary = {}        ## { days: { dato: { puzzle, solvers } } } (eies av Puzzles)
+var global_chat: Array = []         ## siste meldinger i den globale chatten (eies av Social)
 var next_user_id := 1
 var next_tournament_id := 1
 var _known: Dictionary = {}         ## fil -> hash av innholdet da vi sist leste/skrev det
@@ -45,6 +50,13 @@ func open(p_dir: String) -> void:
 	if tu is Dictionary:
 		tournaments = tu.get("tournaments", [])
 		next_tournament_id = int(tu.get("next_id", 1))
+	var pz = _read_json("puzzles.json", {})
+	if pz is Dictionary:
+		puzzles = pz
+	var gc = _read_json("global_chat.json", [])
+	if gc is Array:
+		global_chat = gc
+	_load_games()
 
 
 ## Kalles jevnlig. Laster users.json på nytt hvis noen har endret den. Gir true hvis lastet.
@@ -96,6 +108,7 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"created": str(d.get("created", "")),
 		"elo": int(d.get("elo", 1200)),
 		"stats": clean_stats,
+		"last_puzzle": str(d.get("last_puzzle", "")),   # dato for sist løste oppgave (for rekken)
 		"profile": { "skin": str(profile.get("skin", "ocean")), "decal": str(profile.get("decal", "none")),
 			"win_fx": str(profile.get("win_fx", "classic")) },
 		"password": d.get("password", {}),
@@ -104,7 +117,8 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 
 const STAT_KEYS := ["games", "wins", "losses", "draws", "current_streak", "best_streak", "fastest_win",
 	"forced_moves", "double_threats", "best_forced_win", "wins_line", "wins_time", "wins_resign",
-	"wins_walkover", "losses_time", "losses_resign", "tournaments_won"]
+	"wins_walkover", "losses_time", "losses_resign", "tournaments_won", "puzzles_solved", "puzzle_streak",
+	"best_puzzle_streak"]
 
 
 func save_users() -> void:
@@ -161,15 +175,61 @@ func save_tournaments() -> void:
 	_write_json("tournaments.json", { "tournaments": tournaments, "next_id": next_tournament_id })
 
 
-func append_game(record: Dictionary) -> void:
+func save_puzzles() -> void:
+	_write_json("puzzles.json", puzzles)
+
+
+func save_global_chat() -> void:
+	_write_json("global_chat.json", global_chat)
+
+
+## Lagrer et ferdig parti (gir det en id) og gir id-en.
+func append_game(record: Dictionary) -> int:
+	record.id = games.size() + 1
+	games.append(record)
 	if dir == "":
-		return
+		return record.id
 	var path := dir.path_join("games.jsonl")
 	var f := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
-	if f == null:
+	if f != null:
+		f.seek_end()
+		f.store_line(JSON.stringify(record))
+	return record.id
+
+
+func get_game(id: int) -> Dictionary:
+	return games[id - 1] if id >= 1 and id <= games.size() else {}
+
+
+## De siste partiene til en bruker, nyeste først.
+func games_of(user_id: int, limit := 20) -> Array:
+	var out := []
+	for i in range(games.size() - 1, -1, -1):
+		var g: Dictionary = games[i]
+		for p in g.get("players", []):
+			if p is Dictionary and int(p.get("user", 0)) == user_id:
+				out.append(g)
+				break
+		if out.size() >= limit:
+			break
+	return out
+
+
+func _load_games() -> void:
+	games.clear()
+	var path := dir.path_join("games.jsonl")
+	if not FileAccess.file_exists(path):
 		return
-	f.seek_end()
-	f.store_line(JSON.stringify(record))
+	var f := FileAccess.open(path, FileAccess.READ)
+	while f and not f.eof_reached():
+		var line := f.get_line().strip_edges()
+		if line == "":
+			continue
+		var json := JSON.new()
+		var g = json.data if json.parse(line) == OK else null
+		if g is Dictionary:
+			g.id = games.size() + 1
+			games.append(g)
 
 
 # ---------------------------------------------------------------- Filer

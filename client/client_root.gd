@@ -190,6 +190,22 @@ func show_tournament_edit() -> void:
 	show_screen(TournamentEditScreen.new(self))
 
 
+func show_puzzle() -> void:
+	_end_match()
+	show_screen(PuzzleScreen.new(self))
+
+
+## Reprise av et lagret parti. back kalles når spilleren trykker «Tilbake».
+func show_replay(record: Dictionary, back: Callable) -> void:
+	_end_match()
+	show_screen(ReplayScreen.new(self, record, back))
+
+
+## Avslutter partiet som vises (f.eks. når en tilskuer går tilbake til turneringen).
+func end_match() -> void:
+	_end_match()
+
+
 func join_room(code: String) -> void:
 	_hide_banner()
 	Net.send({ "t": Protocol.JOIN_ROOM, "code": code })
