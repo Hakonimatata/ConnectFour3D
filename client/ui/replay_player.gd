@@ -66,6 +66,8 @@ func _ready() -> void:
 	row.add_child(_icon_button("first", func() -> void: _stop_and(func() -> void: seek(0))))
 	row.add_child(_icon_button("prev", func() -> void: _stop_and(func() -> void: seek(ply - 1))))
 	_play_button = _icon_button("play", _toggle_play)
+	_play_button.theme_type_variation = "PrimaryButton"
+	_play_button.custom_minimum_size.x = 64
 	row.add_child(_play_button)
 	row.add_child(_icon_button("next", func() -> void: _stop_and(func() -> void: seek(ply + 1, true))))
 	row.add_child(_icon_button("last", func() -> void: _stop_and(func() -> void: seek(entries.size()))))
@@ -185,14 +187,15 @@ static func _icon(kind: String) -> Texture2D:
 
 
 static func _inside(kind: String, p: Vector2) -> bool:
-	var tri_right := func(cx: float) -> bool: return p.x >= cx - 0.45 and absf(p.y) <= 0.6 * (1.0 - (p.x - (cx - 0.45)) / 0.9)
-	var tri_left := func(cx: float) -> bool: return p.x <= cx + 0.45 and absf(p.y) <= 0.6 * (1.0 - ((cx + 0.45) - p.x) / 0.9)
-	var bar := func(cx: float) -> bool: return absf(p.x - cx) <= 0.11 and absf(p.y) <= 0.6
+	# Trekant mot høyre/venstre med midtpunkt cx og halv bredde w, og en loddrett strek.
+	var right := func(cx: float, w: float) -> bool: return absf(p.y) <= 0.62 * (1.0 - (p.x - (cx - w)) / (2.0 * w)) and p.x >= cx - w
+	var left := func(cx: float, w: float) -> bool: return absf(p.y) <= 0.62 * (1.0 - ((cx + w) - p.x) / (2.0 * w)) and p.x <= cx + w
+	var bar := func(cx: float) -> bool: return absf(p.x - cx) <= 0.1 and absf(p.y) <= 0.62
 	match kind:
-		"play": return tri_right.call(0.1)
+		"play": return right.call(0.08, 0.5)                                       # stor ▶
 		"pause": return bar.call(-0.28) or bar.call(0.28)
-		"next": return tri_right.call(0.0)
-		"prev": return tri_left.call(0.0)
-		"last": return tri_right.call(-0.12) or bar.call(0.5)
-		"first": return tri_left.call(0.12) or bar.call(-0.5)
+		"next": return right.call(-0.12, 0.34) or bar.call(0.42)                   # ▶|  ett trekk fram
+		"prev": return left.call(0.12, 0.34) or bar.call(-0.42)                    # |◀  ett trekk tilbake
+		"last": return right.call(-0.42, 0.3) or right.call(0.12, 0.3) or bar.call(0.58)   # ▶▶|
+		"first": return left.call(0.42, 0.3) or left.call(-0.12, 0.3) or bar.call(-0.58)   # |◀◀
 	return false

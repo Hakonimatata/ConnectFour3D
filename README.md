@@ -188,7 +188,7 @@ HTTPS automatisk, og IP-adressen hjemme vises ikke.
 **Sjekket i runde 10:** web-eksporten bygger, serveren serverer web-klienten med gzip og `/ws`, og en
 hel turnering er testet over ekte WebSocket-tilkoblinger (`tests/test_tournament_online.gd`).
 
-**CI** (GitHub Actions) kjører testene ved hver push. På `main` eksporterer den også web-bygget og legger det ved som nedlastbar artefakt.
+**Tester** kjøres lokalt (se «Kom i gang»). Det er ingen automatisk CI på GitHub (fjernet etter runde 12, så det ikke kommer e-post ved hver push).
 
 ## Mappestruktur
 

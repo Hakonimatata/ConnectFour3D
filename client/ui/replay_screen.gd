@@ -28,7 +28,7 @@ func _ready() -> void:
 		var rec: Dictionary = recs[i] if i < recs.size() and recs[i] is Dictionary else {}
 		names[i + 1] = str(rec.get("name", tr("Spiller %d") % (i + 1)))
 		looks.append(Skins.look(str(rec.get("skin", Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2)),
-			str(rec.get("decal", "none")), "classic", false, str(rec.get("decal_color", "auto"))))
+			str(rec.get("decal", "none")), "classic", bool(rec.get("away", false)), str(rec.get("decal_color", "auto"))))
 	var pair := Skins.resolve_pair(looks[0], looks[1])
 	app.board.set_looks(pair[0], pair[1])
 	var colors := { 1: Skins.ui_color(pair[0]), 2: Skins.ui_color(pair[1]) }
@@ -62,9 +62,13 @@ func _ready() -> void:
 	var bottom := MarginContainer.new()
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	for side in ["left", "right", "bottom"]:
-		bottom.add_theme_constant_override("margin_" + side, 12)
+	var side_margin := maxf(12.0, (size.x - 820.0) * 0.5)
+	bottom.add_theme_constant_override("margin_left", side_margin)
+	bottom.add_theme_constant_override("margin_right", side_margin)
+	bottom.add_theme_constant_override("margin_bottom", 12)
 	add_child(bottom)
+	if size.x > size.y:
+		app.camera.view_offset = Vector2(0, -0.7)
 	player = ReplayPlayer.new(app.board, options, int(record.get("first", 1)), record.get("moves", []), names,
 		colors, false)
 	bottom.add_child(player)

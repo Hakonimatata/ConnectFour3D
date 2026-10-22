@@ -2,12 +2,14 @@
 
 Dette dokumentet er arbeidsplanen for prosjektet. Det beskriver hva som fantes ved start, hvilke valg vi tar (og hvorfor), hvordan alt henger sammen, og i hvilken rekkefølge vi bygger det.
 
-> **Status etter runde 10:**
+> **Status etter runde 12:**
 > - Fase 0–5 og 8–11 er ferdige: spillet, AI, online, invitasjonslenke, kontoer, statistikk/Elo og turneringer.
 > - Runde 7: reglene er på som standard, 20 skins med flere merker og brett-temaer, og forhåndsvisning på brettet.
 > - Runde 8: aktive turneringer på forsiden, 30 skins og Elo-merker (Bronse → Stormester) ved spillernavn.
 > - Runde 9: repriser med tvungne trekk markert, tilskuere på turneringskamper, merker på brikken som låses opp av Elo, dagens oppgave med toppliste, og global chat med «online» og hendelser i menyen.
 > - Runde 10: bedre mobil-layout (kompakt chat), 60 ekstra oppgaver i fire nivåer, raskere oppstart (små, spesialiserte shadere), navn bare for kontoer, og klart for hosting (også fra egen PC med eget domene).
+> - Runde 11: ikon (også i nettleseren), seiersanimasjonen «Kaos», scrolling med fingeren overalt, brettet synlig på mobil, fritt valg av drakt, og tydeligere repriser.
+> - Runde 12: «Logg inn» / «Min profil» ved profilbildet i hovedmenyen.
 > - Fase 6 (fast server) gjenstår, men skript for wifi og tunnel finnes allerede.
 > - Forslag til videre utvikling står i seksjon 14.
 >
@@ -144,7 +146,7 @@ Klokken fungerer som i sjakk: hver spiller har sin egen tidsbank, og bare den so
 | Lagring på klient | `ConfigFile` i `user://` | Navn, skin og lydvalg huskes. Fungerer også på web (lagres i IndexedDB). |
 | Lagring på server | **Ingen database** (alt i minnet) | Lettvekt. En omstart av serveren avslutter pågående kamper, noe som er akseptabelt for denne skalaen. |
 | Partikler | `CPUParticles3D` | Trygt og billig på mobil-web |
-| CI | GitHub Actions | Kjører tester ved hver push. På `main` eksporteres web-bygget som artefakt. |
+| CI | Ingen (fjernet etter runde 12) | Testene kjøres lokalt. GitHub Actions sendte e-post ved hver push. |
 | Hosting | **Én VPS med Docker Compose** (Caddy + spillserver) | Valgt i runde 2. Ett domene for alt, automatisk HTTPS, klienten finner serveren selv på `/ws`. Ingen CORS- eller URL-oppsett. |
 
 ---
@@ -237,7 +239,6 @@ ConnectFour3D/
 ├─ assets/            # brikkemodell og toon-shader
 ├─ tests/             # testløper + test_*.gd
 ├─ deploy/            # Dockerfile, docker-compose.yml, Caddyfile
-├─ .github/workflows/ # CI
 └─ README.md          # hvordan kjøre, teste, bygge og hoste
 ```
 
@@ -283,7 +284,8 @@ ConnectFour3D/
   - en gradient mellom to nære farger,
   - hver skin har **hjemme- og bortedrakt**. Ved lik skin bruker spiller 2 (gjesten) bortedrakt, og begge klientene regner likt,
   - 12 **merker** på toppen (stjerne, prikk, ring, kryss, diamant, hjerte, sekskant, måne, krone, lyn, pil), med valgfri **merkefarge** (automatisk, hvit, svart, gull eller draktfarge),
-  - 7 **seiersanimasjoner** (klassisk, fyrverkeri, konfetti, sjokkbølge, lyn, supernova, glitter). Vinnerens valg vises, også online.
+  - 8 **seiersanimasjoner** (klassisk, fyrverkeri, konfetti, sjokkbølge, lyn, supernova, glitter og «Kaos»: en kjempebrikke faller ned og spretter, alle brikkene kastes opp, det regner brikker og kameraet rister ekstra hardt). Vinnerens valg vises, også online.
+  - **Drakt (runde 11):** hver spiller velger hjemme- eller bortedrakt. Bare når begge har samme skin og drakt (eller for like farger) bytter gjesten til den andre.
   - 5 **brett-temaer** (skifer, eik med treårer, lys stein, midnatt, filt). Temaet gjelder bare din egen skjerm.
   - Alt er laget i kode, uten teksturer, så det er lett og virker på web og mobil.
   - *Forhåndsvisning (runde 7):* i innstillingene står dine brikker i hjemmedrakt mot bortedrakt på selve brettet, og seiersanimasjonen kan spilles av der. I venterommet ser begge brikkene slik de blir i partiet, og kan bytte skin før start (`set_look`).
@@ -457,12 +459,10 @@ godot --headless --path . --export-release "Web" build/web/index.html   # web-kl
 DOMAIN=… docker compose -f deploy/docker-compose.yml up -d --build      # alt i drift
 ```
 
-### 9.3 CI (GitHub Actions, `.github/workflows/ci.yml`)
+### 9.3 CI (fjernet etter runde 12)
 
-| Når | Hva skjer |
-|---|---|
-| Hver push | Testene kjøres |
-| Push til `main` | Web-bygget eksporteres og legges ved som artefakt |
+GitHub Actions kjørte testene ved hver push, men er fjernet fordi det kom e-post hver gang.
+Testene kjøres lokalt med testløperen. Ønskes CI igjen, ligger den gamle `.github/workflows/ci.yml` i git-historikken.
 
 ### 9.4 Manuell sjekkliste per release
 

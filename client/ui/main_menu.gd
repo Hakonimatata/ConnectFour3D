@@ -9,11 +9,13 @@ const MAX_TOURNAMENTS := 3
 var _demo: GameState
 var _demo_bot := Bot.new(BotProfile.create(BotProfile.Level.MEDIUM))
 var _panel: Control
+var _vbox: VBoxContainer
 var _tour_box: VBoxContainer
 var _tour_list: VBoxContainer
 var _badge: TextureRect
 var _chat: GlobalChat
 var _who_name: Label
+var _account_button: Button
 
 
 func _ready() -> void:
@@ -29,6 +31,7 @@ func _ready() -> void:
 	var card := PanelContainer.new()
 	_panel.add_child(card)
 	var v := UI.vbox(12)
+	_vbox = v
 	card.add_child(v)
 
 	v.add_child(UI.label("Fire på rad", "Title"))
@@ -61,7 +64,14 @@ func _ready() -> void:
 	who.add_child(_badge)
 	_who_name = UI.label(Settings.display_name(), "Muted")
 	_who_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_who_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_who_name.clip_text = true
+	_who_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	who.add_child(_who_name)
+	# Logg inn (gjest) eller Min profil (innlogget), rett ved profilbildet
+	_account_button = UI.button("Logg inn", _on_account_pressed, "GhostButton")
+	_account_button.custom_minimum_size.y = 36
+	who.add_child(_account_button)
 	v.add_child(who)
 
 	Net.message.connect(_on_net_message)
@@ -100,18 +110,33 @@ func _layout() -> void:
 	_panel.custom_minimum_size.x = w
 	# Flytt brettet bort fra kortet: opp på mobil, til høyre på PC.
 	if portrait:
-		_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 16)
-		app.camera.view_offset = Vector2(0, -1.1)
-		# Mobil: chatten er en smal linje øverst (antall online og siste melding). Åpnet dekker den
-		# plassen over menyen, så de aldri overlapper hverandre.
+		# Mobil: menyen midtstilt nederst og litt tettere, chatten som en smal linje øverst,
+		# og brettet midt i plassen mellom dem (og litt lenger unna, så det får plass).
+		w = minf(400.0, size.x - 20.0)
+		_panel.custom_minimum_size.x = w
+		_vbox.add_theme_constant_override("separation", 8)
+		var h := _panel.get_combined_minimum_size().y
+		_panel.anchor_left = 0.5
+		_panel.anchor_right = 0.5
+		_panel.anchor_top = 1.0
+		_panel.anchor_bottom = 1.0
+		_panel.offset_left = -w * 0.5
+		_panel.offset_right = w * 0.5
+		_panel.offset_top = -h - 10.0
+		_panel.offset_bottom = -10.0
+		var card_top := size.y - h - 10.0
 		_chat.compact = true
-		var card_top := size.y - _panel.get_combined_minimum_size().y - 16.0
 		_chat.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 		_chat.offset_left = 10
 		_chat.offset_right = -10
 		_chat.offset_top = 10
-		_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else 10 + _chat.get_combined_minimum_size().y
+		var chat_bottom := 10.0 + _chat.get_combined_minimum_size().y
+		_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else chat_bottom
+		app.camera.dist_target = app.camera.max_distance * 0.78
+		var px_per_unit := size.x / 10.5
+		app.camera.view_offset = Vector2(0, ((chat_bottom + card_top) * 0.5 - size.y * 0.5) / px_per_unit)
 	else:
+		_vbox.add_theme_constant_override("separation", 12)
 		_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 48)
 		app.camera.view_offset = Vector2(-1.2, -0.5)
 		# Chatten nede til høyre
@@ -139,8 +164,17 @@ func _on_net_message(msg: Dictionary) -> void:
 		show_tournaments(msg.get("tournaments", []))
 
 
+func _on_account_pressed() -> void:
+	Sfx.play("click")
+	if Net.is_logged_in():
+		app.show_profile("", true)
+	else:
+		app.show_account(true)
+
+
 func _update_badge() -> void:
 	_who_name.text = Settings.display_name()
+	_account_button.text = tr("Min profil") if Net.is_logged_in() else tr("Logg inn")
 	EloBadge.set_elo(_badge, int(Net.user.get("elo", -1)) if Net.is_logged_in() else -1, 20)
 
 

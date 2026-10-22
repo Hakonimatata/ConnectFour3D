@@ -253,11 +253,17 @@ func start_replay() -> void:
 	var holder := MarginContainer.new()
 	holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	holder.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	for side in ["left", "right", "bottom"]:
-		holder.add_theme_constant_override("margin_" + side, 12)
+	# På PC: smalere linje på midten, og brettet flyttes litt opp så linjen ikke dekker det.
+	var side_margin := maxf(12.0, (size.x - 820.0) * 0.5)
+	holder.add_theme_constant_override("margin_left", side_margin)
+	holder.add_theme_constant_override("margin_right", side_margin)
+	holder.add_theme_constant_override("margin_bottom", 12)
 	holder.add_child(_replay)
 	add_child(holder)
+	if size.x > size.y:
+		app.camera.view_offset = Vector2(0, -1.0)
 	_replay.closed.connect(func() -> void:
+		app.camera.view_offset = Vector2.ZERO
 		_replay.seek(_replay.entries.size())
 		app.board.clear_hints()
 		holder.queue_free()
@@ -401,11 +407,12 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		var color := match_ctrl.color_of(winner)
 		# Vent til den siste brikken har landet før smellet.
 		await get_tree().create_timer(0.38).timeout
-		WinFx.play(app.board, app.camera, line, color, str(match_ctrl.players[winner].get("win_fx", "classic")))
+		var fx := str(match_ctrl.players[winner].get("win_fx", "classic"))
+		WinFx.play(app.board, app.camera, line, color, fx)
 		_flash.color = Color(color.lerp(Color.WHITE, 0.7), 0.28)
 		var t := create_tween().set_ignore_time_scale(true)
 		t.tween_property(_flash, "color:a", 0.0, 0.4)
-		delay = 1.6
+		delay = 4.2 if fx == "chaos" else 1.6   # «Kaos» varer lenger: vent med resultatet
 	if me != 0 and winner != me and result != GameState.Result.DRAW:
 		Sfx.play("lose")
 	else:

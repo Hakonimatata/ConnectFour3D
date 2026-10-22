@@ -8,11 +8,13 @@ var _board_box: VBoxContainer
 var _board := "elo"
 var _boards: Dictionary = {}
 var _games_box: VBoxContainer
+var _back_to_menu := false
 
 
-func _init(p_app: ClientRoot, p_username := "") -> void:
+func _init(p_app: ClientRoot, p_username := "", back_to_menu := false) -> void:
 	super(p_app)
 	username = p_username
+	_back_to_menu = back_to_menu
 
 
 func _ready() -> void:
@@ -55,7 +57,7 @@ func _on_message(msg: Dictionary) -> void:
 			show_games(msg.get("games", []))
 		Protocol.GAME_RECORD:
 			if msg.get("game") is Dictionary:
-				app.show_replay(msg.game, app.show_profile.bind(username))
+				app.show_replay(msg.game, app.show_profile.bind(username, _back_to_menu))
 
 
 func _show_stats(u: Variant) -> void:
@@ -170,4 +172,7 @@ func show_games(games: Array) -> void:
 
 
 func _on_back() -> void:
-	app.show_online()
+	if _back_to_menu:
+		app.show_menu()
+	else:
+		app.show_online()

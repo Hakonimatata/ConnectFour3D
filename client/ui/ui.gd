@@ -233,6 +233,10 @@ static func centered_card(parent: Control, max_width := 460.0) -> VBoxContainer:
 ## åttendedel av det synlige området per hakk, noe som blir store hopp i høye vinduer.
 static func smooth_scroll(scroll: ScrollContainer, step := 70.0) -> void:
 	scroll.gui_input.connect(func(e: InputEvent) -> void:
+		# Touch (mus etterlignet fra touch): dra 1:1, også når fingeren starter på en knapp.
+		if e.device == InputEvent.DEVICE_ID_EMULATION and (e is InputEventMouseButton or e is InputEventMouseMotion):
+			_touch_scroll(scroll, e)
+			return
 		var mb := e as InputEventMouseButton
 		if mb == null or not mb.pressed:
 			return
@@ -246,7 +250,7 @@ static func smooth_scroll(scroll: ScrollContainer, step := 70.0) -> void:
 			target = scroll.scroll_vertical
 		target = clampf(target + dir * step * factor, 0.0, maxf(0.0, bar.max_value - bar.page))
 		scroll.set_meta("scroll_target", target)
-		var old = scroll.get_meta("scroll_tween", null)
+		var old = (scroll.get_meta("scroll_tween") if scroll.has_meta("scroll_tween") else null)
 		if old is Tween and (old as Tween).is_valid():
 			(old as Tween).kill()
 		var tw := scroll.create_tween()
@@ -254,6 +258,52 @@ static func smooth_scroll(scroll: ScrollContainer, step := 70.0) -> void:
 		scroll.set_meta("scroll_tween", tw)
 		scroll.accept_event()
 	)
+
+
+const TOUCH_SLOP := 10.0   ## så langt fingeren må flytte seg før det regnes som scrolling (ikke trykk)
+
+
+## Dra med fingeren: innholdet følger fingeren nøyaktig, og fortsetter litt ved et raskt sveip.
+## Knappen fingeren startet på får beskjed (NOTIFICATION_SCROLL_BEGIN), så den ikke trykkes.
+static func _touch_scroll(scroll: ScrollContainer, e: InputEvent) -> void:
+	var bar := scroll.get_v_scroll_bar()
+	var max_scroll := maxf(0.0, bar.max_value - bar.page)
+	var mb := e as InputEventMouseButton
+	if mb:
+		if mb.button_index != MOUSE_BUTTON_LEFT:
+			return
+		if mb.pressed:
+			var old = (scroll.get_meta("scroll_tween") if scroll.has_meta("scroll_tween") else null)
+			if old is Tween and (old as Tween).is_valid():
+				(old as Tween).kill()
+			scroll.set_meta("touch", { "down": true, "from": mb.position.y, "start": float(scroll.scroll_vertical),
+				"dragging": false, "vel": 0.0 })
+		else:
+			var st: Dictionary = scroll.get_meta("touch", {})
+			scroll.set_meta("touch", {})
+			if st.get("dragging", false):
+				var target := clampf(scroll.scroll_vertical - float(st.vel) * 0.3, 0.0, max_scroll)
+				var tw := scroll.create_tween()
+				tw.tween_property(scroll, "scroll_vertical", int(target), 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				scroll.set_meta("scroll_tween", tw)
+				scroll.set_meta("scroll_target", target)
+				scroll.accept_event()
+		return
+	var mm := e as InputEventMouseMotion
+	var st: Dictionary = scroll.get_meta("touch", {})
+	if mm == null or not st.get("down", false):
+		return
+	var dy: float = mm.position.y - float(st.from)
+	if not st.dragging and absf(dy) > TOUCH_SLOP:
+		st.dragging = true
+		st.from = mm.position.y
+		dy = 0.0
+		scroll.propagate_notification(Control.NOTIFICATION_SCROLL_BEGIN)
+	if st.dragging:
+		scroll.scroll_vertical = int(clampf(float(st.start) - dy, 0.0, max_scroll))
+		scroll.set_meta("scroll_target", float(scroll.scroll_vertical))
+		st.vel = mm.velocity.y
+		scroll.accept_event()
 
 
 ## Segmentert valg: en rad med knapper der én er valgt. on_change(indeks).

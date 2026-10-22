@@ -30,6 +30,7 @@ func _ready() -> void:
 	layer.add_child(ui)
 
 	get_window().size_changed.connect(_update_ui_scale)
+	get_tree().node_added.connect(_on_node_added)
 	_update_ui_scale()
 	Net.message.connect(_on_net_message)
 	Net.connected.connect(_on_net_connected)
@@ -127,6 +128,20 @@ func _reveal(control: Control) -> void:
 
 ## Skalerer UI etter skjermen: større på store skjermer, tettere på mobil.
 ## (Stretch-modus er «disabled», så 3D tegnes i full oppløsning.)
+## Knapper og felt inne i en ScrollContainer slipper musen/fingeren videre (PASS i stedet for STOP).
+## Da kan man scrolle ved å dra, også når fingeren starter på en knapp (f.eks. skin-knappene).
+func _on_node_added(n: Node) -> void:
+	var c := n as Control
+	if c == null or c.mouse_filter != Control.MOUSE_FILTER_STOP or c is ScrollContainer or c is Range:
+		return
+	var p := c.get_parent()
+	while p != null:
+		if p is ScrollContainer:
+			c.mouse_filter = Control.MOUSE_FILTER_PASS
+			return
+		p = p.get_parent()
+
+
 func _update_ui_scale() -> void:
 	var win := get_window()
 	var px := Vector2(win.size)
@@ -170,12 +185,13 @@ func show_room(room_state: Dictionary) -> void:
 	show_screen(RoomScreen.new(self, room_state))
 
 
-func show_account() -> void:
-	show_screen(AccountScreen.new(self))
+## back_to_menu: åpnet fra hovedmenyen, så «Tilbake» (og innlogging) går dit i stedet for til lobbyen.
+func show_account(back_to_menu := false) -> void:
+	show_screen(AccountScreen.new(self, back_to_menu))
 
 
-func show_profile(username := "") -> void:
-	show_screen(ProfileScreen.new(self, username))
+func show_profile(username := "", back_to_menu := false) -> void:
+	show_screen(ProfileScreen.new(self, username, back_to_menu))
 
 
 func show_tournaments() -> void:

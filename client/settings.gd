@@ -15,6 +15,7 @@ var skin_id := Skins.DEFAULT_P1
 var decal_id := "none"        ## Merke på toppen av brikken (Skins.DECALS)
 var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
 var decal_color_id := "auto"  ## Farge på merket (Skins.DECAL_COLORS)
+var kit_away := false         ## Drakten du vil bruke: false = hjemme, true = borte
 var board_theme := "slate"    ## Brett-tema (Skins.BOARDS), bare for deg selv
 var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardmeldinger på valgt språk.
 var language := "auto"
@@ -38,6 +39,7 @@ func _ready() -> void:
 		decal_id = str(cfg.get_value("player", "decal", decal_id))
 		win_fx_id = str(cfg.get_value("player", "win_fx", win_fx_id))
 		decal_color_id = str(cfg.get_value("player", "decal_color", decal_color_id))
+		kit_away = bool(cfg.get_value("player", "kit_away", false))
 		board_theme = str(cfg.get_value("app", "board_theme", board_theme))
 		chat_presets.assign(cfg.get_value("player", "chat_presets", []))
 		language = str(cfg.get_value("app", "language", language))
@@ -92,7 +94,7 @@ func set_chat_messages(msgs: Array[String]) -> void:
 ## Spillerens eget utseende (skin, merke, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen».
 func look() -> Dictionary:
 	var decal := decal_id if EloTiers.decal_unlocked(decal_id, known_elo()) else "none"
-	return Skins.look(skin_id, decal, win_fx_id, false, decal_color_id)
+	return Skins.look(skin_id, decal, win_fx_id, kit_away, decal_color_id)
 
 
 ## Navnet som vises: brukernavnet hvis du har konto, ellers gjestenavnet.
@@ -119,6 +121,7 @@ func save() -> void:
 	cfg.set_value("player", "decal", decal_id)
 	cfg.set_value("player", "win_fx", win_fx_id)
 	cfg.set_value("player", "decal_color", decal_color_id)
+	cfg.set_value("player", "kit_away", kit_away)
 	cfg.set_value("app", "board_theme", board_theme)
 	cfg.set_value("player", "chat_presets", chat_presets)
 	cfg.set_value("app", "language", language)

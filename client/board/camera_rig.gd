@@ -16,6 +16,7 @@ var min_distance := 4.0
 var max_distance := 14.0
 var auto_rotate := false         ## Brukes i menyen (sakte rotasjon)
 var view_offset := Vector2.ZERO  ## Flytter bildet sideveis/opp (f.eks. bort fra menykortet)
+var shake_boost := 1.0           ## > 1 = kraftigere rist (seiersanimasjonen «Kaos»)
 var target := Vector3.ZERO
 
 var _yaw := yaw_target
@@ -90,7 +91,7 @@ func _apply(delta: float) -> void:
 	var offset := basis * Vector3(0, 0, _dist)
 	global_position = target + offset
 	look_at(target, Vector3.UP)
-	camera.position = Vector3(sx * 0.6, sy * 0.6, 0)
-	camera.rotation = Vector3(0, 0, sr * 0.12)
+	camera.position = Vector3(sx * 0.6, sy * 0.6, 0) * shake_boost
+	camera.rotation = Vector3(0, 0, sr * 0.12 * shake_boost)
 	camera.h_offset = lerpf(camera.h_offset, view_offset.x, t)
 	camera.v_offset = lerpf(camera.v_offset, view_offset.y, t)

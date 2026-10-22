@@ -101,6 +101,7 @@ func _process(delta: float) -> void:
 				_socket_open = true
 				send({ "t": Protocol.HELLO, "name": Settings.display_name(), "skin": Settings.skin_id,
 					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id,
+					"away": Settings.kit_away,
 					"avatar": Settings.avatar,
 					"version": Protocol.VERSION, "token": _token, "session": Settings.session_token })
 			while _ws and _ws.get_available_packet_count() > 0:
@@ -150,7 +151,7 @@ func _handle(msg: Dictionary) -> void:
 ## Sender nytt utseende til serveren (f.eks. byttet skin i venterommet).
 func send_look() -> void:
 	send({ "t": Protocol.SET_LOOK, "skin": Settings.skin_id, "decal": Settings.decal_id,
-		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id })
+		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id, "away": Settings.kit_away })
 
 
 func is_logged_in() -> bool:

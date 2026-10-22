@@ -167,6 +167,25 @@
 
 - Test at alt fungerer og er klart til hosting senere. Test at turneringen fungerer. Kan jeg bruke maskinen min og kjøpe et domene?
 
+## Runde 11
+
+- Fiks et kult ikon. Hold det enkelt. Kan dette komme opp i nettleser?
+
+- lag en til og mye mer absurd win animasjon. Mye camera shake.
+
+- scrollingen på telefon i innstillinger er ikke helt en til en. Den lar meg ikke scrolle når skin knappene er der. Brettet i startskjerm er fortsatt gjemt bak menyen. Kanskje flytte brettet litt opp og sentrere menyen og få den litt tettere ned på telefon.
+
+- Man bør kunne bytte skin variasjon. Det er kun når to er like at man blir låst til en.
+
+- Kan heller ikke scrolle i rom-meny. Gå over og fiks dette!
+
+- Se partiet igjen: Play og neste er helt lik. Lag en liten distinksjon. På pc dekker replay baren litt av brettet. Fiks dette. På telefon er den ok.
+
+## Rune 12
+
+- Ved profilbilde i hovedmeny bør man ha en login knapp
+
+- Fjern github workflow test. Jeg orker ikke mails fra github
 
 ## Til senere
 

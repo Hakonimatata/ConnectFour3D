@@ -69,6 +69,14 @@ func _ready() -> void:
 		b.custom_minimum_size = Vector2(44, 40)
 		b.pressed.connect(_pick_skin.bind(str(skin.id)))
 		_skin_picker.add_child(b)
+	var kit := UI.button("Bytt drakt", func() -> void:
+		Sfx.play("click")
+		Settings.kit_away = not Settings.kit_away
+		Settings.save()
+		Net.send_look()
+	)
+	kit.custom_minimum_size = Vector2(0, 40)
+	_skin_picker.add_child(kit)
 	v.add_child(_skin_picker)
 
 	var row := UI.hbox(10)
@@ -166,7 +174,7 @@ func _show_matchup(players: Array, you: int) -> void:
 			continue
 		var seat := int(info.seat)
 		looks[seat] = Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
-			str(info.get("win_fx", "classic")), false, str(info.get("decal_color", "auto")))
+			str(info.get("win_fx", "classic")), bool(info.get("away", false)), str(info.get("decal_color", "auto")))
 		names[seat] = tr("Deg") if seat == you else str(info.name)
 	if looks.size() < 2:
 		_preview.set_look(looks.get(you, Settings.look()))

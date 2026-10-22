@@ -264,3 +264,30 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - 112 automatiske tester, alle grønne. Nye: oppgavebanken (gyldige oppgaver på alle nivåer), oppgaveskjermen med banken, og hele turneringen over WebSockets.
 - Web-eksporten bygger (37,7 MB wasm, 10 MB komprimert), og den ekte serveren serverer den.
 - Skjermbilder av mobil-menyen (chat lukket og åpen), oppgavene på Ekspert, innstillinger uten navnefelt og alle 30 skins.
+
+## Runde 11 – Ikon, «Kaos», scrolling på mobil, drakter og repriser
+
+| Ønske | Løsning |
+|---|---|
+| Kult og enkelt ikon, også i nettleseren | `icon.svg`: fire blå brikker som trapp oppover på skrå over en glødende vinnerlinje (fire på rad i 3D). Den er satt som prosjektikon, så web-eksporten lager fanikon (`index.icon.png`) og ikon for hjemskjermen på iPhone. Det er sjekket i det eksporterte bygget. |
+| En ny og mye mer absurd seiersanimasjon | **Kaos**: en kjempebrikke i vinnerens drakt faller fra himmelen og spretter tre ganger med smell og regnbuegnister. Alle brikkene på brettet kastes opp, snurrer og lander igjen, og 50 små brikker i alle farger regner ned. Kameraet rister nesten tre ganger så hardt som vanlig i fire sekunder. Resultatet vises først når showet er ferdig. |
+| Scrolling på telefon i innstillinger og venterom | Knappene «slukte» fingeren, så scrollingen aldri startet. Nå slipper alle knapper og felt inne i en scrolleflate fingeren videre. Scrollingen er skrevet om: innholdet følger fingeren 1:1 og glir litt videre ved et raskt sveip. Knappen fingeren startet på blir ikke trykket. Dette gjelder alle skjermer (innstillinger, venterom, lobby, profil, oppgaver). Ny test sjekker at et drag over en skin-knapp scroller uten å velge skinnet. |
+| Brettet gjemt bak menyen på mobil | Menyen er midtstilt nederst og litt tettere. Brettet zoomes litt ut og plasseres midt mellom chat-linjen og menyen. |
+| Velge drakt selv | Ny innstilling «Drakt: Hjemme / Borte». Bare når begge har samme skin og drakt, eller fargene er for like, bytter gjesten til den andre drakten. I venterommet ligger «Bytt drakt» ved skin-valget. Drakten sendes til serveren og lagres i repriser. |
+| Reprise: spill av og neste var like, og linjen dekket brettet på PC | Nye ikoner: stor ▶ (fremhevet) for spill av, ▶| og |◀ for ett trekk, ▶▶| og |◀◀ for slutt og start. På PC er linjen smalere og midtstilt, og brettet flyttes opp mens reprisen vises. |
+
+**Også fikset:**
+- Oppgaveskjermen kunne bytte ut en oppgave midt i et forsøk når dagens oppgave kom fra serveren, eller når reserven uten nett slo inn. Nå skjer det bare når ingen oppgave er i gang.
+- Første hakk med musehjulet ga en feilmelding i loggen (`get_meta` med `null` som standardverdi). Rettet.
+
+**Testet:** 114 automatiske tester, alle grønne (nye: drakt-valg, touch-scrolling over knapper, ulike ikoner i reprisen; «Kaos» kjøres av testen for alle seiersanimasjoner). Skjermbilder av ikonet, «Kaos», reprisen på PC, drakt-valget og mobil-menyen.
+
+## Runde 12 – Logg inn fra hovedmenyen
+
+| Ønske | Løsning |
+|---|---|
+| Login-knapp ved profilbildet i hovedmenyen | Ved profilbildet og navnet står nå **«Logg inn»** for gjester og **«Min profil»** for innloggede (knappen bytter med en gang du logger inn eller ut). Innloggingen kobler til serveren selv. Etter innlogging eller «Tilbake» kommer du tilbake til hovedmenyen, ikke til lobbyen. Det samme gjelder «Min profil». Slår en husket innlogging inn mens skjermen er åpen, går den tilbake til menyen med en gang. |
+
+**Testet:** 115 automatiske tester, alle grønne (ny: knappen åpner innloggingen, og «Tilbake» går til menyen). Skjermbilder av menyen på PC og mobil.
+
+**Etter runde 12:** GitHub-workflowen (`.github/workflows/ci.yml`) er fjernet, så GitHub ikke kjører tester og sender e-post ved hver push. Testene kjøres lokalt som før.

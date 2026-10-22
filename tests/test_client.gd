@@ -73,6 +73,19 @@ func test_menu_shows_active_tournaments() -> void:
 		"menyen skal gi opp når serveren ikke svarer")
 
 
+func test_menu_login_button_opens_account_and_back() -> void:
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	check(menu._account_button.visible, "knappen vises ved profilbildet")
+	check_eq(menu._account_button.text, "Logg inn", "gjester ser «Logg inn»:")
+	menu._on_account_pressed()
+	await _frames(2)
+	check(_screen() is AccountScreen, "innloggingen åpnes")
+	(_screen() as AccountScreen)._on_back()
+	await _frames(2)
+	check(_screen() is MainMenu, "tilbake går til menyen")
+
+
 func test_ai_game_to_the_end() -> void:
 	var o := GameOptions.new()
 	o.must_block = true
@@ -101,6 +114,62 @@ func test_ai_game_to_the_end() -> void:
 	await _frames(2)
 	check(not m.state.is_over(), "nytt parti startet ikke")
 	check_eq(m.game_number, 2)
+
+
+func test_touch_drag_scrolls_settings_without_pressing_buttons() -> void:
+	var old_size := app.get_window().size
+	app.get_window().size = Vector2i(1280, 720)   # hodeløst er vinduet bare 64×64
+	await _frames(2)
+	app.show_settings()
+	await _frames(3)
+	var screen := _screen() as SettingsScreen
+	var scroll := screen.find_children("*", "ScrollContainer", true, false)[0] as ScrollContainer
+	var old_skin := Settings.skin_id
+	var target: Button = null
+	for b in screen.find_children("*", "Button", true, false):
+		if (b as Button).icon != null and (b as Button).text == "Lava":
+			target = b
+	check(target != null, "fant skin-knappen")
+	check_eq(target.mouse_filter, Control.MOUSE_FILTER_PASS, "knapper i scroll slipper fingeren videre:")
+	var vp := get_window_viewport()
+	var to_window := vp.get_final_transform()   # UI-skalaen: fra lerretet til vindusposisjoner
+	var start := to_window * target.get_global_rect().get_center()
+	_touch(vp, start, true)
+	for i in 8:
+		_drag(vp, start + Vector2(0, -20.0 * (i + 1)), Vector2(0, -20))
+		await _frames(1)
+	_touch(vp, start + Vector2(0, -160), false)
+	await _frames(2)
+	check(scroll.scroll_vertical >= 100, "innholdet fulgte fingeren (scroll = %d)" % scroll.scroll_vertical)
+	check_eq(Settings.skin_id, old_skin, "skin ble ikke valgt av et drag:")
+	Settings.skin_id = old_skin
+	app.get_window().size = old_size
+
+
+func get_window_viewport() -> Viewport:
+	return app.get_viewport()
+
+
+func _touch(vp: Viewport, at: Vector2, pressed: bool) -> void:
+	var e := InputEventMouseButton.new()
+	e.device = InputEvent.DEVICE_ID_EMULATION
+	e.button_index = MOUSE_BUTTON_LEFT
+	e.pressed = pressed
+	e.position = at
+	e.global_position = at
+	e.button_mask = MOUSE_BUTTON_MASK_LEFT if pressed else 0
+	vp.push_input(e)
+
+
+func _drag(vp: Viewport, at: Vector2, rel: Vector2) -> void:
+	var e := InputEventMouseMotion.new()
+	e.device = InputEvent.DEVICE_ID_EMULATION
+	e.position = at
+	e.global_position = at
+	e.relative = rel
+	e.velocity = rel * 60.0
+	e.button_mask = MOUSE_BUTTON_MASK_LEFT
+	vp.push_input(e)
 
 
 func test_settings_avatar_pick_and_clear() -> void:
@@ -168,6 +237,9 @@ func test_replay_after_game_and_from_record() -> void:
 	check(gs._replay.entries[4].forced, "trekk 5 (tre på rad) er tvunget")
 	gs._replay.seek(7)
 	check_eq(app.board._pieces.size(), 7)
+	var play_img := ReplayPlayer._icon("play").get_image()
+	var next_img := ReplayPlayer._icon("next").get_image()
+	check(play_img.get_data() != next_img.get_data(), "spill av og neste ser forskjellige ut")
 	gs._replay.closed.emit()
 	await _frames(1)
 	check(gs._replay == null and gs._result_overlay.visible, "«Lukk» gir resultatet tilbake")

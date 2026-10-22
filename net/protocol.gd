@@ -35,7 +35,7 @@ const TOURNAMENT_LEAVE := "tournament_leave"   ## { id }
 const TOURNAMENT_CREATE := "tournament_create" ## { data }        (admin)
 const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (admin)
 const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publish, start, cancel, delete)
-const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color }  (f.eks. byttet skin i venterommet)
+const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away }  (f.eks. byttet skin i venterommet)
 # Runde 9: tilskuere, global chat, dagens oppgave og repriser
 const WATCH := "watch"               ## { code }  (se på en turneringskamp)
 const GLOBAL_CHAT := "global_chat"   ## { text }

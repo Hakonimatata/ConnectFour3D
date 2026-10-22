@@ -71,7 +71,7 @@ func _ready() -> void:
 
 	# --- Brikke
 	v.add_child(UI.section("Brikke"))
-	v.add_child(UI.label("Brettet viser dine brikker i hjemmedrakt mot bortedrakt (bortedrakten brukes når motstanderen har samme skin).",
+	v.add_child(UI.label("Brettet viser drakten din mot den andre drakten. Har motstanderen samme skin og drakt, bytter gjesten til den andre.",
 		"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 	var grid := HFlowContainer.new()
 	grid.add_theme_constant_override("h_separation", 8)
@@ -100,6 +100,12 @@ func _ready() -> void:
 		)
 		grid.add_child(b)
 	v.add_child(grid)
+
+	v.add_child(UI.section("Drakt"))
+	v.add_child(UI.choice(["Hjemme", "Borte"], 1 if Settings.kit_away else 0, func(i: int) -> void:
+		Settings.kit_away = i == 1
+		_apply_looks()
+	))
 
 	v.add_child(UI.section("Merke på toppen"))
 	v.add_child(_decal_picker())
@@ -219,10 +225,10 @@ func _layout() -> void:
 
 ## Brettet viser hjemmedrakt (spiller 1) mot bortedrakt (spiller 2) med valgt merke.
 func _apply_looks() -> void:
-	var home := Settings.look()
-	var away := home.duplicate()
-	away.away = true
-	app.board.set_looks(home, away)
+	var mine := Settings.look()
+	var other := mine.duplicate()
+	other.away = not mine.away
+	app.board.set_looks(mine, other)
 	app.board.refresh_pieces()
 	_refresh_avatar()
 

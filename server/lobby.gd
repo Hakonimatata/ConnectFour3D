@@ -22,6 +22,7 @@ class Player:
 	var decal := "none"
 	var win_fx := "classic"
 	var decal_color := "auto"
+	var away := false              ## valgt drakt (bortedrakt)
 	var avatar := ""               ## base64-JPEG, sjekket med AvatarData.is_valid
 	var token: String
 	var peer := 0                  ## 0 = frakoblet
@@ -219,6 +220,7 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 	p.decal = str(msg.get("decal", "none")).substr(0, 24)
 	p.win_fx = str(msg.get("win_fx", "classic")).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", "auto")).substr(0, 24)
+	p.away = bool(msg.get("away", false))
 	var avatar = msg.get("avatar", "")
 	p.avatar = avatar if AvatarData.is_valid(avatar) else ""
 	p.peer = peer
@@ -523,7 +525,7 @@ func _players_info(room: Room) -> Array:
 		var p: Player = players[id]
 		var user: Dictionary = store.users.get(p.user_id, {}) if p.user_id != 0 else {}
 		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "decal": _decal_for(p), "win_fx": p.win_fx,
-			"decal_color": p.decal_color, "avatar": p.avatar,
+			"decal_color": p.decal_color, "away": p.away, "avatar": p.avatar,
 			"ready": room.ready[seat], "connected": p.peer != 0, "account": p.user_id != 0,
 			"elo": user.get("elo") if not user.is_empty() else null })
 	return out
@@ -613,6 +615,7 @@ func _set_look(p: Player, msg: Dictionary) -> void:
 	p.decal = str(msg.get("decal", p.decal)).substr(0, 24)
 	p.win_fx = str(msg.get("win_fx", p.win_fx)).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", p.decal_color)).substr(0, 24)
+	p.away = bool(msg.get("away", p.away))
 	if p.user_id != 0:
 		accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx, p.avatar)
 	var room := _room_of(p)
@@ -643,6 +646,7 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 		return {}
 	var p: Player = players[id]
 	return { "name": p.name, "user": p.user_id, "skin": p.skin, "decal": _decal_for(p), "decal_color": p.decal_color,
+		"away": p.away,
 		"elo": _elo_of(p) }
 
 

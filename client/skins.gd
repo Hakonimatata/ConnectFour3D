@@ -95,6 +95,7 @@ const WIN_FX: Array[Dictionary] = [
 	{ "id": "lightning", "name": "Lyn" },
 	{ "id": "supernova", "name": "Supernova" },
 	{ "id": "glitter", "name": "Glitter" },
+	{ "id": "chaos", "name": "Kaos" },
 ]
 
 static var _base_code := ""
@@ -180,15 +181,16 @@ static func color_of(id: String) -> Color:
 	return get_skin(id).home.ui
 
 
-## Gjør to looks lette å skille: spiller 2 får bortedrakt ved lik skin eller lik farge.
+## Gjør to looks lette å skille. Hver spiller velger selv drakt (hjemme eller borte). Bare når
+## begge har samme skin og drakt, eller fargene er for like, bytter spiller 2 til den andre drakten.
 ## Er den fortsatt for lik, byttes spiller 2 til en annen skin.
 static func resolve_pair(l1: Dictionary, l2: Dictionary) -> Array[Dictionary]:
 	var a := l1.duplicate()
 	var b := l2.duplicate()
-	a.away = false
-	b.away = false
-	if a.skin == b.skin or _distance(ui_color(a), ui_color(b)) < SIMILAR:
-		b.away = true
+	a.away = bool(a.get("away", false))
+	b.away = bool(b.get("away", false))
+	if (a.skin == b.skin and a.away == b.away) or _distance(ui_color(a), ui_color(b)) < SIMILAR:
+		b.away = not b.away
 	if _distance(ui_color(a), ui_color(b)) < SIMILAR:
 		for candidate in [DEFAULT_P2, DEFAULT_P1, "lime", "violet"]:
 			b.skin = candidate

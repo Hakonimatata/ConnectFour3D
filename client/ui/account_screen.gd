@@ -10,6 +10,12 @@ var _status: Label
 var _submit: Button
 var _toggle: Button
 var _title: Label
+var _back_to_menu := false
+
+
+func _init(p_app: ClientRoot, back_to_menu := false) -> void:
+	super(p_app)
+	_back_to_menu = back_to_menu
 
 
 func _ready() -> void:
@@ -47,10 +53,22 @@ func _ready() -> void:
 	v.add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
+	Net.connected.connect(_on_connected)
+	Net.ensure_connected()   # fra hovedmenyen er vi kanskje ikke tilkoblet ennå
+	if not Net.is_online():
+		_status.text = tr("Kobler til…")
 	if not Net.can_send_password():
 		_status.text = tr("Passord kan bare sendes over en sikker forbindelse (https). Innlogging er slått av her.")
 		_status.add_theme_color_override("font_color", UI.DANGER)
 	_refresh()
+
+
+func _on_connected(_resumed: bool) -> void:
+	if _status.text == tr("Kobler til…"):
+		_status.text = ""
+	_refresh()
+	if Net.is_logged_in():
+		_on_back()   # husket innlogging slo inn med en gang
 
 
 func _refresh() -> void:
@@ -77,7 +95,7 @@ func _on_submit() -> void:
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.SESSION:
-			app.show_online()
+			_on_back()
 		Protocol.AUTH_ERROR:
 			_show_error(I18n.server_text(msg))
 			_submit.disabled = false
@@ -89,4 +107,7 @@ func _show_error(text: String) -> void:
 
 
 func _on_back() -> void:
-	app.show_online()
+	if _back_to_menu:
+		app.show_menu()
+	else:
+		app.show_online()

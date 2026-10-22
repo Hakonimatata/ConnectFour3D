@@ -20,6 +20,17 @@ func test_same_skin_gives_away_kit_to_player_two() -> void:
 	check_eq(different[1].away, false, "ulike skins trenger ikke bortedrakt:")
 
 
+func test_players_choose_their_own_kit() -> void:
+	var a := Skins.look("gold", "none", "classic", true)
+	var pair := Skins.resolve_pair(a, Skins.look("gold"))
+	check_eq(pair[0].away, true, "valgt bortedrakt beholdes:")
+	check_eq(pair[1].away, false, "ulik drakt: ingen bytte:")
+	pair = Skins.resolve_pair(a, Skins.look("gold", "none", "classic", true))
+	check_eq(pair[1].away, false, "samme skin og drakt: gjesten bytter:")
+	pair = Skins.resolve_pair(Skins.look("ocean"), Skins.look("ember", "none", "classic", true))
+	check_eq(pair[1].away, true, "ulike skins: drakten man valgte:")
+
+
 func test_every_skin_pair_is_distinguishable() -> void:
 	for a in Skins.ALL:
 		for b in Skins.ALL:

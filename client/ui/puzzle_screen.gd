@@ -103,7 +103,7 @@ func _ready() -> void:
 	await get_tree().create_timer(OFFLINE_AFTER_S).timeout
 	if is_inside_tree() and _daily.is_empty():
 		_daily = Puzzle.generate(Time.get_date_string_from_system())
-		if _mode == 0:
+		if _mode == 0 and _puzzle.is_empty():
 			load_puzzle(_daily)
 		_solvers_box.add_child(UI.label("Uten nett: løsningen kommer ikke på listen.", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 
@@ -151,7 +151,8 @@ func _on_message(msg: Dictionary) -> void:
 			var p = msg.get("puzzle")
 			if p is Dictionary and not p.is_empty() and str(p.get("day", "")) != str(_daily.get("day", "-")):
 				_daily = p
-				if _mode == 0:
+				# Bytt bare hvis ingen oppgave er i gang (ikke midt i et forsøk).
+				if _mode == 0 and (_puzzle.is_empty() or _my_moves.is_empty()):
 					load_puzzle(p)
 			_show_solvers(msg.get("solvers", []), int(msg.get("count", 0)))
 			if bool(msg.get("solved", false)) and not _solved:

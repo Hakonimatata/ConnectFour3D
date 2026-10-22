@@ -8,6 +8,8 @@ extends RefCounted
 ##   lightning  lyn slår ned i de fire brikkene
 ##   supernova  linjen trekkes sammen, så et blendende lysglimt og en kraftig utblåsning
 ##   glitter    gull- og sølvdryss som daler stille over brettet
+##   chaos      en kjempebrikke faller ned og spretter, alle brikkene kastes opp, det regner
+##              brikker i alle farger, og kameraet rister som aldri før
 ## Alle har kamerarist, kort sakte film og vibrasjon.
 
 
@@ -19,6 +21,7 @@ static func play(board: BoardView, camera: CameraRig, line: Array, color: Color,
 		"lightning": _lightning(board, camera, line, color)
 		"supernova": _supernova(board, camera, line, color)
 		"glitter": _glitter(board, camera, line, color)
+		"chaos": _chaos(board, camera, line, color)
 		_: _classic(board, camera, line, color)
 	Settings.vibrate(250)
 	_slow_motion(board)
@@ -310,6 +313,92 @@ static func _glitter(board: BoardView, camera: CameraRig, line: Array, color: Co
 # ---------------------------------------------------------------- Felles
 
 ## Et smell av gnister. Brukes også av andre effekter.
+# ---------------------------------------------------------------- Kaos
+
+static func _chaos(board: BoardView, camera: CameraRig, line: Array, color: Color) -> void:
+	# Kameraet rister ekstra hardt i flere sekunder
+	camera.shake_boost = 2.8
+	var shake := camera.create_tween()
+	for i in 24:
+		shake.tween_callback(camera.add_trauma.bind(0.55))
+		shake.tween_interval(0.12)
+	shake.tween_property(camera, "shake_boost", 1.0, 0.9)
+
+	# En kjempebrikke i vinnerens drakt faller fra himmelen og spretter tre ganger
+	var giant := MeshInstance3D.new()
+	giant.mesh = board._piece_mesh
+	var src: MeshInstance3D = board._pieces.get(line[0])
+	giant.material_override = src.material_override.duplicate() if src else _glow_material(color, 1.0)
+	var big := BoardView.PIECE_SCALE * 6.0
+	giant.scale = Vector3.ONE * big
+	board.add_child(giant)
+	var land := Vector3(0, BoardView.LAYER * 0.2, 0)
+	giant.position = land + Vector3(0, 30, 0)
+	giant.rotation = Vector3(0.7, 0.0, 0.5)
+	var t := giant.create_tween()
+	t.tween_property(giant, "position", land, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.parallel().tween_property(giant, "rotation", Vector3.ZERO, 0.6)
+	var heights := [6.0, 3.0, 0.0]
+	for i in 3:
+		t.tween_callback(_impact.bind(board, camera, land, i))
+		t.tween_property(giant, "scale", Vector3(big * 1.4, big * 0.55, big * 1.4), 0.07)
+		t.tween_property(giant, "scale", Vector3.ONE * big, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		if heights[i] > 0.0:
+			t.tween_property(giant, "position", land + Vector3(0, heights[i], 0), 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			t.tween_property(giant, "position", land, 0.32).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	t.tween_property(giant, "rotation:y", TAU * 2.0, 0.8).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	t.tween_property(giant, "scale", Vector3.ZERO, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+	t.tween_callback(giant.queue_free)
+
+
+## Et nedslag fra kjempebrikken: smell, regnbuegnister, og (første gang) alt kastes opp.
+static func _impact(board: BoardView, camera: CameraRig, at: Vector3, n: int) -> void:
+	camera.add_trauma(1.0)
+	Sfx.play("boom", 0.6 + n * 0.2)
+	Settings.vibrate(150)
+	for k in 7:
+		var off := Vector3(randf_range(-2.5, 2.5), 0.4, randf_range(-2.5, 2.5))
+		burst(board, at + off, Color.from_hsv(randf(), 0.8, 1.0), 36, 10.0 - n * 2.0)
+	if n == 0:
+		_launch_pieces(board)
+		_piece_rain(board)
+
+
+## Alle brikkene på brettet kastes opp i lufta, snurrer, og lander der de sto.
+static func _launch_pieces(board: BoardView) -> void:
+	for piece: MeshInstance3D in board._pieces.values():
+		var root := piece.get_parent() as Node3D
+		if root == null:
+			continue
+		var start := root.position
+		var up := Vector3(randf_range(-0.8, 0.8), randf_range(2.5, 6.0), randf_range(-0.8, 0.8))
+		var t := root.create_tween()
+		t.tween_interval(randf() * 0.15)
+		t.tween_property(root, "position", start + up, 0.45).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		t.tween_property(root, "position", start, 0.5).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		var spin := piece.create_tween()
+		spin.tween_property(piece, "rotation", Vector3(randf_range(-9, 9), randf_range(-9, 9), randf_range(-9, 9)), 0.55)
+		spin.tween_property(piece, "rotation", Vector3.ZERO, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Små brikker i alle regnbuens farger regner ned over brettet.
+static func _piece_rain(board: BoardView) -> void:
+	var half := board.size * BoardView.SPACING * 0.5 + 1.5
+	for i in 50:
+		var m := MeshInstance3D.new()
+		m.mesh = board._piece_mesh
+		m.material_override = _glow_material(Color.from_hsv(randf(), 0.75, 1.0), 1.0)
+		m.scale = Vector3.ONE * BoardView.PIECE_SCALE * randf_range(0.35, 0.75)
+		board.add_child(m)
+		m.position = Vector3(randf_range(-half, half), 10.0 + randf() * 8.0, randf_range(-half, half))
+		m.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+		var t := m.create_tween()
+		t.tween_interval(randf() * 1.2)
+		t.tween_property(m, "position:y", -2.0, randf_range(0.9, 1.6)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		t.parallel().tween_property(m, "rotation", m.rotation + Vector3(randf_range(-9, 9), randf_range(-9, 9), randf_range(-9, 9)), 1.6)
+		t.tween_callback(m.queue_free)
+
+
 static func burst(parent: Node3D, at: Vector3, color: Color, amount: int, speed: float, lifetime := 1.8) -> void:
 	var p := CPUParticles3D.new()
 	p.one_shot = true

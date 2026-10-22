@@ -182,8 +182,8 @@ const EN := {
 	"Velg profilbilde": "Choose profile picture",
 	"Bilder": "Images",
 	"Brikke": "Piece",
-	"Brettet viser dine brikker i hjemmedrakt mot bortedrakt (bortedrakten brukes når motstanderen har samme skin).":
-		"The board shows your pieces in the home kit against the away kit (the away kit is used when your opponent has the same skin).",
+	"Brettet viser drakten din mot den andre drakten. Har motstanderen samme skin og drakt, bytter gjesten til den andre.":
+		"The board shows your kit against the other kit. If your opponent has the same skin and kit, the guest switches to the other one.",
 	"Merke på toppen": "Top decal",
 	"Seiersanimasjon": "Victory animation",
 	"Hurtigmeldinger i chatten": "Quick chat messages",
@@ -487,4 +487,10 @@ const EN := {
 	"Du spiller som %s.": "You play as %s.",
 	"Navnet kommer fra kontoen din.": "The name comes from your account.",
 	"Lag en konto under «Spill online» for å få eget navn.": "Create an account under «Play online» to get your own name.",
+	# Runde 11
+	"Kaos": "Chaos",
+	"Drakt": "Kit",
+	"Hjemme": "Home",
+	"Borte": "Away",
+	"Bytt drakt": "Switch kit",
 }
