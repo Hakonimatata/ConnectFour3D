@@ -238,6 +238,8 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		"user": accounts.public_info(user) if not user.is_empty() else null })
 	send.call(peer, social.history_message())
 	send.call(peer, presence_message())
+	if not store.games.is_empty():
+		send.call(peer, last_game_message())
 	_presence_dirty = true
 
 	var room := _room_of(p)
@@ -516,6 +518,7 @@ func _game_over(room: Room, now: int) -> void:
 		"result": s.result, "reason": s.end_reason, "analysis": { "1": analysis[1], "2": analysis[2] },
 		"elo": elo, "tournament": room.match_id,
 	})
+	_broadcast_all(last_game_message())   # hovedmenyen hos alle viser det siste partiet
 	var elo_json := {}
 	for seat in elo:
 		elo_json[str(seat)] = elo[seat]
@@ -824,6 +827,13 @@ func _drop_spectators(room: Room, key: String, args: Array = []) -> void:
 
 
 # ---------------------------------------------------------------- Global chat, online og hendelser
+
+## Det siste ferdige partiet (uten analysen), til hovedmenyen.
+func last_game_message() -> Dictionary:
+	var g: Dictionary = store.games[-1].duplicate()
+	g.erase("analysis")
+	return { "t": Protocol.LAST_GAME, "game": g }
+
 
 func presence_message() -> Dictionary:
 	var online := 0

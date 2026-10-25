@@ -22,6 +22,7 @@ var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stat
 ## (serveren sender historikken bare rett etter tilkobling).
 var global_messages: Array = []
 var presence := { "online": 0, "playing": 0 }
+var last_game: Dictionary = {}  ## siste ferdige parti på serveren (hovedmenyen spiller det av)
 const GLOBAL_KEEP := 60
 
 var _ws: WebSocketPeer
@@ -138,6 +139,9 @@ func _handle(msg: Dictionary) -> void:
 				global_messages = global_messages.slice(global_messages.size() - GLOBAL_KEEP)
 		Protocol.PRESENCE:
 			presence = { "online": int(msg.get("online", 0)), "playing": int(msg.get("playing", 0)) }
+		Protocol.LAST_GAME:
+			if msg.get("game") is Dictionary:
+				last_game = msg.game
 	if msg.t == Protocol.WELCOME:
 		var resumed := _token != "" and bool(msg.get("resumed", false))
 		_token = str(msg.get("token", ""))

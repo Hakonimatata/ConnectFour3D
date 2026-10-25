@@ -67,6 +67,7 @@ const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
 const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room }  («Gå til kamp»)
 const ROOM_CLOSED := "room_closed"   ## { key, args }
 const PRESENCE := "presence"         ## { online, playing }
+const LAST_GAME := "last_game"       ## { game }  (siste ferdige parti, vises i hovedmenyen. Etter hello og etter hvert parti)
 const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event", time, from?, elo?, text, key?, args? }
 const GLOBAL_HISTORY := "global_history" ## { messages: [...] }  (sendes etter hello)
 const SPECTATORS := "spectators"     ## { count }  (til alle i rommet)

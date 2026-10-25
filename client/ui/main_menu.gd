@@ -1,12 +1,19 @@
 class_name MainMenu
 extends Screen
-## Hovedmenyen. I bakgrunnen spiller to boter mot hverandre mens kameraet roterer.
+## Hovedmenyen. I bakgrunnen spilles det siste partiet på serveren av, med spillerne og hvordan
+## det endte. Uten nett (eller før noen har spilt) spiller to boter mot hverandre.
 ## Menyen tar en kort «titt» på serveren (uten å mase hvis den ikke svarer), og viser
 ## aktive turneringer, den globale chatten (med hvor mange som er online) og Elo-merket ditt.
 
 const MAX_TOURNAMENTS := 3
 
 var _demo: GameState
+var _replay: Dictionary = {}    ## partiet som spilles av (fra serveren). Tom = bot-demo
+var _replay_i := 0
+var _replay_pause := 0
+var _caption_box: PanelContainer
+var _caption: Label
+const REPLAY_PAUSE_STEPS := 5  ## hvor lenge sluttstillingen blir stående (i demo-steg)
 var _demo_bot := Bot.new(BotProfile.create(BotProfile.Level.MEDIUM))
 var _panel: Control
 var _vbox: VBoxContainer
@@ -89,6 +96,16 @@ func _ready() -> void:
 		_ask_tournaments()
 	_update_badge()
 
+	# Teksten over brettet: hvem som spilte det siste partiet, og hvordan det endte
+	_caption_box = PanelContainer.new()
+	_caption_box.add_theme_stylebox_override("panel", UI._box(UI.PANEL, 12, UI.BORDER, 14, 8))
+	_caption_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_caption_box.visible = false
+	_caption = UI.label("", "", HORIZONTAL_ALIGNMENT_CENTER)
+	_caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_caption_box.add_child(_caption)
+	add_child(_caption_box)
+
 	_chat = GlobalChat.new()
 	_chat.toggled.connect(func(_open: bool) -> void: _layout())
 	add_child(_chat)
@@ -147,6 +164,9 @@ func _layout() -> void:
 			_chat.offset_bottom = maxf(10 + 180.0, size.y - 10.0)   # hele plassen over tastaturet
 		else:
 			_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else chat_bottom
+		_caption_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE)
+		_caption_box.offset_top = chat_bottom + 8.0
+		_caption_box.offset_bottom = _caption_box.offset_top + _caption_box.get_combined_minimum_size().y
 		app.camera.dist_target = app.camera.max_distance * 0.78
 		var px_per_unit := size.x / 10.5
 		app.camera.view_offset = Vector2(0, ((chat_bottom + card_top) * 0.5 - size.y * 0.5) / px_per_unit)
@@ -156,6 +176,11 @@ func _layout() -> void:
 		app.camera.view_offset = Vector2(-1.2, -0.5)
 		# Chatten nede til høyre
 		_chat.compact = false
+		# Teksten øverst, over brettet (til høyre for menyen)
+		_caption_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 16)
+		var shift := size.x * 0.17
+		_caption_box.offset_left += shift
+		_caption_box.offset_right += shift
 		var cw := minf(380.0, size.x * 0.3)
 		var ch := minf(360.0, size.y * 0.48)
 		_chat.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
@@ -253,6 +278,13 @@ static func _dot_icon(color: Color) -> Texture2D:
 
 
 func _demo_step() -> void:
+	# Det siste partiet på serveren vinner over bot-demoen
+	if _replay.is_empty() and not Net.last_game.is_empty():
+		_start_replay(Net.last_game)
+		return
+	if not _replay.is_empty():
+		_replay_step()
+		return
 	if _demo.is_over():
 		_demo = GameState.new()
 		app.board.clear_pieces()
@@ -262,3 +294,71 @@ func _demo_step() -> void:
 	app.board.add_piece(r.pos, player)
 	if _demo.is_over() and not _demo.winning_line.is_empty():
 		app.board.highlight(_demo.winning_line)
+
+
+# ---------------------------------------------------------------- Siste parti
+
+func _start_replay(rec: Dictionary) -> void:
+	_replay = rec
+	_replay_i = 0
+	_replay_pause = 0
+	var opts := GameOptions.from_dict(rec.get("options", {}) if rec.get("options") is Dictionary else {})
+	_demo = GameState.new(opts, int(rec.get("first", 1)))
+	if app.board.size != opts.size:
+		app.board.setup(opts.size)
+		_layout()
+	app.board.clear_pieces()
+	var recs: Array = rec.get("players", [])
+	var looks := []
+	for i in 2:
+		var p: Dictionary = recs[i] if i < recs.size() and recs[i] is Dictionary else {}
+		looks.append(Skins.look(str(p.get("skin", Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2)),
+			str(p.get("decal", "none")), "classic", bool(p.get("away", false)), str(p.get("decal_color", "auto"))))
+	var pair := Skins.resolve_pair(looks[0], looks[1])
+	app.board.set_looks(pair[0], pair[1])
+	_caption.text = tr("Siste parti: %s") % _names(rec)
+	_caption_box.visible = true
+
+
+func _replay_step() -> void:
+	var moves: Array = _replay.get("moves", [])
+	if _replay_i < moves.size():
+		var m = moves[_replay_i]
+		_replay_i += 1
+		var player := _demo.current_player
+		var r := _demo.play(Vector2i(int(m[0]), int(m[1])), false)
+		if r.get("ok", false):
+			app.board.add_piece(r.pos, player)
+		if _replay_i == moves.size():
+			if not _demo.winning_line.is_empty():
+				app.board.highlight(_demo.winning_line)
+			_caption.text = tr("Siste parti: %s") % _names(_replay) + "\n" + result_text(_replay)
+		return
+	# Sluttstillingen står en stund, så starter siste parti (kanskje et nytt) på nytt
+	_replay_pause += 1
+	if _replay_pause >= REPLAY_PAUSE_STEPS:
+		_replay = {}
+
+
+static func _names(rec: Dictionary) -> String:
+	var recs: Array = rec.get("players", [])
+	var names := []
+	for i in 2:
+		names.append(str(recs[i].get("name", "?")) if i < recs.size() and recs[i] is Dictionary else "?")
+	return "%s – %s" % names
+
+
+## «Ada vant på tid», «Uavgjort – fullt brett» osv.
+static func result_text(rec: Dictionary) -> String:
+	var recs: Array = rec.get("players", [])
+	var result := int(rec.get("result", 0))
+	if result == GameState.Result.DRAW:
+		return str(TranslationServer.translate("Uavgjort – fullt brett"))
+	var seat := 1 if result == GameState.Result.P1_WON else 2
+	var winner := str(recs[seat - 1].get("name", "?")) if seat - 1 < recs.size() and recs[seat - 1] is Dictionary else "?"
+	var key := "%s vant med fire på rad"
+	match int(rec.get("reason", 0)):
+		GameState.EndReason.TIMEOUT: key = "%s vant på tid"
+		GameState.EndReason.RESIGN: key = "%s vant – motstanderen ga opp"
+		GameState.EndReason.DISCONNECT: key = "%s vant – motstanderen forlot partiet"
+	return str(TranslationServer.translate(key)) % winner

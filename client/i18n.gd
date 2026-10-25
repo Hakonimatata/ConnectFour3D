@@ -504,4 +504,11 @@ const EN := {
 	"sek per trekk": "sec per move",
 	"Endre innstillinger": "Change settings",
 	"%s endret reglene: %s": "%s changed the rules: %s",
+	# Siste parti i hovedmenyen
+	"Siste parti: %s": "Last game: %s",
+	"Uavgjort – fullt brett": "Draw – board full",
+	"%s vant med fire på rad": "%s won with four in a row",
+	"%s vant på tid": "%s won on time",
+	"%s vant – motstanderen ga opp": "%s won – opponent resigned",
+	"%s vant – motstanderen forlot partiet": "%s won – opponent left",
 }

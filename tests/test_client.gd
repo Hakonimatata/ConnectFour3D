@@ -86,6 +86,21 @@ func test_menu_login_button_opens_account_and_back() -> void:
 	check(_screen() is MainMenu, "tilbake går til menyen")
 
 
+func test_menu_replays_last_game_with_result() -> void:
+	var old := Net.last_game
+	Net.last_game = { "options": { "must_block": false, "no_gift": false }, "first": 1, "result": 2,
+		"reason": GameState.EndReason.TIMEOUT, "moves": [[0, 0], [1, 1], [0, 1]],
+		"players": [{ "name": "Ada", "skin": "lava" }, { "name": "Bob", "skin": "ocean" }] }
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	for i in 4:
+		menu._demo_step()
+	check_eq(app.board._pieces.size(), 3, "partiet spilles av:")
+	check(menu._caption_box.visible and menu._caption.text.contains("Ada – Bob"), "spillerne vises")
+	check(menu._caption.text.contains("Bob vant på tid"), "og hvordan det endte")
+	Net.last_game = old
+
+
 func test_ai_game_to_the_end() -> void:
 	var o := GameOptions.new()
 	o.must_block = true

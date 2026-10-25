@@ -307,3 +307,9 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - Online har verten **«Endre regler»**. Etter «Lagre» står verten i venterommet, og motstanderen får beskjed («Ada endret reglene: 4×4×4 · 7+4»). Det neste partiet starter når verten trykker «Klar!» og motstanderen trykker «Spill igjen» (eller «Klar!»). Endres reglene, må begge bekrefte på nytt. Turneringskamper har fortsatt låste regler.
 - **Egen klokke:** ved siden av de faste valgene (Av, 1+0, 3+2, 5+0, 10+5) finnes «Egen». Der velger du minutter (1–60) og sekunder ekstra per trekk (0–60) selv. Dette gjelder også turneringsskjemaet.
 - Testet: 120 tester, alle grønne (nye: regler endret mellom partier online, og «Endre innstillinger» med egen klokke mot et lokalt parti).
+
+**Siste parti i hovedmenyen:** i stedet for to boter spiller hovedmenyen nå av det siste partiet som ble spilt på serveren. Partiet vises trekk for trekk med spillernes egne skins. Over brettet står «Siste parti: Ada – Bob», og når partiet er ferdig, hvordan det endte («Ada vant med fire på rad», «… på tid», «… motstanderen ga opp», «Uavgjort – fullt brett»).
+- Serveren husker bare det siste partiet og sender det til alle når et parti er ferdig, og til nye når de kobler til (ny melding `last_game`, uten analysen, så den er liten).
+- Med mange partier vises alltid det siste. Kommer det et nytt mens et annet spilles av, byttes det først når avspillingen er ferdig og sluttstillingen har stått litt.
+- Uten nett, eller før noen har spilt, spiller botene som før.
+- Testet: 122 tester, alle grønne (nye: serveren sender siste parti til alle og etter hello, og menyen spiller det av med riktig tekst).

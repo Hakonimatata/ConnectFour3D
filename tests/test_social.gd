@@ -126,6 +126,20 @@ func test_any_running_game_can_be_watched_from_the_live_list() -> void:
 
 # ---------------------------------------------------------------- Global chat og online
 
+func test_last_game_is_sent_to_everyone_and_on_hello() -> void:
+	_register(1, "Ada")
+	_register(2, "Bob")
+	_hello(3, "Cy")
+	check(_last(3, "last_game").is_empty(), "ingen partier ennå")
+	_play_game(1, 2)
+	var g: Dictionary = _last(3, "last_game").game
+	check_eq((g.moves as Array).size(), 7, "alle får det siste partiet:")
+	check_eq(g.players[0].name, "Ada")
+	check(not g.has("analysis"), "uten analysen (mindre melding)")
+	_hello(4, "Di")
+	check_eq(_last(4, "last_game").game.reason, float(GameState.EndReason.LINE), "nye får det etter hello:")
+
+
 func test_global_chat_presence_and_history() -> void:
 	_hello(1, "Ada")
 	check(_last(1, "global_history").has("messages"), "historikk etter hello")
