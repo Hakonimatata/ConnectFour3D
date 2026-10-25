@@ -199,11 +199,12 @@ func _decal_picker() -> Control:
 
 
 ## Bred skjerm: kortet til venstre og brettet til høyre. Smal (mobil): brettet øverst, kortet under.
+## Er skjermtastaturet oppe, får kortet hele høyden, så feltet man skriver i får plass over tastaturet.
 func _layout() -> void:
-	if size.y > size.x:
+	if size.y > size.x or app.keyboard_height > 0.0:
 		_panel.anchor_left = 0.0
 		_panel.anchor_right = 1.0
-		_panel.anchor_top = 0.5
+		_panel.anchor_top = 0.0 if app.keyboard_height > 0.0 else 0.5
 		_panel.anchor_bottom = 1.0
 		_panel.offset_left = 10
 		_panel.offset_right = -10

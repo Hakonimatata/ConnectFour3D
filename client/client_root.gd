@@ -13,10 +13,15 @@ var _banner: Control
 var _pending_join := ""       ## romkode fra ?rom= i lenken
 var _pending_tournament := 0  ## turnering fra ?turnering= i lenken
 var keyboard_height := 0.0    ## Hvor mye av skjermen tastaturet dekker (UI-enheter)
-## Hvor mye av nettleservinduet som er dekket nederst (tastatur), i fysiske piksler.
-const KEYBOARD_JS := "(function(){var vv=window.visualViewport;if(!vv)return 0;return Math.max(0,window.innerHeight-vv.height-vv.offsetTop)*(window.devicePixelRatio||1);})()"
+## Hvor mye av spillflaten (canvas) som ikke synes øverst og nederst, i canvas-piksler («topp,bunn»).
+## Måles mot canvas og ikke innerHeight, fordi noen nettlesere krymper innerHeight med tastaturet
+## og andre ikke, og noen skyver siden opp i stedet.
+const KEYBOARD_JS := "(function(){var vv=window.visualViewport,c=document.getElementById('canvas');if(!vv||!c)return '0,0';var r=c.getBoundingClientRect();if(r.height<=0)return '0,0';var s=c.height/r.height;return (Math.max(0,vv.offsetTop-r.top)*s)+','+(Math.max(0,r.bottom-vv.offsetTop-vv.height)*s);})()"
 var _screen: Control
 var _keyboard_check := 0.0
+var _keyboard_top := 0.0
+var _keyboard_focus: Control
+var _keyboard_window := Vector2i.ZERO
 
 
 func _ready() -> void:
@@ -88,39 +93,58 @@ func _build_world() -> void:
 	world.add_child(board)
 
 
-## Når skjermtastaturet er oppe på mobil, krymper UI-laget nedenfra slik at
-## tekstfeltet (f.eks. chatten) havner over tastaturet.
+## Når skjermtastaturet er oppe på mobil, krymper UI-laget til den delen av skjermen som synes,
+## slik at tekstfeltet (chat, innstillinger) havner over tastaturet. Feltet rulles frem når
+## tastaturet, vindusstørrelsen eller feltet med fokus endrer seg.
 func _process(delta: float) -> void:
 	_keyboard_check -= delta
 	if _keyboard_check > 0.0:
 		return
 	_keyboard_check = 0.15
 	var focus := get_viewport().gui_get_focus_owner()
-	var px := _keyboard_pixels() if focus is LineEdit else 0.0
-	var h := px / maxf(get_window().content_scale_factor, 0.01)
-	if absf(h - keyboard_height) < 2.0:
-		return
-	keyboard_height = h
-	ui.offset_bottom = -h
-	if focus:
-		_reveal.call_deferred(focus)
+	var editing := focus is LineEdit
+	var hidden := _hidden_pixels() if editing else Vector2.ZERO
+	var scale := maxf(get_window().content_scale_factor, 0.01)
+	var top := hidden.x / scale
+	var bottom := hidden.y / scale
+	var moved := absf(bottom - keyboard_height) >= 2.0 or absf(top - _keyboard_top) >= 2.0
+	if moved:
+		keyboard_height = bottom
+		_keyboard_top = top
+		ui.offset_top = top
+		ui.offset_bottom = -bottom
+	var win := get_window().size
+	if editing and (moved or focus != _keyboard_focus or win != _keyboard_window):
+		_reveal(focus)
+	_keyboard_focus = focus
+	_keyboard_window = win
 
 
-## Høyden på skjermtastaturet i vinduspiksler (0 hvis det ikke vises).
-func _keyboard_pixels() -> float:
+## Hvor mye av vinduet som er skjult øverst (x) og nederst (y), i vinduspiksler.
+func _hidden_pixels() -> Vector2:
 	if OS.has_feature("web"):
 		var v = JavaScriptBridge.eval(KEYBOARD_JS, true)
-		return float(v) if v != null else 0.0
+		var parts := str(v).split(",")
+		if parts.size() == 2:
+			return Vector2(float(parts[0]), float(parts[1]))
+		return Vector2.ZERO
 	if OS.has_feature("mobile"):
-		return float(DisplayServer.virtual_keyboard_get_height())
-	return 0.0
+		return Vector2(0.0, float(DisplayServer.virtual_keyboard_get_height()))
+	return Vector2.ZERO
 
 
-## Ruller feltet frem hvis det ligger i en rulleliste.
+## Ruller feltet frem hvis det ligger i en rulleliste. Venter til oppsettet har fått ny størrelse.
 func _reveal(control: Control) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_instance_valid(control) or not control.is_inside_tree():
+		return
 	var p := control.get_parent()
 	while p != null:
 		if p is ScrollContainer:
+			var old = p.get_meta("scroll_tween") if p.has_meta("scroll_tween") else null
+			if old is Tween and (old as Tween).is_valid():
+				(old as Tween).kill()   # et sveip som fortsatt ruller, skal ikke dra feltet bort igjen
 			(p as ScrollContainer).ensure_control_visible(control)
 			return
 		p = p.get_parent()

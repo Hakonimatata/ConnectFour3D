@@ -38,6 +38,15 @@ func test_menu_setup_and_settings_screens() -> void:
 	await _frames(3)
 	check(_screen() is MainMenu, "starter i hovedmenyen")
 	await tree.create_timer(1.0).timeout   # la demo-botene spille litt
+	var menu := _screen() as MainMenu
+	check(not menu._offline_row.visible, "«Mot AI» og «To spillere» er skjult til man trykker «Spill offline»")
+	var offline: Button = menu._vbox.find_children("*", "Button", true, false).filter(
+		func(b: Button) -> bool: return b.text == "Spill offline")[0]
+	offline.pressed.emit()
+	check(menu._offline_row.visible, "«Spill offline» viser valgene")
+	(menu._offline_row.get_child(0) as Button).pressed.emit()
+	await _frames(2)
+	check(_screen() is SetupScreen and (_screen() as SetupScreen).mode == "ai", "«Mot AI» åpner oppsettet")
 	for mode in ["ai", "local", "online"]:
 		app.show_setup(mode)
 		await _frames(2)
@@ -308,7 +317,8 @@ func test_global_chat_keeps_history_when_menu_is_rebuilt() -> void:
 	var old_msgs := Net.global_messages.duplicate()
 	var old_presence := Net.presence.duplicate()
 	Net._handle({ "t": Protocol.GLOBAL_HISTORY, "messages": [{ "kind": "chat", "from": "Ada", "elo": -1, "text": "Hei fra før" }] })
-	Net._handle({ "t": Protocol.PRESENCE, "online": 7, "playing": 2 })
+	Net._handle({ "t": Protocol.PRESENCE, "online": 7, "playing": 2,
+		"users": [{ "name": "Ada", "elo": 1300, "playing": true }, { "name": "Bob", "elo": -1, "playing": false }] })
 	Net._handle({ "t": Protocol.GLOBAL_MSG, "kind": "chat", "from": "Bob", "elo": -1, "text": "Ny melding" })
 	app.show_settings()
 	await _frames(2)
@@ -318,6 +328,9 @@ func test_global_chat_keeps_history_when_menu_is_rebuilt() -> void:
 	var text := chat._log.get_parsed_text()
 	check(text.contains("Hei fra før") and text.contains("Ny melding"), "chatten husker meldingene")
 	check_eq(chat._online, 7, "og hvor mange som er online:")
+	chat._show_users(chat._users)   # (testen er ikke koblet til, og frakoblet vises ingen navn)
+	var who := chat._who.get_parsed_text()
+	check(who.contains("Ada") and who.contains("Bob"), "og hvem som er online: " + who)
 	Net.global_messages = old_msgs
 	Net.presence = old_presence
 
@@ -429,6 +442,24 @@ func test_change_settings_between_games_and_custom_clock() -> void:
 	await _frames(2)
 	check(_screen() is GameScreen and app.current_match.options.time_base_s == 420, "nytt parti med ny klokke")
 	Engine.time_scale = 1.0
+
+
+func test_camera_never_goes_under_the_board() -> void:
+	var cam := app.camera
+	for size in [4, 5]:
+		app.board.setup(size)
+		for offset in [0.0, -1.0, -3.6, -4.0]:
+			cam.view_offset = Vector2(0, offset)
+			cam.camera.v_offset = offset
+			cam.orbit(Vector2(0, -10000))   # dra så flatt det går
+			for zoom in [0.1, 10.0]:
+				cam.zoom(zoom)
+				cam._process(0.0)
+				cam._apply(0.0)
+				var eye := cam.camera.get_camera_transform().origin.y
+				check(eye >= CameraRig.MIN_EYE_HEIGHT - 0.01,
+					"kameraet over brettet (%d×%d, forskyvning %.1f, zoom %.1f): høyde %.2f" % [size, size, offset, zoom, eye])
+	cam.view_offset = Vector2.ZERO
 
 
 func test_every_win_animation_runs() -> void:

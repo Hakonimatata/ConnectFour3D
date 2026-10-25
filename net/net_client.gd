@@ -21,7 +21,7 @@ var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stat
 ## Den globale chatten og «online» huskes her, så chatten i menyen er fylt med en gang den vises
 ## (serveren sender historikken bare rett etter tilkobling).
 var global_messages: Array = []
-var presence := { "online": 0, "playing": 0 }
+var presence := { "online": 0, "playing": 0, "users": [] }
 var last_game: Dictionary = {}  ## siste ferdige parti på serveren (hovedmenyen spiller det av)
 const GLOBAL_KEEP := 60
 
@@ -138,7 +138,8 @@ func _handle(msg: Dictionary) -> void:
 			if global_messages.size() > GLOBAL_KEEP:
 				global_messages = global_messages.slice(global_messages.size() - GLOBAL_KEEP)
 		Protocol.PRESENCE:
-			presence = { "online": int(msg.get("online", 0)), "playing": int(msg.get("playing", 0)) }
+			presence = { "online": int(msg.get("online", 0)), "playing": int(msg.get("playing", 0)),
+				"users": msg.get("users", []) if msg.get("users") is Array else [] }
 		Protocol.LAST_GAME:
 			if msg.get("game") is Dictionary:
 				last_game = msg.game

@@ -17,6 +17,7 @@ const REPLAY_PAUSE_STEPS := 5  ## hvor lenge sluttstillingen blir stående (i de
 var _demo_bot := Bot.new(BotProfile.create(BotProfile.Level.MEDIUM))
 var _panel: Control
 var _vbox: VBoxContainer
+var _offline_row: HBoxContainer   ## «Mot AI» og «To spillere», vises når man trykker «Spill offline»
 var _tour_box: VBoxContainer
 var _tour_list: VBoxContainer
 var _badge: TextureRect
@@ -45,14 +46,21 @@ func _ready() -> void:
 	v.add_child(UI.label("Fire på rad", "Title"))
 	v.add_child(UI.label("i 3D · mot AI, lokalt eller online", "Muted"))
 	v.add_child(UI.spacer(8))
-	v.add_child(UI.button("Spill mot AI", func() -> void: app.show_setup("ai"), "PrimaryButton"))
-	v.add_child(UI.button("To spillere på samme enhet", func() -> void: app.show_setup("local")))
-	v.add_child(UI.button("Spill online", func() -> void: app.show_online()))
+	# To hovedvalg side om side. «Spill offline» folder ut mot AI / to spillere på samme enhet.
+	v.add_child(_row([
+		UI.button("Spill online", func() -> void: app.show_online(), "PrimaryButton"),
+		UI.button("Spill offline", _toggle_offline),
+	]))
+	_offline_row = _row([
+		UI.button("Mot AI", func() -> void: app.show_setup("ai")),
+		UI.button("To spillere", func() -> void: app.show_setup("local")),
+	])
+	_offline_row.visible = false
+	v.add_child(_offline_row)
 	var solved := Settings.puzzle_day == Time.get_date_string_from_system()
-	var puzzle := UI.button(tr("Dagens oppgave") + ("  ·  " + tr("løst") if solved else ""), func() -> void: app.show_puzzle())
+	var puzzle := UI.button(tr("Dagens oppgave") + (" · " + tr("løst") if solved else ""), func() -> void: app.show_puzzle())
 	puzzle.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	v.add_child(puzzle)
-	v.add_child(UI.button("Innstillinger", func() -> void: app.show_settings()))
+	v.add_child(_row([puzzle, UI.button("Innstillinger", func() -> void: app.show_settings())]))
 
 	# Aktive turneringer (vises bare når serveren svarer og noe er åpent eller pågår)
 	_tour_box = UI.vbox(6)
@@ -188,6 +196,22 @@ func _layout() -> void:
 		_chat.offset_right = -16
 		_chat.offset_top = -ch - 16
 		_chat.offset_bottom = -16
+
+
+func _toggle_offline() -> void:
+	_offline_row.visible = not _offline_row.visible
+	_layout()
+
+
+## Knapper side om side med lik bredde.
+static func _row(buttons: Array) -> HBoxContainer:
+	var row := UI.hbox(8)
+	for b: Button in buttons:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		row.add_child(b)
+	return row
 
 
 func _on_net_connected(_resumed: bool) -> void:

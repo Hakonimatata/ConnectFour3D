@@ -11,6 +11,7 @@ const CHAT_INTERVAL_MS := 350
 const CODE_LETTERS := "ABCDEFGHJKLMNPQRSTUVWXYZ"   # uten I og O
 const CODE_LENGTH := 5
 const PRESENCE_INTERVAL_MS := 1000
+const MAX_PRESENCE_USERS := 100   ## så mange navn sendes i «hvem er online»
 const STREAK_MILESTONES := [5, 10, 15, 20, 30, 50]
 const FORCED_WIN_EVENT := 3       ## seier med minst så mange tvungne trekk på rad blir en hendelse
 
@@ -640,6 +641,7 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 func _sign_in(p: Player, user: Dictionary) -> void:
 	p.user_id = int(user.id)
 	p.name = str(user.username)
+	_presence_dirty = true   # nytt navn i «hvem er online»
 	accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx, p.avatar)
 
 
@@ -661,6 +663,7 @@ func _logout(p: Player, msg: Dictionary) -> void:
 	accounts.end_session(str(msg.get("session", "")))
 	p.user_id = 0
 	p.name = p.guest_name
+	_presence_dirty = true
 	send.call(p.peer, { "t": Protocol.LOGGED_OUT })
 
 
@@ -835,18 +838,21 @@ func last_game_message() -> Dictionary:
 	return { "t": Protocol.LAST_GAME, "game": g }
 
 
+## Hvor mange som er online og spiller, og hvem (navn, Elo og om de spiller nå), sortert på navn.
 func presence_message() -> Dictionary:
-	var online := 0
-	for p: Player in players.values():
-		if p.peer != 0:
-			online += 1
-	var playing := 0
+	var in_game := {}
 	for room: Room in rooms.values():
 		if room.in_game():
 			for seat in [1, 2]:
 				if room.seats[seat] != 0:
-					playing += 1
-	return { "t": Protocol.PRESENCE, "online": online, "playing": playing }
+					in_game[room.seats[seat]] = true
+	var users := []
+	for p: Player in players.values():
+		if p.peer != 0:
+			users.append({ "name": p.name, "elo": _elo_of(p), "playing": in_game.has(p.id) })
+	users.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.name.naturalnocasecmp_to(b.name) < 0)
+	return { "t": Protocol.PRESENCE, "online": users.size(), "playing": in_game.size(),
+		"users": users.slice(0, MAX_PRESENCE_USERS) }
 
 
 func _announce(key: String, args: Array) -> void:

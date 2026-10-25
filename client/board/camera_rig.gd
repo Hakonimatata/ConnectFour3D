@@ -7,6 +7,8 @@ extends Node3D
 @export var min_pitch_deg := -80.0
 @export var max_pitch_deg := -12.0
 @export var smooth := 10.0
+## Kameraet holdes minst så høyt over brettplaten (toppen er y = 0), så man aldri ser under brettet.
+const MIN_EYE_HEIGHT := 0.6
 
 var camera: Camera3D
 var yaw_target := deg_to_rad(35.0)
@@ -73,7 +75,20 @@ func _process(delta: float) -> void:
 	var vp := get_viewport().get_visible_rect().size
 	camera.keep_aspect = Camera3D.KEEP_WIDTH if vp.y > vp.x else Camera3D.KEEP_HEIGHT
 	camera.fov = 52.0 if vp.y > vp.x else 50.0
+	pitch_target = minf(pitch_target, _highest_pitch())
 	_apply(real_delta)
+
+
+## Den flateste vinkelen (nærmest horisontalt) som holder kameraet over brettplaten.
+## view_offset.y flytter selve kameraet langs sin egen opp-akse (v_offset). På mobil skyves bildet
+## opp med en negativ verdi, og da senkes kameraet så mye at det ellers kan havne under brettet.
+## Øyehøyden er target.y + avstand·sin(a) + v_offset·cos(a), der a er vinkelen nedover.
+func _highest_pitch() -> float:
+	var v := minf(view_offset.y, camera.v_offset)   # den laveste av mål og nåværende verdi
+	var r := Vector2(dist_target, v).length()
+	var phi := atan2(-v, dist_target)
+	var a := phi + asin(clampf((MIN_EYE_HEIGHT - target.y) / maxf(r, 0.01), -1.0, 1.0))
+	return clampf(-a, deg_to_rad(min_pitch_deg), deg_to_rad(max_pitch_deg))
 
 
 func _apply(delta: float) -> void:

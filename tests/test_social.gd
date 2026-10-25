@@ -147,6 +147,9 @@ func test_global_chat_presence_and_history() -> void:
 	_hello(2, "Bob")
 	lobby.tick(now + 2000)
 	check_eq(_last(1, "presence").online, 2.0, "alle får vite at noen kom:")
+	var users: Array = _last(1, "presence").users
+	check_eq(users.map(func(u: Dictionary) -> String: return u.name), ["Ada", "Bob"], "og hvem, sortert på navn:")
+	check(not users[0].playing, "ingen er i et parti ennå")
 	_msg(1, { "t": "global_chat", "text": "  Hei alle  " })
 	var m := _last(2, "global_msg")
 	check_eq(m.text, "Hei alle")

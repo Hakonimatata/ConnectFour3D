@@ -2,7 +2,7 @@ class_name GlobalChat
 extends PanelContainer
 ## Global chat i hovedmenyen: alle som er online kan skrive, og serveren publiserer hendelser
 ## her (nye Elo-nivåer, seiersrekker, turneringsvinnere og dagens oppgave).
-## Øverst står hvor mange som er online og hvor mange som spiller nå.
+## Øverst står hvor mange som er online og hvor mange som spiller nå, og under det hvem som er online.
 ## På mobil er den kompakt: én linje med siste melding og en knapp som åpner hele chatten.
 
 signal toggled(open: bool)
@@ -19,6 +19,8 @@ var _body: Array[Control] = []
 
 var _dot: Panel
 var _header: Label
+var _who: RichTextLabel
+var _users: Array = []
 var _log: RichTextLabel
 var _input: LineEdit
 var _send_button: Button
@@ -54,6 +56,17 @@ func _ready() -> void:
 	_preview.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(_preview)
 
+	# Hvem som er online: navnene på én eller noen få linjer
+	_who = RichTextLabel.new()
+	_who.bbcode_enabled = true
+	_who.fit_content = true
+	_who.scroll_active = false
+	_who.selection_enabled = false
+	_who.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_who.add_theme_font_size_override("normal_font_size", 14)
+	_who.add_theme_font_size_override("bold_font_size", 14)
+	v.add_child(_who)
+
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
@@ -83,6 +96,7 @@ func _ready() -> void:
 	# Fyll inn det vi allerede vet (menyen lages på nytt hver gang den vises)
 	_online = int(Net.presence.online)
 	_playing = int(Net.presence.playing)
+	_users = Net.presence.get("users", [])
 	for m in Net.global_messages:
 		_append(m)
 	_update_state()
@@ -109,6 +123,7 @@ func _on_message(msg: Dictionary) -> void:
 		Protocol.PRESENCE:
 			_online = int(msg.get("online", 0))
 			_playing = int(msg.get("playing", 0))
+			_users = msg.get("users", []) if msg.get("users") is Array else []
 			_update_state()
 
 
@@ -123,6 +138,7 @@ func _apply_compact() -> void:
 	var show_all := not compact or open
 	for c in _body:
 		c.visible = show_all
+	_who.visible = show_all and Net.is_online() and not _users.is_empty()
 	_preview.visible = not show_all and _preview.text != ""
 	_toggle.visible = compact
 	_toggle.text = tr("Lukk") if open else tr("Chat")
@@ -172,6 +188,28 @@ func _update_state() -> void:
 		_header.text = tr("Kobler til…")
 	else:
 		_header.text = tr("Frakoblet – chatten trenger serveren")
+	_show_users(_users if online else [])
+
+
+## Navnene på dem som er online, med Elo-merke og samme farge som i chatten.
+func _show_users(users: Array) -> void:
+	_who.clear()
+	_apply_compact()
+	var first := true
+	for u in users:
+		if not u is Dictionary:
+			continue
+		if not first:
+			_who.append_text("[color=#%s]  ·  [/color]" % UI.MUTED.to_html(false))
+		first = false
+		var elo := int(u.get("elo", -1))
+		if elo >= 0:
+			_who.add_image(EloBadge.icon(elo, 14), 14, 14)
+			_who.append_text(" ")
+		var who := str(u.get("name", "?"))
+		_who.append_text("[color=#%s][b]%s[/b][/color]" % [name_color(who).to_html(false), _escape(who)])
+		if u.get("playing", false):
+			_who.append_text(" [color=#%s](%s)[/color]" % [UI.MUTED.to_html(false), tr("i parti")])
 
 
 ## En fast farge per navn, så det er lett å se hvem som skriver. Samme navn gir alltid samme farge.
