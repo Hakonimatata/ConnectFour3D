@@ -18,6 +18,11 @@ var url := ""
 var player_id := 0
 var last_error := ""
 var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stats }, eller tom
+## Den globale chatten og «online» huskes her, så chatten i menyen er fylt med en gang den vises
+## (serveren sender historikken bare rett etter tilkobling).
+var global_messages: Array = []
+var presence := { "online": 0, "playing": 0 }
+const GLOBAL_KEEP := 60
 
 var _ws: WebSocketPeer
 var _token := ""
@@ -124,6 +129,15 @@ func _process(delta: float) -> void:
 
 
 func _handle(msg: Dictionary) -> void:
+	match msg.t:
+		Protocol.GLOBAL_HISTORY:
+			global_messages = (msg.get("messages", []) as Array).filter(func(m: Variant) -> bool: return m is Dictionary)
+		Protocol.GLOBAL_MSG:
+			global_messages.append(msg)
+			if global_messages.size() > GLOBAL_KEEP:
+				global_messages = global_messages.slice(global_messages.size() - GLOBAL_KEEP)
+		Protocol.PRESENCE:
+			presence = { "online": int(msg.get("online", 0)), "playing": int(msg.get("playing", 0)) }
 	if msg.t == Protocol.WELCOME:
 		var resumed := _token != "" and bool(msg.get("resumed", false))
 		_token = str(msg.get("token", ""))

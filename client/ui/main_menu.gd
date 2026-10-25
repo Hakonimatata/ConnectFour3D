@@ -16,6 +16,7 @@ var _badge: TextureRect
 var _chat: GlobalChat
 var _who_name: Label
 var _account_button: Button
+var _last_portrait := true
 
 
 func _ready() -> void:
@@ -91,6 +92,9 @@ func _ready() -> void:
 	_chat = GlobalChat.new()
 	_chat.toggled.connect(func(_open: bool) -> void: _layout())
 	add_child(_chat)
+	# Når man begynner/slutter å skrive, legges chatten om (tastaturet på mobil)
+	_chat._input.focus_entered.connect(_layout)
+	_chat._input.focus_exited.connect(_layout)
 
 	resized.connect(_layout)
 	_layout.call_deferred()
@@ -106,6 +110,12 @@ func _ready() -> void:
 ## Bred skjerm: kortet til venstre. Smal (mobil): kortet nederst.
 func _layout() -> void:
 	var portrait := size.y > size.x
+	# Tastaturet på mobil krymper skjermen. Ikke bytt oppsett mens man skriver i chatten.
+	var typing := _chat.is_typing()
+	if typing:
+		portrait = _last_portrait
+	_last_portrait = portrait
+	_panel.visible = not (typing and portrait)   # på mobil dekker chatten menyen mens man skriver
 	var w := minf(400.0, size.x - 32.0)
 	_panel.custom_minimum_size.x = w
 	# Flytt brettet bort fra kortet: opp på mobil, til høyre på PC.
@@ -131,7 +141,12 @@ func _layout() -> void:
 		_chat.offset_right = -10
 		_chat.offset_top = 10
 		var chat_bottom := 10.0 + _chat.get_combined_minimum_size().y
-		_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else chat_bottom
+		if typing:
+			_chat.open = true
+			_chat._apply_compact()
+			_chat.offset_bottom = maxf(10 + 180.0, size.y - 10.0)   # hele plassen over tastaturet
+		else:
+			_chat.offset_bottom = maxf(10 + 180.0, card_top - 10.0) if _chat.open else chat_bottom
 		app.camera.dist_target = app.camera.max_distance * 0.78
 		var px_per_unit := size.x / 10.5
 		app.camera.view_offset = Vector2(0, ((chat_bottom + card_top) * 0.5 - size.y * 0.5) / px_per_unit)

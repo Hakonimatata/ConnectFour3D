@@ -4,6 +4,8 @@ extends Screen
 
 var _status: Label
 var _rooms_box: VBoxContainer
+var _live_box: VBoxContainer
+const VS_SIGN := "–"
 var _code_edit: LineEdit
 var _buttons: Array[Button] = []
 var _refresh_timer: Timer
@@ -46,6 +48,10 @@ func _ready() -> void:
 	v.add_child(UI.section("Åpne rom"))
 	_rooms_box = UI.vbox(8)
 	v.add_child(_rooms_box)
+
+	v.add_child(UI.section("Spilles nå"))
+	_live_box = UI.vbox(8)
+	v.add_child(_live_box)
 
 	v.add_child(UI.spacer(4))
 	v.add_child(UI.button("Tilbake", _on_back))
@@ -123,6 +129,7 @@ func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.ROOM_LIST:
 			_show_rooms(msg.get("rooms", []))
+			show_live(msg.get("live", []))
 		Protocol.ERROR:
 			_status.text = I18n.server_text(msg)
 
@@ -147,6 +154,49 @@ func _show_rooms(rooms: Array) -> void:
 		var code := str(r.get("code", ""))
 		row.add_child(UI.button("Bli med", func() -> void: _join(code)))
 		_rooms_box.add_child(row)
+
+
+## Partier som spilles nå, med «Se på». Trykk for å se partiet live som tilskuer.
+func show_live(games: Array) -> void:
+	for c in _live_box.get_children():
+		c.queue_free()
+	if games.is_empty():
+		_live_box.add_child(UI.label("Ingen partier akkurat nå.", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+		return
+	for g in games:
+		var row := UI.hbox(10)
+		var texts := UI.vbox(2)
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var names := UI.hbox(6)
+		var players: Array = g.get("players", [])
+		for i in players.size():
+			var p = players[i]
+			if i == 1:
+				var vs := UI.label(VS_SIGN, "Muted")
+				vs.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+				names.add_child(vs)
+			if p is Dictionary and p.get("elo") != null:
+				names.add_child(EloBadge.make(int(p.elo), 18))
+			names.add_child(UI.dot(Skins.color_of(str(p.get("skin", ""))) if p is Dictionary else UI.BORDER, 10))
+			var n := UI.label(str(p.get("name", "?")) if p is Dictionary else "?")
+			n.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+			names.add_child(n)
+		texts.add_child(names)
+		var info := tr("%d trekk") % int(g.get("moves", 0))
+		if int(g.get("spectators", 0)) > 0:
+			info += "  ·  " + tr("%d ser på") % int(g.spectators)
+		if str(g.get("tournament", "")) != "":
+			info += "  ·  " + str(g.tournament)
+		var sub := UI.label(info, "Muted")
+		sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		texts.add_child(sub)
+		row.add_child(texts)
+		var code := str(g.get("code", ""))
+		row.add_child(UI.button("Se på", func() -> void:
+			Sfx.play("click")
+			Net.send({ "t": Protocol.WATCH, "code": code })
+		))
+		_live_box.add_child(row)
 
 
 func _on_create() -> void:

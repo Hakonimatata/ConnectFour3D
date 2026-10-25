@@ -8,6 +8,9 @@ var _start_msg: Dictionary
 var tournament: Dictionary = {}     ## { id, name } hvis dette er en turneringskamp
 var last_elo: Dictionary = {}       ## Elo før/etter for mitt sete etter partiet (tom = ikke rangert)
 var spectators := 0                 ## antall tilskuere (bare turneringskamper)
+var room_code := ""
+var keep_room := false              ## true = bli i rommet når skjermen byttes (f.eks. endre regler mellom partier)
+var _raw_players: Array = []
 var _waiting_for_server := false
 
 
@@ -29,6 +32,18 @@ func my_seat() -> int:
 
 func supports_chat() -> bool:
 	return true
+
+
+## Rommet slik venterommet trenger det (serveren sender oppdatert status straks etterpå).
+func room_snapshot() -> Dictionary:
+	var ps := []
+	for info in _raw_players:
+		if info is Dictionary:
+			var copy: Dictionary = info.duplicate()
+			copy.ready = false
+			ps.append(copy)
+	return { "code": room_code, "you": _seat, "options": options.to_dict(), "players": ps, "tournament": null,
+		"in_game": false, "description": options.describe() }
 
 
 ## Ser vi på som tilskuer (ikke spiller)?
@@ -72,6 +87,8 @@ func send_chat(text: String) -> void:
 
 
 func leave() -> void:
+	if keep_room:
+		return
 	Net.send({ "t": Protocol.LEAVE_ROOM })
 	if not is_spectator():
 		Net.close()
@@ -83,6 +100,8 @@ func _apply_start(msg: Dictionary) -> void:
 	options = GameOptions.from_dict(msg.get("options", {}))
 	_seat = int(msg.get("you", 1))
 	spectators = int(msg.get("spectators", 0))
+	room_code = str(msg.get("code", room_code))
+	_raw_players = msg.get("players", [])
 	tournament = msg.get("tournament") if msg.get("tournament") is Dictionary else {}
 	last_elo = {}
 	game_number = int(msg.get("number", 1))

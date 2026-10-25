@@ -75,14 +75,46 @@ static func add_option_fields(v: VBoxContainer, opts: GameOptions) -> void:
 		opts.no_gift, func(on: bool) -> void: opts.no_gift = on))
 
 	v.add_child(UI.section("Klokke (minutter + sekunder per trekk)"))
-	var clock_index := 0
+	# Faste valg, eller «Egen»: velg minutter og ekstra sekunder per trekk selv.
+	var clock_index := CLOCKS.size()
 	for i in CLOCKS.size():
 		if CLOCKS[i][0] == opts.time_base_s and CLOCKS[i][1] == opts.time_increment_s:
 			clock_index = i
-	v.add_child(UI.choice(CLOCK_NAMES, clock_index, func(i: int) -> void:
-		opts.time_base_s = CLOCKS[i][0]
-		opts.time_increment_s = CLOCKS[i][1]
+	var custom := UI.hbox(8)
+	var minutes := _spin(1, 60, maxi(1, opts.time_base_s / 60) if opts.time_base_s > 0 else 5)
+	var extra := _spin(0, 60, opts.time_increment_s)
+	custom.add_child(minutes)
+	custom.add_child(UI.label("min", "Muted"))
+	custom.add_child(UI.spacer(0))
+	custom.add_child(extra)
+	custom.add_child(UI.label("sek per trekk", "Muted"))
+	custom.visible = clock_index == CLOCKS.size()
+	minutes.value_changed.connect(func(value: float) -> void: opts.time_base_s = int(value) * 60)
+	extra.value_changed.connect(func(value: float) -> void: opts.time_increment_s = int(value))
+	var names: Array = CLOCK_NAMES.duplicate()
+	names.append("Egen")
+	v.add_child(UI.choice(names, clock_index, func(i: int) -> void:
+		custom.visible = i == CLOCKS.size()
+		if custom.visible:
+			opts.time_base_s = int(minutes.value) * 60
+			opts.time_increment_s = int(extra.value)
+		else:
+			opts.time_base_s = CLOCKS[i][0]
+			opts.time_increment_s = CLOCKS[i][1]
 	))
+	v.add_child(custom)
+
+
+static func _spin(lo: int, hi: int, value: int) -> SpinBox:
+	var s := SpinBox.new()
+	s.min_value = lo
+	s.max_value = hi
+	s.step = 1
+	s.rounded = true
+	s.value = clampi(value, lo, hi)
+	s.custom_minimum_size = Vector2(110, 0)
+	s.select_all_on_focus = true
+	return s
 
 
 func _on_start() -> void:

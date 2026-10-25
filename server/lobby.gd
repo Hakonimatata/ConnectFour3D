@@ -257,7 +257,24 @@ func _list_rooms(p: Player) -> void:
 		var user: Dictionary = store.users.get(host.user_id, {}) if host.user_id != 0 else {}
 		list.append({ "code": room.code, "host": host.name, "options": room.options.to_dict(),
 			"description": room.options.describe(), "host_elo": user.get("elo") if not user.is_empty() else null })
-	send.call(p.peer, { "t": Protocol.ROOM_LIST, "rooms": list })
+	send.call(p.peer, { "t": Protocol.ROOM_LIST, "rooms": list, "live": live_games() })
+
+
+## Partier som spilles nå (alle kan se på): spillerne, antall trekk og tilskuere.
+func live_games() -> Array:
+	var out := []
+	for room: Room in rooms.values():
+		if not room.in_game():
+			continue
+		var names := []
+		for info in _players_info(room):
+			if info is Dictionary:
+				names.append({ "name": info.name, "elo": info.elo, "skin": info.skin })
+		out.append({ "code": room.code, "players": names, "moves": room.state.history.size(),
+			"spectators": room.spectators.size(), "tournament": room.tournament_name if room.match_id != "" else "",
+			"size": room.options.size })
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.spectators > b.spectators)
+	return out
 
 
 func _create_room(p: Player, msg: Dictionary, now: int) -> void:
@@ -343,6 +360,10 @@ func _set_options(p: Player, msg: Dictionary) -> void:
 	var opts = msg.get("options", {})
 	room.options = GameOptions.from_dict(opts if opts is Dictionary else {})
 	room.ready.fill(false)
+	room.rematch.fill(false)
+	if room.state != null:
+		# Mellom partier: gi motstanderen beskjed om de nye reglene
+		_notice_room(room, "%s endret reglene: %s", [p.name, room.options.describe()], p.id)
 	_broadcast_room_state(room)
 
 
@@ -351,8 +372,11 @@ func _set_ready(p: Player, value: bool, now: int) -> void:
 	if room == null or room.in_game() or room.match_id != "":
 		return
 	room.ready[room.seat_of(p.id)] = value
-	if room.seats[1] != 0 and room.seats[2] != 0 and room.ready[1] and room.ready[2]:
-		room.number = 0
+	if value and room.state != null and not _both_want_to_play(room):
+		_notice_room(room, "%s vil spille igjen!", [p.name], p.id)   # etter et parti
+	if _both_want_to_play(room):
+		if room.state == null:
+			room.number = 0
 		_start_game(room, now)
 	else:
 		_broadcast_room_state(room)
@@ -414,7 +438,7 @@ func _rematch(p: Player, now: int) -> void:
 		return   # turneringskamper spilles bare én gang (omspill ved uavgjort skjer automatisk)
 	var seat := room.seat_of(p.id)
 	room.rematch[seat] = true
-	if room.rematch[1] and room.rematch[2]:
+	if _both_want_to_play(room):
 		_start_game(room, now)
 	else:
 		_notice_room(room, "%s vil spille igjen!", [p.name], p.id)
@@ -444,6 +468,13 @@ func _start_game(room: Room, now: int) -> void:
 	_presence_dirty = true
 
 
+## Begge sitter i rommet og vil spille («Klar!» i venterommet eller «Spill igjen» etter et parti).
+func _both_want_to_play(room: Room) -> bool:
+	if room.seats[1] == 0 or room.seats[2] == 0:
+		return false
+	return (room.ready[1] or room.rematch[1]) and (room.ready[2] or room.rematch[2])
+
+
 func _send_sync(room: Room, p: Player, now: int) -> void:
 	var msg := _start_message(room, maxi(0, room.seat_of(p.id)), now)
 	msg["t"] = Protocol.GAME_SYNC
@@ -464,7 +495,7 @@ func _start_message(room: Room, seat: int, now: int) -> Dictionary:
 		"options": room.options.to_dict(), "first": room.state.first_player, "you": seat,
 		"players": _players_info(room), "clocks": _clocks(room, now), "number": room.number,
 		"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
-		"spectators": room.spectators.size(),
+		"spectators": room.spectators.size(), "code": room.code,
 	}
 
 
@@ -755,8 +786,8 @@ func _watch(p: Player, code: String, now: int) -> void:
 	if room == null:
 		_error(p.peer, "no_room", "Fant ikke rommet %s.", [code])
 		return
-	if room.match_id == "":
-		_error(p.peer, "not_watchable", "Du kan bare se på turneringskamper.")
+	if room.match_id == "" and room.state == null:
+		_error(p.peer, "not_watchable", "Partiet har ikke startet ennå.")
 		return
 	if p.room_code != "":
 		_error(p.peer, "in_room", "Forlat rommet du er i først.")

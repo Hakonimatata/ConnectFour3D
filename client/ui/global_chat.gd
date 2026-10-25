@@ -80,6 +80,11 @@ func _ready() -> void:
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)
 	Net.disconnected.connect(_update_state)
+	# Fyll inn det vi allerede vet (menyen lages på nytt hver gang den vises)
+	_online = int(Net.presence.online)
+	_playing = int(Net.presence.playing)
+	for m in Net.global_messages:
+		_append(m)
 	_update_state()
 
 
@@ -137,8 +142,14 @@ func _append(m: Dictionary) -> void:
 	if elo >= 0:
 		_log.add_image(EloBadge.icon(elo, 16), 16, 16)
 		_log.append_text(" ")
-	_log.append_text("[color=#%s][b]%s[/b][/color]  %s\n" % [UI.ACCENT.lightened(0.25).to_html(false),
-		_escape(str(m.get("from", "?"))), _escape(str(m.get("text", "")))])
+	var who := str(m.get("from", "?"))
+	_log.append_text("[color=#%s][b]%s[/b][/color]  %s\n" % [name_color(who).to_html(false),
+		_escape(who), _escape(str(m.get("text", "")))])
+
+
+## Skriver spilleren i chatten nå? (Da er tastaturet oppe på mobil.)
+func is_typing() -> bool:
+	return _input != null and _input.has_focus()
 
 
 func _send() -> void:
@@ -161,6 +172,16 @@ func _update_state() -> void:
 		_header.text = tr("Kobler til…")
 	else:
 		_header.text = tr("Frakoblet – chatten trenger serveren")
+
+
+## En fast farge per navn, så det er lett å se hvem som skriver. Samme navn gir alltid samme farge.
+## Fargene er tydelig forskjellige og lesbare på mørk bakgrunn.
+const NAME_COLORS := ["ff8a65", "ffd54f", "aed581", "4dd0e1", "64b5f6", "b39ddb", "f06292", "ffb74d",
+	"81c784", "4db6ac", "ce93d8", "e57373"]
+
+
+static func name_color(who: String) -> Color:
+	return Color(NAME_COLORS[absi(who.to_lower().hash()) % NAME_COLORS.size()])
 
 
 ## Meldingen som ren tekst (til den kompakte linjen).

@@ -166,6 +166,28 @@ func test_full_game_with_win() -> void:
 	check_eq(over.line.size(), 4)
 
 
+func test_rules_can_change_between_games() -> void:
+	_start_game()
+	var moves := [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1], [3, 0]]
+	for i in moves.size():
+		_msg(1 if i % 2 == 0 else 2, { "t": "move", "x": moves[i][0], "y": moves[i][1], "ply": i })
+	check(not _last(1, "game_over").is_empty())
+	_msg(2, { "t": "rematch" })
+	# Verten endrer klokka mellom partiene: motstanderen får beskjed, og «Spill igjen» må trykkes på nytt
+	_msg(1, { "t": "set_options", "options": { "time_base_s": 420, "time_increment_s": 3, "must_block": false, "no_gift": false } })
+	check_eq(_last(2, "notice").get("key"), "%s endret reglene: %s")
+	check_eq(_count(1, "game_start"), 1, "ikke startet ennå:")
+	_msg(1, { "t": "ready", "ready": true })   # verten i venterommet
+	check_eq(_last(2, "notice").get("key"), "%s vil spille igjen!")
+	_msg(2, { "t": "rematch" })                # motstanderen på resultatskjermen
+	var start := _last(2, "game_start")
+	check_eq(_count(1, "game_start"), 2, "nytt parti startet:")
+	check_eq(start.options.time_base_s, 420.0)
+	check_eq(start.options.time_increment_s, 3.0)
+	check_eq(start.number, 2.0, "partinummeret fortsetter:")
+	check_eq(start.code, _last(1, "room_state").code, "game_start har romkoden:")
+
+
 func test_rejects_wrong_turn_illegal_and_duplicate_moves() -> void:
 	_start_game({ "must_block": true, "no_gift": false })
 	_msg(2, { "t": "move", "x": 0, "y": 0, "ply": 0 })

@@ -289,6 +289,46 @@ func test_puzzle_screen_can_be_solved() -> void:
 	Engine.time_scale = 1.0
 
 
+func test_global_chat_keeps_history_when_menu_is_rebuilt() -> void:
+	var old_msgs := Net.global_messages.duplicate()
+	var old_presence := Net.presence.duplicate()
+	Net._handle({ "t": Protocol.GLOBAL_HISTORY, "messages": [{ "kind": "chat", "from": "Ada", "elo": -1, "text": "Hei fra før" }] })
+	Net._handle({ "t": Protocol.PRESENCE, "online": 7, "playing": 2 })
+	Net._handle({ "t": Protocol.GLOBAL_MSG, "kind": "chat", "from": "Bob", "elo": -1, "text": "Ny melding" })
+	app.show_settings()
+	await _frames(2)
+	app.show_menu()   # som å gå inn i en meny og tilbake
+	await _frames(2)
+	var chat := (_screen() as MainMenu)._chat
+	var text := chat._log.get_parsed_text()
+	check(text.contains("Hei fra før") and text.contains("Ny melding"), "chatten husker meldingene")
+	check_eq(chat._online, 7, "og hvor mange som er online:")
+	Net.global_messages = old_msgs
+	Net.presence = old_presence
+
+
+func test_chat_stays_open_while_typing_on_phone() -> void:
+	var old_size := app.get_window().size
+	app.get_window().size = Vector2i(400, 820)
+	app.show_menu()
+	await _frames(3)
+	var menu := _screen() as MainMenu
+	var chat := menu._chat
+	chat._toggle.pressed.emit()   # åpne chatten
+	await _frames(2)
+	chat._input.grab_focus()
+	app.ui.offset_bottom = -380.0   # som når skjermtastaturet kommer opp
+	await _frames(3)
+	check(chat.open and chat._log.visible and chat._input.visible, "chatten er fortsatt åpen")
+	check(chat.compact, "beholder mobil-oppsettet mens man skriver")
+	check(chat.size.y > menu.size.y * 0.8, "chatten fyller plassen over tastaturet (%d av %d)" % [chat.size.y, menu.size.y])
+	chat._input.release_focus()
+	app.ui.offset_bottom = 0.0
+	await _frames(3)
+	check(chat.open, "fortsatt åpen etter at tastaturet er borte")
+	app.get_window().size = old_size
+
+
 func test_global_chat_in_menu_and_locked_decals() -> void:
 	await _frames(2)
 	var menu := _screen() as MainMenu
@@ -298,6 +338,8 @@ func test_global_chat_in_menu_and_locked_decals() -> void:
 	var text := menu._chat._log.get_parsed_text()
 	check(text.contains("Ada rykket opp til Gull!"), "hendelser vises")
 	check(text.contains("Hei [alle]"), "chat vises, med hakeparenteser")
+	check_eq(GlobalChat.name_color("Ada"), GlobalChat.name_color("ada"), "samme navn, samme farge:")
+	check(GlobalChat.name_color("Ada") != GlobalChat.name_color("Bob"), "ulike navn, ulike farger")
 	var old_elo := Settings.last_elo
 	Settings.last_elo = -1
 	app.show_settings()
@@ -313,6 +355,29 @@ func test_global_chat_in_menu_and_locked_decals() -> void:
 	Settings.last_elo = old_elo
 
 
+func test_lobby_lists_live_games_and_puzzle_shows_colors() -> void:
+	app.show_online()
+	await _frames(2)
+	var lobby := _screen() as LobbyScreen
+	lobby.show_live([{ "code": "ABCDE", "moves": 12, "spectators": 2, "tournament": "",
+		"players": [{ "name": "Ada", "elo": 1300, "skin": "lava" }, { "name": "Bob", "elo": null, "skin": "ocean" }] }])
+	await _frames(1)
+	var watch := 0
+	for b in lobby._live_box.find_children("*", "Button", true, false):
+		if (b as Button).text == "Se på":
+			watch += 1
+	check_eq(watch, 1, "«Se på» for partiet:")
+	app.show_puzzle()
+	await _frames(2)
+	var ps := _screen() as PuzzleScreen
+	ps.load_puzzle(Puzzle.generate("2026-10-21"))
+	await _frames(1)
+	var legend_text := []
+	for l in ps._legend.find_children("*", "Label", true, false):
+		legend_text.append((l as Label).text)
+	check(legend_text.has("Dine brikker") and legend_text.has("Motstanderen"), "fargeforklaringen vises")
+
+
 func test_spectator_room_hides_player_buttons() -> void:
 	app.show_room({ "code": "ABCDE", "you": 0, "options": {}, "tournament": { "id": 3, "name": "Cup" }, "players": [
 		{ "seat": 1, "name": "Ada", "skin": "ocean", "ready": false, "connected": true, "elo": 1300 },
@@ -321,6 +386,34 @@ func test_spectator_room_hides_player_buttons() -> void:
 	var room := _screen() as RoomScreen
 	check(not room._ready_button.visible and not room._skin_button.visible, "tilskuere kan ikke spille eller bytte skin")
 	check_eq(room._leave_button.text, "Slutt å se på")
+
+
+func test_change_settings_between_games_and_custom_clock() -> void:
+	var m := OfflineMatch.new(GameOptions.from_dict({ "must_block": false, "no_gift": false }))
+	app.start_match(m)
+	await _frames(2)
+	for mv in [[0, 0], [0, 3], [1, 0], [1, 3], [2, 0], [2, 3], [3, 0]]:
+		m.submit_move(Vector2i(mv[0], mv[1]))
+	await _frames(2)
+	var gs := _screen() as GameScreen
+	check(gs._change_button.visible, "«Endre innstillinger» etter partiet")
+	gs.change_settings()
+	await _frames(2)
+	var setup := _screen() as SetupScreen
+	check(setup != null and setup.mode == "local", "oppsettet åpnes for samme type parti")
+	var spins := setup.find_children("*", "SpinBox", true, false)
+	check_eq(spins.size(), 2, "minutter og sekunder per trekk:")
+	(spins[0] as SpinBox).value = 7
+	(spins[1] as SpinBox).value = 4
+	for b in setup.find_children("*", "Button", true, false):
+		if (b as Button).text == "Egen":
+			(b as Button).pressed.emit()
+	check_eq(setup.options.time_base_s, 420, "egne minutter:")
+	check_eq(setup.options.time_increment_s, 4, "egne sekunder per trekk:")
+	setup._on_start()
+	await _frames(2)
+	check(_screen() is GameScreen and app.current_match.options.time_base_s == 420, "nytt parti med ny klokke")
+	Engine.time_scale = 1.0
 
 
 func test_every_win_animation_runs() -> void:

@@ -96,12 +96,30 @@ func test_spectator_watches_a_tournament_match() -> void:
 	check(lobby.rooms[code].in_game(), "partiet fortsetter")
 
 
-func test_only_tournament_rooms_can_be_watched() -> void:
+func test_any_running_game_can_be_watched_from_the_live_list() -> void:
 	_hello(1, "Ada")
 	_hello(2, "Bob")
-	_msg(1, { "t": "create_room", "options": {}, "private": false })
-	_msg(2, { "t": "watch", "code": _last(1, "room_state").code })
-	check_eq(_last(2, "error").code, "not_watchable")
+	_hello(3, "Cy")
+	_msg(1, { "t": "create_room", "options": NO_RULES, "private": true })
+	var code: String = _last(1, "room_state").code
+	_msg(3, { "t": "watch", "code": code })
+	check_eq(_last(3, "error").code, "not_watchable", "kan ikke se på før partiet starter:")
+	_msg(2, { "t": "join_room", "code": code })
+	_msg(1, { "t": "ready", "ready": true })
+	_msg(2, { "t": "ready", "ready": true })
+	_msg(3, { "t": "list_rooms" })
+	var live: Array = _last(3, "room_list").live
+	check_eq(live.size(), 1, "partiet står i listen:")
+	check_eq(live[0].code, code)
+	check_eq(live[0].players[0].name, "Ada")
+	_msg(3, { "t": "watch", "code": code })
+	check_eq(_last(3, "game_sync").you, 0.0, "tilskueren får partiet:")
+	check_eq(_last(1, "spectators").count, 1.0)
+	var first := int(_last(1, "game_start").first)
+	_msg(first, { "t": "move", "x": 0, "y": 0, "ply": 0 })
+	check_eq(_last(3, "move_made").ply, 0.0, "tilskueren ser trekket:")
+	_msg(3, { "t": "list_rooms" })
+	check_eq(_last(3, "room_list").live[0].spectators, 1.0)
 	_msg(2, { "t": "watch", "code": "ZZZZZ" })
 	check_eq(_last(2, "error").code, "no_room")
 

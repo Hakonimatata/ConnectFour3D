@@ -23,6 +23,7 @@ var _bottom: Control
 var _replay: ReplayPlayer
 var _resign_button: Button
 var _leave_button: Button
+var _change_button: Button
 
 
 func _init(p_app: ClientRoot, p_match: MatchController) -> void:
@@ -168,7 +169,10 @@ func _refresh_players() -> void:
 		_watchers.visible = online.spectators > 0
 		_watchers.text = tr("%d ser på") % online.spectators
 		_resign_button.visible = not online.is_spectator()
-		_leave_button.text = tr("Tilbake til turneringen") if online.is_spectator() else tr("Til hovedmenyen")
+		if online.is_spectator():
+			_leave_button.text = tr("Tilbake til turneringen") if not online.tournament.is_empty() else tr("Slutt å se på")
+		else:
+			_leave_button.text = tr("Til hovedmenyen")
 	app.board.set_looks(match_ctrl.look_of(1), match_ctrl.look_of(2))
 	_highlight_turn()
 
@@ -223,6 +227,8 @@ func _build_result_overlay() -> void:
 		match_ctrl.request_rematch()
 	, "PrimaryButton")
 	v.add_child(_rematch_button)
+	_change_button = UI.button("Endre innstillinger", change_settings)
+	v.add_child(_change_button)
 	v.add_child(UI.button("Se partiet igjen", start_replay))
 	v.add_child(UI.button("Se på brettet", func() -> void: _result_overlay.visible = false))
 	v.add_child(UI.button("Til hovedmenyen", _leave))
@@ -231,12 +237,30 @@ func _build_result_overlay() -> void:
 ## Tilskuere går tilbake til turneringen, spillere til hovedmenyen.
 func _leave() -> void:
 	var online := match_ctrl as OnlineMatch
-	if online and online.is_spectator() and not online.tournament.is_empty():
-		var id := int(online.tournament.id)
+	if online and online.is_spectator():
 		app.end_match()
-		app.show_tournament(id)
+		if not online.tournament.is_empty():
+			app.show_tournament(int(online.tournament.id))
+		else:
+			app.show_online()
 	else:
 		app.show_menu()
+
+
+## Endre tid, brett og regler før neste parti. Online: verten lagrer, og motstanderen får beskjed
+## og trykker «Spill igjen». Mot AI og lokalt starter «Start» et nytt parti med de nye innstillingene.
+func change_settings() -> void:
+	var online := match_ctrl as OnlineMatch
+	Settings.last_options = match_ctrl.options.to_dict()
+	if online:
+		online.keep_room = true
+		var room := online.room_snapshot()
+		app.end_match()
+		app.show_setup("online", app.online_set_options.bind(room), app.show_room.bind(room))
+	else:
+		var mode := match_ctrl.mode
+		app.end_match()
+		app.show_setup(mode)
 
 
 ## «Se partiet igjen»: avspilleren nederst, med tvungne trekk markert. «Lukk» gir resultatet tilbake.
@@ -395,6 +419,9 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		if new_tier.id != EloBadge.tier(before).id:
 			var text := tr("Nytt nivå: %s!") if after > before else tr("Ned til %s")
 			_result_reason.text += "\n" + text % tr(new_tier.name)
+	# Mellom partier kan innstillingene endres: alltid mot AI og lokalt, online bare av verten.
+	_change_button.visible = online == null or (online.tournament.is_empty() and online.my_seat() == 1)
+	_change_button.text = tr("Endre regler") if online else tr("Endre innstillinger")
 	if online and (not online.tournament.is_empty() or online.is_spectator()):
 		_rematch_button.visible = false
 		_result_reason.text += "\n" + tr("Turnering: %s") % online.tournament.name

@@ -291,3 +291,19 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 **Testet:** 115 automatiske tester, alle grønne (ny: knappen åpner innloggingen, og «Tilbake» går til menyen). Skjermbilder av menyen på PC og mobil.
 
 **Etter runde 12:** GitHub-workflowen (`.github/workflows/ci.yml`) er fjernet, så GitHub ikke kjører tester og sender e-post ved hver push. Testene kjøres lokalt som før.
+
+**Feilretting (chat i menyen):** chatten i hovedmenyen var tom etter at du hadde vært i en annen meny (f.eks. innstillinger) og gått tilbake. Serveren sender historikken og «online» bare rett etter tilkobling, men menyen lages på nytt hver gang. Nå husker nettverksdelen de siste meldingene og antall online, så chatten er fylt med en gang menyen vises. Ny test dekker dette (116 tester, alle grønne).
+
+**Feilretting (chat minimeres når man skriver):** på mobil krymper skjermtastaturet skjermen, og menyen la seg da om. Noen ganger gikk den over til PC-oppsettet med en liten chat i hjørnet, eller så la menyen seg over chatten. Nå beholdes mobil-oppsettet mens man skriver, og chatten fyller hele plassen over tastaturet (menyen skjules så lenge). Når man er ferdig å skrive, er alt som før. Ny test (117 tester, alle grønne).
+
+**Tilskuere på alle partier, farger i oppgaver og i chatten:**
+- «Spill online» har en ny liste, **«Spilles nå»**, med alle partier som pågår: spillerne (med Elo-merke og farge), antall trekk, hvor mange som ser på og eventuelt turneringen. «Se på» åpner partiet live som tilskuer. Alle partier kan nå ses på, ikke bare turneringskamper. «Slutt å se på» tar deg tilbake til lobbyen.
+- **Oppgaver:** under målet står nå «Dine brikker» og «Motstanderen» med fargen til hver, så det er tydelig hvem som er hvem.
+- **Global chat:** hvert navn har sin egen faste farge (12 tydelig ulike farger, valgt ut fra navnet), så det er lettere å se hvem som skriver.
+- Testet: 118 tester, alle grønne (nye: listen over pågående partier og tilskuer på et vanlig parti, fargeforklaringen i oppgaver, og navnefargene).
+
+**Endre innstillinger mellom partier og egen klokke:**
+- Resultatskjermen har fått **«Endre innstillinger»**. Mot AI og lokalt åpnes oppsettet med innstillingene fra partiet (tid, regler, brett, nivå), og «Start» begynner et nytt parti.
+- Online har verten **«Endre regler»**. Etter «Lagre» står verten i venterommet, og motstanderen får beskjed («Ada endret reglene: 4×4×4 · 7+4»). Det neste partiet starter når verten trykker «Klar!» og motstanderen trykker «Spill igjen» (eller «Klar!»). Endres reglene, må begge bekrefte på nytt. Turneringskamper har fortsatt låste regler.
+- **Egen klokke:** ved siden av de faste valgene (Av, 1+0, 3+2, 5+0, 10+5) finnes «Egen». Der velger du minutter (1–60) og sekunder ekstra per trekk (0–60) selv. Dette gjelder også turneringsskjemaet.
+- Testet: 120 tester, alle grønne (nye: regler endret mellom partier online, og «Endre innstillinger» med egen klokke mot et lokalt parti).

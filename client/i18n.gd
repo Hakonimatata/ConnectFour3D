@@ -468,7 +468,6 @@ const EN := {
 	"Slutt å se på": "Stop watching",
 	"Du ser på som tilskuer. Partiet vises når begge spillerne er her.": "You're watching as a spectator. The game appears when both players are here.",
 	"Se på": "Watch",
-	"Du kan bare se på turneringskamper.": "You can only watch tournament matches.",
 	"Forlat rommet du er i først.": "Leave the room you're in first.",
 	"Kampen er ferdig.": "The match is over.",
 	"Flamme": "Flame",
@@ -493,4 +492,16 @@ const EN := {
 	"Hjemme": "Home",
 	"Borte": "Away",
 	"Bytt drakt": "Switch kit",
+	# Tilskuere på alle partier og fargeforklaring i oppgaver
+	"Spilles nå": "Playing now",
+	"Ingen partier akkurat nå.": "No games right now.",
+	"Partiet har ikke startet ennå.": "The game hasn't started yet.",
+	"Dine brikker": "Your pieces",
+	"Motstanderen": "Opponent",
+	# Innstillinger mellom partier og egen klokke
+	"Egen": "Custom",
+	"min": "min",
+	"sek per trekk": "sec per move",
+	"Endre innstillinger": "Change settings",
+	"%s endret reglene: %s": "%s changed the rules: %s",
 }

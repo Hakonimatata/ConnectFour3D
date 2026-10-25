@@ -37,7 +37,7 @@ const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (admin)
 const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publish, start, cancel, delete)
 const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away }  (f.eks. byttet skin i venterommet)
 # Runde 9: tilskuere, global chat, dagens oppgave og repriser
-const WATCH := "watch"               ## { code }  (se på en turneringskamp)
+const WATCH := "watch"               ## { code }  (se på et parti som spilles, eller en turneringskamp)
 const GLOBAL_CHAT := "global_chat"   ## { text }
 const GET_PUZZLE := "get_puzzle"
 const PUZZLE_SOLVE := "puzzle_solve" ## { day, moves: [[x, y], ...] (bare dine trekk), attempts }
@@ -46,7 +46,7 @@ const GET_GAME := "get_game"         ## { id }
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user? }
-const ROOM_LIST := "room_list"       ## { rooms: [{ code, host, options }] }
+const ROOM_LIST := "room_list"       ## { rooms: [{ code, host, options }], live: [{ code, players, moves, spectators, tournament }] }
 const ROOM_STATE := "room_state"     ## { code, private, options, you, in_game, players: [...] }
 const GAME_START := "game_start"     ## { options, first, you, players, clocks, number }
 const GAME_SYNC := "game_sync"       ## som game_start + { moves, running, over, result, reason, line }

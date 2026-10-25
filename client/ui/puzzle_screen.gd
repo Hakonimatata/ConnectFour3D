@@ -27,6 +27,7 @@ var _shown_solution := false
 var _generation := 0
 var _panel: MarginContainer
 var _goal: Label
+var _legend: HBoxContainer
 var _status: Label
 var _attempts_label: Label
 var _retry_button: Button
@@ -62,6 +63,8 @@ func _ready() -> void:
 	_goal = UI.label("Henter oppgaven…", "", HORIZONTAL_ALIGNMENT_LEFT, true)
 	_goal.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_goal)
+	_legend = UI.hbox(8)
+	v.add_child(_legend)
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_status)
@@ -236,11 +239,29 @@ func _reset() -> void:
 	var depth := int(_puzzle.get("depth", Puzzle.MIN_DEPTH))
 	_goal.text = tr("Du har tur. Finn den tvungne seieren med %d trekk – motstanderen forsvarer seg så godt den kan.") % depth
 	_goal.add_theme_color_override("font_color", app.board.colors[_me].lerp(Color.WHITE, 0.35))
+	_show_legend(looks[_me], looks[other])
 	_status.text = ""
 	_retry_button.visible = false
 	_next_button.visible = false
 	_update_attempts()
 	_update_progress()
+
+
+## Viser hvilke brikker som er dine og hvilke som er motstanderens (fargeprikk og skin).
+func _show_legend(mine: Dictionary, theirs: Dictionary) -> void:
+	for c in _legend.get_children():
+		c.queue_free()
+	for side in [[mine, tr("Dine brikker")], [theirs, tr("Motstanderen")]]:
+		var chip := PanelContainer.new()
+		chip.add_theme_stylebox_override("panel", UI._box(UI.PANEL_LIGHT, 10, Skins.ui_color(side[0]), 10, 6))
+		var row := UI.hbox(8)
+		row.add_child(UI.dot(Skins.ui_color(side[0]), 16))
+		var l := UI.label(side[1])
+		l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		l.add_theme_color_override("font_color", Skins.ui_color(side[0]).lerp(Color.WHITE, 0.4))
+		row.add_child(l)
+		chip.add_child(row)
+		_legend.add_child(chip)
 
 
 func _update_attempts() -> void:
