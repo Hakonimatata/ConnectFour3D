@@ -107,7 +107,8 @@ func _process(delta: float) -> void:
 	_store_poll += delta
 	if _store_poll >= 1.0:
 		_store_poll = 0.0
-		store.poll()
+		if store.poll():
+			lobby.on_users_reloaded()
 
 	_tick_accum += delta
 	if _tick_accum >= 0.2:

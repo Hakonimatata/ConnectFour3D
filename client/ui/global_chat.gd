@@ -1,7 +1,7 @@
 class_name GlobalChat
 extends PanelContainer
 ## Global chat i hovedmenyen: alle som er online kan skrive, og serveren publiserer hendelser
-## her (nye Elo-nivåer, seiersrekker, turneringsvinnere og dagens oppgave).
+## her (nye Elo-nivåer, seiersrekker, turneringsvinnere og dagens oppgave) og kunngjøringer fra admin.
 ## Øverst står hvor mange som er online og hvor mange som spiller nå, og under det hvem som er online.
 ## På mobil er den kompakt: én linje med siste melding og en knapp som åpner hele chatten.
 
@@ -147,6 +147,10 @@ func _apply_compact() -> void:
 func _append(m: Dictionary) -> void:
 	_preview.text = _plain(m)
 	_preview.visible = compact and not open and _preview.text != ""
+	if str(m.get("kind", "chat")) == "announcement":
+		_log.append_text("[bgcolor=#2a3550][color=#cfe0ff] [b]%s[/b] %s [/color][/bgcolor]\n" % [
+			_escape(tr("Kunngjøring:")), _escape(str(m.get("text", "")))])
+		return
 	if str(m.get("kind", "chat")) == "event":
 		# Hendelser: nøkkelen oversettes, og ord i args (f.eks. nivånavn) også
 		var args: Array = (m.get("args", []) as Array).map(func(a: Variant) -> Variant: return I18n.t(a) if a is String else a)
@@ -224,6 +228,8 @@ static func name_color(who: String) -> Color:
 
 ## Meldingen som ren tekst (til den kompakte linjen).
 static func _plain(m: Dictionary) -> String:
+	if str(m.get("kind", "chat")) == "announcement":
+		return "%s %s" % [TranslationServer.translate("Kunngjøring:"), str(m.get("text", ""))]
 	if str(m.get("kind", "chat")) == "event":
 		var args: Array = (m.get("args", []) as Array).map(func(a: Variant) -> Variant: return I18n.t(a) if a is String else a)
 		return I18n.server_text({ "key": m.get("key", ""), "args": args, "text": m.get("text", "") })

@@ -1,6 +1,7 @@
 class_name TournamentScreen
 extends Screen
-## Én turnering: info, påmelding, deltakere, runder/kamper, tabell og admin-knapper.
+## Én turnering: pokalen (og vinneren når den er ferdig), info, påmelding, deltakere,
+## turneringstreet (utslag), runder/kamper, tabell og admin-knapper.
 ## Oppdateres hvert 3. sekund.
 
 var tournament_id := 0
@@ -44,6 +45,8 @@ func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.TOURNAMENT_STATE:
 			if int(msg.tournament.id) == tournament_id:
+				if msg.tournament == _t and bool(msg.get("admin", false)) == _admin and int(msg.get("you", 0)) == _you:
+					return   # ingenting nytt (siden hentes hvert 3. sekund): ikke bygg på nytt
 				_t = msg.tournament
 				_admin = bool(msg.get("admin", false))
 				_you = int(msg.get("you", 0))
@@ -63,6 +66,7 @@ func _rebuild() -> void:
 		var d := _plain(str(t.description), "Muted")
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(d)
+	_content.add_child(_trophy_block(t))
 	var opts := GameOptions.from_dict(t.options)
 	var info := [
 		"%s · %s" % [tr(format_name(t.format)), opts.describe()],
@@ -71,12 +75,18 @@ func _rebuild() -> void:
 		tr("Deltakere: %d av %d") % [int(t.players), int(t.max_players)],
 		tr("Møt opp innen %d min, pause mellom rundene %d min.") % [int(t.show_up_s) / 60, int(t.round_gap_s) / 60],
 	]
-	if str(t.get("winner", "")) != "":
-		info.append(tr("Vinner: %s") % t.winner)
 	for line in info:
 		var l := _plain(line, "")
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(l)
+
+	# --- Din status som deltaker: neste kamp, at den spilles, eller at du er ute
+	var status := my_status()
+	if status != "":
+		var s := _plain(status, "")
+		s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		s.add_theme_color_override("font_color", BracketView.YOU)
+		_content.add_child(s)
 
 	# --- Din neste kamp
 	var mine := _my_waiting_match()
@@ -113,8 +123,21 @@ func _rebuild() -> void:
 				row.username, _points(int(row.points2)), int(row.wins), int(row.draws), int(row.losses)], "")))
 			place += 1
 
-	# --- Runder og kamper
+	# --- Turneringstreet (utslag)
+	var knockout: bool = t.format == "knockout" and not (t.rounds as Array).is_empty()
+	if knockout:
+		_content.add_child(UI.section("Turneringstre"))
+		var scroll := ScrollContainer.new()
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		var bracket := BracketView.new(t.rounds, _you)
+		bracket.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		scroll.add_child(bracket)
+		_content.add_child(scroll)
+
+	# --- Runder og kamper (i en ferdig utslagsturnering sier treet alt)
 	for r in (t.rounds as Array).size():
+		if knockout and t.status == "finished":
+			break
 		_content.add_child(UI.section(tr("Runde %d") % (r + 1)))
 		for m in t.rounds[r]:
 			var label := _plain(_match_text(m), "Muted" if m.status == "done" else "")
@@ -146,6 +169,44 @@ func _rebuild() -> void:
 		_content.add_child(row)
 
 
+## Ferdig med vinner: en hedersplass med pokalen (som gløder), «Vinner» og navnet i gull.
+## Ellers: pokalen det spilles om.
+func _trophy_block(t: Dictionary) -> Control:
+	var winner := str(t.get("winner", ""))
+	if t.status == "finished" and winner != "":
+		var hero := PanelContainer.new()
+		hero.add_theme_stylebox_override("panel", UI._box(Color("2a2617"), 14, Color("b8913a"), 16, 12, 4))
+		var row := UI.hbox(16)
+		row.add_child(TrophyView.new(t.get("trophy", {}), 132, true))
+		var texts := UI.vbox(2)
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var title := UI.label("Vinner", "Muted")
+		title.add_theme_color_override("font_color", Color(BracketView.GOLD, 0.75))
+		texts.add_child(title)
+		var name := _plain(winner, "Title")
+		name.add_theme_color_override("font_color", BracketView.GOLD)
+		name.clip_text = true
+		name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		texts.add_child(name)
+		var sub := _plain(tr("Vant pokalen «%s»") % t.name, "Muted")
+		sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		texts.add_child(sub)
+		if int(t.get("finished_at", 0)) > 0:
+			texts.add_child(_plain(UI.format_time(int(t.finished_at)), "Muted"))
+		row.add_child(texts)
+		hero.add_child(row)
+		return hero
+	var row := UI.hbox(14)
+	row.add_child(TrophyView.new(t.get("trophy", {}), 84))
+	var l := UI.label("Det spilles om denne pokalen. Vinneren får den med turneringens navn på profilen sin.", "Muted",
+		HORIZONTAL_ALIGNMENT_LEFT, true)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(l)
+	return row
+
+
 func _match_text(m: Dictionary) -> String:
 	var names := "%s – %s" % [m.p1_name, m.p2_name]
 	match str(m.status):
@@ -161,6 +222,26 @@ func _match_text(m: Dictionary) -> String:
 		"playing": return tr("%s · spilles nå") % names
 		"scheduled": return tr("%s · starter %s") % [names, UI.format_time(int(m.start_at))]
 	return names
+
+
+## Statuslinjen for en deltaker i en pågående turnering. Tom for andre.
+func my_status() -> String:
+	if _you == 0 or _t.is_empty() or _t.status != "running" or (_t.rounds as Array).is_empty():
+		return ""
+	for m in _t.rounds[int(_t.current_round)]:
+		if not _you in [int(m.p1), int(m.p2)]:
+			continue
+		var names := "%s – %s" % [m.p1_name, m.p2_name]
+		match str(m.status):
+			"scheduled": return tr("Din kamp: %s · starter %s") % [names, UI.format_time(int(m.start_at))]
+			"waiting": return tr("Din kamp: %s · nå! Trykk «Gå til kamp».") % names
+			"playing": return tr("Din kamp: %s · spilles nå") % names
+			"done":
+				if int(m.winner) == _you:
+					return tr("Du vant kampen! Neste runde starter når de andre kampene er ferdige.")
+	if _t.format == "knockout" and _you in (_t.player_list as Array).map(func(p: Dictionary) -> int: return int(p.id)):
+		return tr("Du er ute av turneringen. Takk for innsatsen!")
+	return ""
 
 
 func _my_waiting_match() -> Dictionary:

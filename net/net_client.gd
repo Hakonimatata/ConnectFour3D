@@ -164,6 +164,13 @@ func _handle(msg: Dictionary) -> void:
 	elif msg.t == Protocol.ERROR and msg.get("code") == "version":
 		last_error = I18n.server_text(msg)
 		_want_connection = false
+	elif msg.t == Protocol.ERROR and msg.get("code") == "banned":
+		# Utestengt av admin: serveren kobler fra. Ikke koble til igjen, og glem innloggingen.
+		last_error = I18n.server_text(msg)
+		_want_connection = false
+		Settings.session_token = ""
+		Settings.save()
+		_set_user(null)
 	message.emit(msg)
 
 

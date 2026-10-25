@@ -11,6 +11,9 @@ var _saved_url := ""
 
 func before_each() -> void:
 	_saved_url = Settings.server_url
+	# Ingen server her: testene skal aldri koble seg til en ekte server som kjører på denne maskinen.
+	# Tester som trenger en server, starter sin egen og setter adressen selv.
+	Settings.server_url = "ws://127.0.0.1:9"
 	app = ClientRoot.new()
 	root.add_child(app)
 
@@ -39,12 +42,19 @@ func test_menu_setup_and_settings_screens() -> void:
 	check(_screen() is MainMenu, "starter i hovedmenyen")
 	await tree.create_timer(1.0).timeout   # la demo-botene spille litt
 	var menu := _screen() as MainMenu
-	check(not menu._offline_row.visible, "«Mot AI» og «To spillere» er skjult til man trykker «Spill offline»")
-	var offline: Button = menu._vbox.find_children("*", "Button", true, false).filter(
-		func(b: Button) -> bool: return b.text == "Spill offline")[0]
-	offline.pressed.emit()
-	check(menu._offline_row.visible, "«Spill offline» viser valgene")
-	(menu._offline_row.get_child(0) as Button).pressed.emit()
+	check(not menu._offline_clip.visible, "«Mot AI» og «To spillere» er skjult til man trykker «Spill offline»")
+	menu._offline_button.pressed.emit()
+	await tree.create_timer(0.4).timeout   # la panelet folde seg ut
+	check(menu._offline_clip.visible and menu._offline_clip.size.y >= menu._offline_drawer.size.y - 1.0,
+		"«Spill offline» folder ut valgene")
+	check(menu._offline_button.has_theme_stylebox_override("normal"), "knappen ser ut som en fane mens panelet er åpent")
+	menu._offline_button.pressed.emit()
+	await tree.create_timer(0.4).timeout
+	check(not menu._offline_clip.visible and not menu._offline_button.has_theme_stylebox_override("normal"),
+		"trykk igjen lukker panelet, og knappen blir vanlig")
+	menu.set_offline_open(true, false)
+	var choices := menu._offline_drawer.find_children("*", "Button", true, false)
+	(choices[0] as Button).pressed.emit()
 	await _frames(2)
 	check(_screen() is SetupScreen and (_screen() as SetupScreen).mode == "ai", "«Mot AI» åpner oppsettet")
 	for mode in ["ai", "local", "online"]:
@@ -69,11 +79,26 @@ func test_menu_shows_active_tournaments() -> void:
 	])
 	await _frames(1)
 	check(menu._tour_box.visible, "aktive turneringer skal vises")
-	var buttons := menu._tour_list.get_children().filter(func(c: Node) -> bool: return c is Button and not c.is_queued_for_deletion())
-	check_eq(buttons.size(), 2, "ferdige turneringer vises ikke:")
-	check((buttons[0] as Button).text.begins_with("Fredagsligaen"), "pågående først")
+	var items := menu._tour_list.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion())
+	check_eq(items.size(), 2, "ferdige turneringer vises ikke:")
+	check(items[0] is PanelContainer, "den neste med åpen påmelding reklameres med et eget kort øverst")
+	check(items[0].find_children("*", "Button", true, false).any(func(b: Button) -> bool: return b.text == "Meld meg på"),
+		"med «Meld meg på»")
+	check(items[1] is Button and (items[1] as Button).text.begins_with("Fredagsligaen"), "så den som pågår")
+	check(not menu._champion.visible, "ingen vinner å vise ennå")
+	# Siste vinner hedres med et eget kort
+	menu.show_tournaments([
+		{ "id": 1, "name": "Høstcup", "status": "finished", "winner": "Ada", "finished_at": 100, "start_time": 0,
+			"trophy": Trophy.generate(5) },
+		{ "id": 4, "name": "Vintercup", "status": "finished", "winner": "Bob", "finished_at": 200, "start_time": 0,
+			"trophy": Trophy.generate(6) },
+	])
+	check(menu._champion.visible, "siste turneringsvinner vises")
+	check_eq(menu._champion_name.text, "Bob", "den nyeste vinneren:")
+	check_eq(menu._champion_id, 4)
+	check(not menu._tour_box.visible, "ingen aktive")
 	menu.show_tournaments([])
-	check(not menu._tour_box.visible, "skjules når ingen er aktive")
+	check(not menu._tour_box.visible and not menu._champion.visible, "skjules når det ikke er noe å vise")
 	# Menyen tar bare en titt på serveren: svarer den ikke, prøver den ikke igjen og igjen
 	Net.close()
 	Settings.server_url = "ws://127.0.0.1:9"   # ingen server her
@@ -442,6 +467,138 @@ func test_change_settings_between_games_and_custom_clock() -> void:
 	await _frames(2)
 	check(_screen() is GameScreen and app.current_match.options.time_base_s == 420, "nytt parti med ny klokke")
 	Engine.time_scale = 1.0
+
+
+func test_admin_trophies_bracket_and_tournament_form() -> void:
+	# Admin-siden: liste over utestengte og ny pokal
+	app.show_admin()
+	await _frames(2)
+	var admin := _screen() as AdminScreen
+	admin.show_banned([{ "username": "Bob", "reason": "Spam" }])
+	await _frames(1)
+	check_eq(admin._banned_box.get_children().filter(func(c: Node) -> bool: return not c.is_queued_for_deletion()).size(), 1)
+	admin._reroll()
+	check(admin._preview.design.shape in Trophy.SHAPES)
+	# Kunngjøring gir et banner hos alle
+	Net._handle({ "t": Protocol.GLOBAL_MSG, "kind": "announcement", "from": "Ada", "text": "Turnering kl. 20!", "time": 0 })
+	await _frames(1)
+	check(app._banner != null and is_instance_valid(app._banner), "kunngjøringen vises som banner")
+	var banner_text := ""
+	for l in app._banner.find_children("*", "Label", true, false):
+		banner_text += (l as Label).text
+	check(banner_text.contains("Turnering kl. 20!"), "med teksten: " + banner_text)
+	app._hide_banner()
+
+	# Ferdig utslagsturnering: vinneren med pokalen, og treet
+	var m := func(r: int, a: int, b: int, w: int) -> Dictionary:
+		return { "id": "m%d%d" % [r, a], "p1": a, "p2": b, "p1_name": "S%d" % a, "p2_name": "S%d" % b, "status": "done",
+			"start_at": 0, "room": "", "winner": w, "reason": "played" }
+	var t := { "id": 9, "name": "Høstcup", "description": "", "format": "knockout", "status": "finished",
+		"start_time": 1000, "players": 4, "max_players": 8, "options": {}, "show_up_s": 300, "round_gap_s": 120,
+		"current_round": 1, "winner": "S3", "finished_at": 5000, "trophy": Trophy.generate(3),
+		"player_list": [], "rounds": [[m.call(0, 1, 2, 1), m.call(0, 3, 4, 3)], [m.call(1, 1, 3, 3)]] }
+	app.show_tournament(9, true)
+	await _frames(2)
+	var ts := _screen() as TournamentScreen
+	ts._on_message({ "t": Protocol.TOURNAMENT_STATE, "tournament": t, "admin": false, "you": 0 })
+	await _frames(2)
+	var brackets := ts.find_children("*", "BracketView", true, false)
+	check_eq(brackets.size(), 1, "turneringstreet vises:")
+	check_eq((brackets[0] as BracketView)._cols, 2, "semifinale og finale:")
+	var trophies := ts.find_children("*", "TrophyView", true, false)
+	check(trophies.size() == 1 and (trophies[0] as TrophyView).animate, "vinnerens pokal gløder")
+	check_eq(BracketView.round_name(0, 3), "Kvartfinale")
+	check_eq(ts.my_status(), "", "ingen status i en ferdig turnering:")
+	# Pågående: deltakeren ser sin egen kamp
+	var running := t.duplicate(true)
+	running.status = "running"
+	running.winner = ""
+	running.rounds = [[m.call(0, 1, 2, 1), m.call(0, 3, 4, 0)]]
+	running.rounds[0][1].status = "playing"
+	running.current_round = 0
+	running.player_list = [{ "id": 3, "username": "S3", "elo": 1200 }, { "id": 2, "username": "S2", "elo": 1200 }]
+	ts._on_message({ "t": Protocol.TOURNAMENT_STATE, "tournament": running, "admin": false, "you": 3 })
+	check_eq(ts.my_status(), "Din kamp: S3 – S4 · spilles nå")
+	ts._you = 2
+	check_eq(ts.my_status(), "Du er ute av turneringen. Takk for innsatsen!")
+
+	# Skjemaet: dag og klokkeslett med piler, og et tidspunkt som har passert kan ikke velges
+	app.show_tournament_edit()
+	await _frames(2)
+	var edit := _screen() as TournamentEditScreen
+	edit._day = 0
+	edit._hour = 0
+	edit._minute = 0
+	edit._update_when()
+	check(edit._create_button.disabled, "et tidspunkt som har passert gir ikke «Opprett»")
+	edit._day = 2
+	edit._update_when()
+	check(not edit._create_button.disabled)
+	var now := int(Time.get_unix_time_from_system())
+	check_eq(UI.days_from_today(edit.start_time(now), now), 2, "to dager frem:")
+	check(edit._when_label.text.contains("00:00"), "viser klokkeslettet: " + edit._when_label.text)
+
+	# Pokalhylla på profilen
+	app.show_profile("Bob", true)
+	await _frames(2)
+	var ps := _screen() as ProfileScreen
+	var u := Store.normalize_user({ "id": 2, "username": "Bob", "trophies": [
+		Trophy.entry("Høstcup", Trophy.generate(1), 9, "2026-10-25"), Trophy.entry("Årets spiller", Trophy.generate(2), 0, "2026-10-26")] })
+	ps._show_stats(u)
+	await _frames(1)
+	check_eq(ps._stats_box.find_children("*", "TrophyView", true, false).size(), 2, "to pokaler på hylla:")
+
+
+func test_scrolling_the_chat_does_not_zoom_the_board() -> void:
+	await _frames(3)
+	var menu := _screen() as MainMenu
+	for i in 30:
+		menu._chat.add_entry({ "kind": "chat", "from": "Ada", "elo": -1, "text": "Melding %d" % i })
+	await _frames(3)
+	menu._chat._users = [{ "name": "Ada", "elo": -1, "playing": false }]
+	menu._chat._show_users(menu._chat._users)
+	menu._chat._who.visible = true
+	await _frames(3)
+	var log := menu._chat._log
+	var at := log.get_global_rect().get_center()
+	var before := app.camera.dist_target
+	var vp := app.get_viewport()
+	# Musehjul over meldingene, overskriften, «hvem er online» og kanten av panelet
+	var chat_rect := menu._chat.get_global_rect()
+	var spots := { "meldingene": at, "overskriften": menu._chat._header.get_global_rect().get_center(),
+		"hvem er online": menu._chat._who.get_global_rect().get_center(),
+		"kanten": chat_rect.position + Vector2(4, chat_rect.size.y * 0.5) }
+	for spot in spots:
+		for dir in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			var wheel := InputEventMouseButton.new()
+			wheel.button_index = dir
+			wheel.pressed = true
+			wheel.position = spots[spot]
+			wheel.global_position = spots[spot]
+			vp.push_input(wheel)
+			await _frames(1)
+		check_eq(app.camera.dist_target, before, "musehjul over %s i chatten zoomer ikke brettet:" % spot)
+	# To fingre som drar opp og ned over chatten (som å scrolle på mobil)
+	for idx in 2:
+		var down := InputEventScreenTouch.new()
+		down.index = idx
+		down.pressed = true
+		down.position = at + Vector2(idx * 30, 0)
+		vp.push_input(down)
+	for step in 5:
+		for idx in 2:
+			var drag := InputEventScreenDrag.new()
+			drag.index = idx
+			drag.position = at + Vector2(idx * (30 + step * 12), step * 10)
+			vp.push_input(drag)
+		await _frames(1)
+	for idx in 2:
+		var up := InputEventScreenTouch.new()
+		up.index = idx
+		up.pressed = false
+		up.position = at
+		vp.push_input(up)
+	check_eq(app.camera.dist_target, before, "fingre over chatten zoomer ikke brettet:")
 
 
 func test_camera_never_goes_under_the_board() -> void:

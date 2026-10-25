@@ -8,6 +8,7 @@ const VERSION := 3
 const MAX_BYTES := 64 * 1024   ## Meldinger med profilbilder kan bli noen titalls KB
 const MAX_NAME := 16
 const MAX_CHAT := 200
+const MAX_ANNOUNCEMENT := 300
 
 # Klient -> server
 const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, version, token?, session? }
@@ -43,6 +44,8 @@ const GET_PUZZLE := "get_puzzle"
 const PUZZLE_SOLVE := "puzzle_solve" ## { day, moves: [[x, y], ...] (bare dine trekk), attempts }
 const LIST_GAMES := "list_games"     ## { username? }  (tom = deg selv)
 const GET_GAME := "get_game"         ## { id }
+# Runde 13: admin
+const ADMIN := "admin"               ## { action: ban | unban | announce | award | banned_list, username?, reason?, text?, name?, design? }
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user? }
@@ -68,13 +71,14 @@ const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room 
 const ROOM_CLOSED := "room_closed"   ## { key, args }
 const PRESENCE := "presence"         ## { online, playing, users: [{ name, elo, playing }] }
 const LAST_GAME := "last_game"       ## { game }  (siste ferdige parti, vises i hovedmenyen. Etter hello og etter hvert parti)
-const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event", time, from?, elo?, text, key?, args? }
+const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event" | "announcement", time, from?, elo?, text, key?, args? }
 const GLOBAL_HISTORY := "global_history" ## { messages: [...] }  (sendes etter hello)
 const SPECTATORS := "spectators"     ## { count }  (til alle i rommet)
 const PUZZLE := "puzzle"             ## { puzzle, solved, count, solvers: [{ username, attempts, elo }] }
 const PUZZLE_RESULT := "puzzle_result" ## { ok, rank, first } eller { ok: false, text }
 const GAME_LIST := "game_list"       ## { username, games: [{ id, time, players, result, reason, moves, tournament }] }
 const GAME_RECORD := "game_record"   ## { game }  (hele partiet, til reprise)
+const ADMIN_RESULT := "admin_result" ## { action, ok, key, args, text, banned: [{ username, reason }] }
 
 
 static func encode(msg: Dictionary) -> String:

@@ -10,6 +10,8 @@ extends RefCounted
 ## Ved starttid trekkes oppsettet (sortert etter Elo). Hver kamp får et privat rom, og begge
 ## spillerne varsles. Møter ikke begge innen show_up_s, vinner den som kom (walkover).
 ## Uavgjort i utslag spilles om (inntil 3 ganger). I alle-mot-alle gir uavgjort ½ poeng.
+## Hver turnering har sin egen pokal (Trophy). Admin kan velge den i skjemaet, ellers lages en
+## tilfeldig. Vinneren får pokalen med turneringens navn på profilen sin.
 
 const FORMATS := ["knockout", "round_robin"]
 const MAX_REPLAYS := 3
@@ -38,8 +40,10 @@ func _init(p_store: Store, p_accounts: Accounts) -> void:
 ## JSON gir desimaltall. Gjør tall om til heltall igjen etter innlesing fra fil.
 static func normalize(t: Dictionary) -> void:
 	for k in ["id", "current_round", "winner", "created_by", "created_at", "max_players", "start_time",
-			"signup_deadline", "round_gap_s", "show_up_s"]:
+			"signup_deadline", "round_gap_s", "show_up_s", "finished_at"]:
 		t[k] = int(t.get(k, 0))
+	# Turneringer fra før pokalene fantes, får en fast pokal ut fra id-en.
+	t.trophy = Trophy.normalize(t.trophy) if t.get("trophy") is Dictionary else Trophy.generate(int(t.id) * 7919)
 	t.players = (t.get("players", []) as Array).map(func(v: Variant) -> int: return int(v))
 	for round in t.get("rounds", []):
 		for m in round:
@@ -97,6 +101,10 @@ func _apply(t: Dictionary, d: Dictionary, now: int) -> void:
 	t.signup_deadline = mini(int(d.get("signup_deadline", t.get("signup_deadline", t.start_time))), t.start_time)
 	t.round_gap_s = clampi(int(d.get("round_gap_s", t.get("round_gap_s", 120))), 0, 3600)
 	t.show_up_s = clampi(int(d.get("show_up_s", t.get("show_up_s", 300))), 30, 1800)
+	if d.get("trophy") is Dictionary:
+		t.trophy = Trophy.normalize(d.trophy)
+	elif not t.get("trophy") is Dictionary:
+		t.trophy = Trophy.generate(rng.randi())
 
 
 ## publish | start | cancel | delete
@@ -325,11 +333,11 @@ func _next_round(t: Dictionary, now: int) -> void:
 				_next_round(t, now)
 		else:
 			var table := standings(t)
-			_finish(t, int(table[0].id) if not table.is_empty() else 0)
+			_finish(t, int(table[0].id) if not table.is_empty() else 0, now)
 		return
 	var winners: Array = t.rounds[round_i].map(func(m: Dictionary) -> int: return int(m.winner))
 	if winners.size() == 1:
-		_finish(t, winners[0])
+		_finish(t, winners[0], now)
 		return
 	var matches := []
 	for i in winners.size() / 2:
@@ -346,12 +354,13 @@ func _next_round(t: Dictionary, now: int) -> void:
 		_notify_all(t, "Neste runde i «%s» starter snart.", [t.name])
 
 
-func _finish(t: Dictionary, winner: int) -> void:
+func _finish(t: Dictionary, winner: int, now: int) -> void:
 	t.status = "finished"
 	t.winner = winner
+	t.finished_at = now
 	if winner != 0 and store.users.has(winner):
 		store.users[winner].stats.tournaments_won += 1
-		store.save_users()
+		accounts.award_trophy(winner, Trophy.entry(t.name, t.trophy, int(t.id), Time.get_date_string_from_unix_time(now)))
 		_notify_all(t, "«%s» er ferdig. Vinner: %s!", [t.name, accounts.username_of(winner)])
 		announce.call("%s vant turneringen «%s»!", [accounts.username_of(winner), t.name])
 	else:
@@ -395,7 +404,8 @@ func standings(t: Dictionary) -> Array:
 func summary(t: Dictionary) -> Dictionary:
 	return { "id": t.id, "name": t.name, "format": t.format, "status": t.status, "start_time": t.start_time,
 		"players": t.players.size(), "max_players": t.max_players, "options": t.options,
-		"winner": accounts.username_of(t.winner) if int(t.winner) != 0 else "" }
+		"winner": accounts.username_of(t.winner) if int(t.winner) != 0 else "", "trophy": t.trophy,
+		"finished_at": int(t.get("finished_at", 0)) }
 
 
 ## Full versjon til turneringssiden, med navn i stedet for id-er.

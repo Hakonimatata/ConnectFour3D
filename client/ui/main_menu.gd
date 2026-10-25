@@ -17,13 +17,27 @@ const REPLAY_PAUSE_STEPS := 5  ## hvor lenge sluttstillingen blir stående (i de
 var _demo_bot := Bot.new(BotProfile.create(BotProfile.Level.MEDIUM))
 var _panel: Control
 var _vbox: VBoxContainer
-var _offline_row: HBoxContainer   ## «Mot AI» og «To spillere», vises når man trykker «Spill offline»
+var _offline_button: Button
+var _offline_clip: Control           ## klipper panelet under «Spill offline» mens det folder seg ut
+var _offline_drawer: PanelContainer  ## «Mot AI» og «To spillere»
+var _offline_open := false
+var _offline_tween: Tween
+const DRAWER_BG := Color("252b38")
+const DRAWER_GAP := 6   ## luft mellom knappene og panelet (fanen strekkes ned over den)
+static var _chevrons := {}
 var _tour_box: VBoxContainer
 var _tour_list: VBoxContainer
 var _badge: TextureRect
 var _chat: GlobalChat
 var _who_name: Label
 var _account_button: Button
+var _admin_button: Button               ## bare for admin
+var _champion: PanelContainer           ## siste turneringsvinner
+var _champion_trophy: TrophyView
+var _champion_name: Label
+var _champion_sub: Label
+var _champion_id := 0
+const CHAMPION_GOLD := Color("ffd76a")
 var _last_portrait := true
 
 
@@ -46,21 +60,40 @@ func _ready() -> void:
 	v.add_child(UI.label("Fire på rad", "Title"))
 	v.add_child(UI.label("i 3D · mot AI, lokalt eller online", "Muted"))
 	v.add_child(UI.spacer(8))
-	# To hovedvalg side om side. «Spill offline» folder ut mot AI / to spillere på samme enhet.
-	v.add_child(_row([
-		UI.button("Spill online", func() -> void: app.show_online(), "PrimaryButton"),
-		UI.button("Spill offline", _toggle_offline),
-	]))
-	_offline_row = _row([
+	# To hovedvalg side om side. «Spill offline» er en fane som folder ut et panel under seg
+	# (mot AI / to spillere på samme enhet). Fanen og panelet har samme farge og kant, så de blir én form.
+	var play := UI.vbox(DRAWER_GAP)
+	_offline_button = UI.button("Spill offline", _toggle_offline)
+	_offline_button.icon = _chevron(false)
+	_offline_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_offline_button.z_index = 1   # tegnes over panelets øvre kant, så overgangen blir sømløs
+	play.add_child(_row([UI.button("Spill online", func() -> void: app.show_online(), "PrimaryButton"), _offline_button]))
+	_offline_clip = Control.new()
+	_offline_clip.clip_contents = true
+	_offline_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_offline_clip.visible = false
+	_offline_drawer = PanelContainer.new()
+	var drawer_style := UI._box(DRAWER_BG, 10, UI.ACCENT, 8, 8)
+	drawer_style.corner_radius_top_right = 0
+	_offline_drawer.add_theme_stylebox_override("panel", drawer_style)
+	_offline_drawer.add_child(_row([
 		UI.button("Mot AI", func() -> void: app.show_setup("ai")),
 		UI.button("To spillere", func() -> void: app.show_setup("local")),
-	])
-	_offline_row.visible = false
-	v.add_child(_offline_row)
+	]))
+	_offline_clip.add_child(_offline_drawer)
+	_offline_clip.resized.connect(func() -> void: _offline_drawer.size.x = _offline_clip.size.x)
+	play.add_child(_offline_clip)
+	v.add_child(play)
 	var solved := Settings.puzzle_day == Time.get_date_string_from_system()
-	var puzzle := UI.button(tr("Dagens oppgave") + (" · " + tr("løst") if solved else ""), func() -> void: app.show_puzzle())
-	puzzle.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	var puzzle := UI.button("Dagens oppgave", func() -> void: app.show_puzzle())
+	if solved:
+		# Et lite grønt merke i hjørnet i stedet for «· løst» i teksten (som ble kuttet på mobil)
+		puzzle.add_child(_solved_badge())
+		puzzle.tooltip_text = tr("Løst i dag")
 	v.add_child(_row([puzzle, UI.button("Innstillinger", func() -> void: app.show_settings())]))
+
+	# Siste turneringsvinner: et eget kort med pokalen, som åpner turneringen (treet og pokalen)
+	v.add_child(_build_champion_card())
 
 	# Aktive turneringer (vises bare når serveren svarer og noe er åpent eller pågår)
 	_tour_box = UI.vbox(6)
@@ -87,6 +120,10 @@ func _ready() -> void:
 	# Logg inn (gjest) eller Min profil (innlogget), rett ved profilbildet
 	_account_button = UI.button("Logg inn", _on_account_pressed, "GhostButton")
 	_account_button.custom_minimum_size.y = 36
+	_admin_button = UI.button("Admin", func() -> void: app.show_admin(), "GhostButton")
+	_admin_button.custom_minimum_size.y = 36
+	_admin_button.visible = false
+	who.add_child(_admin_button)
 	who.add_child(_account_button)
 	v.add_child(who)
 
@@ -199,8 +236,103 @@ func _layout() -> void:
 
 
 func _toggle_offline() -> void:
-	_offline_row.visible = not _offline_row.visible
+	set_offline_open(not _offline_open)
+
+
+## Folder panelet under «Spill offline» ut eller inn. Mens det er åpent, ser knappen ut som en fane
+## i samme farge som panelet. Når det lukkes, blir knappen vanlig igjen først når panelet er borte.
+func set_offline_open(open: bool, animate := true) -> void:
+	_offline_open = open
+	_offline_button.icon = _chevron(open)
+	if open:
+		_set_tab_style(true)
+	var h := _offline_drawer.get_combined_minimum_size().y if open else 0.0
+	_offline_drawer.size = Vector2(_offline_clip.size.x, _offline_drawer.get_combined_minimum_size().y)
+	if _offline_tween:
+		_offline_tween.kill()
+	if not animate:
+		_set_drawer_height(h)
+		_offline_drawer.modulate.a = 1.0
+		_set_tab_style(open)
+		return
+	_offline_tween = create_tween().set_parallel().set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_offline_tween.tween_method(_set_drawer_height, _offline_clip.custom_minimum_size.y, h, 0.22)
+	_offline_tween.tween_property(_offline_drawer, "modulate:a", 1.0 if open else 0.0, 0.18)
+	if not open:
+		_offline_tween.chain().tween_callback(_set_tab_style.bind(false))
+
+
+func _set_drawer_height(h: float) -> void:
+	_offline_clip.custom_minimum_size.y = h
+	_offline_clip.visible = h > 0.5
 	_layout()
+
+
+## Fanen: samme farge og kant som panelet, uten kant og runde hjørner nederst. Den strekkes ned
+## over luken (expand_margin) og dekker panelets øvre kant der de møtes.
+func _set_tab_style(on: bool) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		_offline_button.remove_theme_stylebox_override(state)
+	if not on:
+		return
+	var tab := UI._box(DRAWER_BG, 10, UI.ACCENT, 14, 10)
+	tab.border_width_bottom = 0
+	tab.corner_radius_bottom_left = 0
+	tab.corner_radius_bottom_right = 0
+	tab.expand_margin_bottom = DRAWER_GAP + 1
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		_offline_button.add_theme_stylebox_override(state, tab)
+	_offline_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
+
+## En liten pil (ned = lukket, opp = åpen), tegnet i kode.
+static func _chevron(up: bool) -> Texture2D:
+	if _chevrons.has(up):
+		return _chevrons[up]
+	var px := 32
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	var mid := Vector2(16, 12 if up else 20)
+	var ends := [Vector2(7, 20 if up else 12), Vector2(25, 20 if up else 12)]
+	for y in px:
+		for x in px:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var d := 99.0
+			for e: Vector2 in ends:
+				d = minf(d, Geometry2D.get_closest_point_to_segment(p, mid, e).distance_to(p))
+			img.set_pixel(x, y, Color(UI.TEXT, clampf(2.6 - d, 0.0, 1.0)))
+	var tex := ImageTexture.create_from_image(img)
+	tex.set_size_override(Vector2i(16, 16))
+	_chevrons[up] = tex
+	return tex
+
+
+## Grønt merke med hake øverst til høyre på en knapp.
+static func _solved_badge() -> TextureRect:
+	var px := 36
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	var c := Vector2(px, px) * 0.5
+	var a := Vector2(10, 18.5)
+	var b := Vector2(15.5, 24)
+	var e := Vector2(26, 12.5)
+	for y in px:
+		for x in px:
+			var p := Vector2(x + 0.5, y + 0.5)
+			var disc := clampf(px * 0.5 - 0.5 - p.distance_to(c), 0.0, 1.0)
+			var d := minf(Geometry2D.get_closest_point_to_segment(p, a, b).distance_to(p),
+				Geometry2D.get_closest_point_to_segment(p, b, e).distance_to(p))
+			var tick := clampf(2.6 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(UI.SUCCESS.lerp(Color.WHITE, tick), disc))
+	var badge := TextureRect.new()
+	badge.texture = ImageTexture.create_from_image(img)
+	badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	badge.offset_left = -15
+	badge.offset_right = 3
+	badge.offset_top = -5
+	badge.offset_bottom = 13
+	return badge
 
 
 ## Knapper side om side med lik bredde.
@@ -226,6 +358,8 @@ func _ask_tournaments() -> void:
 func _on_net_message(msg: Dictionary) -> void:
 	if msg.t == Protocol.TOURNAMENT_LIST:
 		show_tournaments(msg.get("tournaments", []))
+	elif msg.t == Protocol.TOURNAMENT_STATE:
+		_ask_tournaments()   # meldte seg på fra menyen: oppdater kortet («Påmeldt»)
 
 
 func _on_account_pressed() -> void:
@@ -239,11 +373,76 @@ func _on_account_pressed() -> void:
 func _update_badge() -> void:
 	_who_name.text = Settings.display_name()
 	_account_button.text = tr("Min profil") if Net.is_logged_in() else tr("Logg inn")
+	_admin_button.visible = bool(Net.user.get("admin", false))
 	EloBadge.set_elo(_badge, int(Net.user.get("elo", -1)) if Net.is_logged_in() else -1, 20)
 
 
-## Viser turneringer som pågår eller er åpne for påmelding (pågående først).
+## Kortet for siste turneringsvinner: pokalen (med glød), «Siste turneringsvinner», navnet i gull
+## og turneringen. Hele kortet er en knapp som åpner turneringen.
+func _build_champion_card() -> PanelContainer:
+	_champion = PanelContainer.new()
+	_champion.add_theme_stylebox_override("panel", UI._box(Color("2a2617"), 12, Color("b8913a"), 10, 6, 3))
+	_champion.visible = false
+	var row := UI.hbox(10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_champion_trophy = TrophyView.new({}, 64, true)
+	row.add_child(_champion_trophy)
+	var texts := UI.vbox(0)
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var title := UI.label("Siste turneringsvinner", "Muted")
+	title.add_theme_color_override("font_color", Color(CHAMPION_GOLD, 0.75))
+	texts.add_child(title)
+	_champion_name = UI.label("", "Heading")
+	_champion_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_champion_name.add_theme_color_override("font_color", CHAMPION_GOLD)
+	_champion_name.clip_text = true
+	_champion_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	texts.add_child(_champion_name)
+	_champion_sub = UI.label("", "Muted")
+	_champion_sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_champion_sub.clip_text = true
+	_champion_sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	texts.add_child(_champion_sub)
+	row.add_child(texts)
+	var see := UI.label("Se ›", "Muted")
+	see.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(see)
+	_champion.add_child(row)
+	# Usynlig knapp over hele kortet (gir også en svak lysning ved hover)
+	var button := Button.new()
+	button.theme_type_variation = "GhostButton"
+	button.pressed.connect(func() -> void:
+		Sfx.play("click")
+		Net.ensure_connected()
+		app.show_tournament(_champion_id, true)
+	)
+	_champion.add_child(button)
+	return _champion
+
+
+## Den siste ferdige turneringen med en vinner (nyeste først), eller {}.
+static func latest_champion(list: Array) -> Dictionary:
+	var done := list.filter(func(t: Dictionary) -> bool:
+		return t.get("status") == "finished" and str(t.get("winner", "")) != "")
+	if done.is_empty():
+		return {}
+	var when := func(t: Dictionary) -> int:
+		return int(t.get("finished_at", 0)) if int(t.get("finished_at", 0)) > 0 else int(t.get("start_time", 0))
+	done.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return when.call(a) > when.call(b))
+	return done[0]
+
+
+## Viser turneringer som pågår eller er åpne for påmelding (pågående først), og siste vinner.
 func show_tournaments(list: Array) -> void:
+	var champ := latest_champion(list)
+	_champion.visible = not champ.is_empty()
+	if not champ.is_empty():
+		_champion_id = int(champ.id)
+		_champion_trophy.set_design(champ.get("trophy", {}))
+		_champion_name.text = str(champ.winner)
+		_champion_sub.text = str(champ.name)
 	for c in _tour_list.get_children():
 		c.queue_free()
 	var active := list.filter(func(t: Dictionary) -> bool: return t.get("status") in ["running", "open"])
@@ -252,7 +451,12 @@ func show_tournaments(list: Array) -> void:
 			or (a.status == b.status and a.start_time < b.start_time)
 	)
 	_tour_box.visible = not active.is_empty()
-	for t in active.slice(0, MAX_TOURNAMENTS):
+	# Den neste turneringen med åpen påmelding reklameres med et eget kort øverst
+	var promo := next_signup(list)
+	if not promo.is_empty():
+		_tour_list.add_child(_promo_card(promo))
+		active.erase(promo)
+	for t in active.slice(0, MAX_TOURNAMENTS - (0 if promo.is_empty() else 1)):
 		_tour_list.add_child(_tournament_button(t))
 	if active.size() > MAX_TOURNAMENTS:
 		_tour_list.add_child(UI.button(tr("Alle turneringer (%d)") % active.size(), func() -> void:
@@ -260,6 +464,78 @@ func show_tournaments(list: Array) -> void:
 			app.show_tournaments()
 		, "GhostButton"))
 	_layout.call_deferred()
+
+
+## Den neste turneringen som er åpen for påmelding (starter først), eller {}.
+static func next_signup(list: Array) -> Dictionary:
+	var open := list.filter(func(t: Dictionary) -> bool: return t.get("status") == "open")
+	if open.is_empty():
+		return {}
+	open.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.start_time) < int(b.start_time))
+	return open[0]
+
+
+## Reklame for påmelding: pokalen det spilles om, navnet, når den starter og hvor mange som er med,
+## og «Meld meg på» rett fra menyen. Hele kortet åpner turneringen.
+func _promo_card(t: Dictionary) -> PanelContainer:
+	var id := int(t.id)
+	var card := PanelContainer.new()
+	card.add_theme_stylebox_override("panel", UI._box(Color("1d2a42"), 12, UI.ACCENT_HOVER, 10, 8, 4))
+	var open_page := Button.new()   # under innholdet: trykk hvor som helst på kortet
+	open_page.theme_type_variation = "GhostButton"
+	open_page.pressed.connect(func() -> void:
+		Sfx.play("click")
+		Net.ensure_connected()
+		app.show_tournament(id, true)
+	)
+	card.add_child(open_page)
+	var row := UI.hbox(10)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(TrophyView.new(t.get("trophy", {}), 62, true))
+	var texts := UI.vbox(0)
+	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var kicker := UI.label("Turnering – meld deg på!", "Muted")
+	kicker.add_theme_color_override("font_color", Color("a9c1f2"))
+	texts.add_child(kicker)
+	var name := UI.label(str(t.name))
+	name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	name.add_theme_font_size_override("font_size", 19)
+	name.clip_text = true
+	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	texts.add_child(name)
+	var when := "%s · %d/%d" % [UI.format_when(int(t.start_time)), int(t.players), int(t.max_players)]
+	var sub := UI.label(when, "Muted")
+	sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	sub.clip_text = true
+	sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	texts.add_child(sub)
+	row.add_child(texts)
+	if bool(t.get("joined", false)):
+		var joined := UI.label("Påmeldt", "Muted")
+		joined.add_theme_color_override("font_color", UI.SUCCESS)
+		joined.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(joined)
+	else:
+		var join := UI.button("Meld meg på", func() -> void: _quick_join(id), "PrimaryButton")
+		join.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(join)
+	card.add_child(row)
+	# Kortet pulserer svakt, så det synes
+	var tw := card.create_tween().set_loops()
+	tw.tween_property(card, "self_modulate", Color(1.1, 1.1, 1.18), 1.1).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(card, "self_modulate", Color.WHITE, 1.1).set_trans(Tween.TRANS_SINE)
+	return card
+
+
+## «Meld meg på» fra menyen. Uten konto åpnes innloggingen først.
+func _quick_join(id: int) -> void:
+	if not Net.is_logged_in():
+		app.show_account(true)
+		return
+	Net.ensure_connected()
+	Net.send({ "t": Protocol.TOURNAMENT_JOIN, "id": id })
 
 
 func _tournament_button(t: Dictionary) -> Button:

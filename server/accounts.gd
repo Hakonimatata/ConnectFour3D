@@ -47,7 +47,16 @@ func login(username: String, password: String, now_s: int) -> Dictionary:
 		recent.append(now_s)
 		return { "error": "Feil brukernavn eller passord." }
 	_failures.erase(key)
+	if u.banned:
+		return banned_error(u)
 	return { "user": u }
+
+
+## Feilmeldingen en utestengt bruker får (med grunnen hvis admin skrev en).
+static func banned_error(u: Dictionary) -> Dictionary:
+	if str(u.get("ban_reason", "")) != "":
+		return { "error": "Kontoen din er utestengt. Grunn: %s", "args": [str(u.ban_reason)] }
+	return { "error": "Kontoen din er utestengt.", "args": [] }
 
 
 ## Lager en ny økt og gir nøkkelen (bare en hash lagres på serveren).
@@ -85,6 +94,68 @@ func is_admin(user_id: int) -> bool:
 	return user_id != 0 and bool(store.users.get(user_id, {}).get("admin", false))
 
 
+# ---------------------------------------------------------------- Admin: utestenging og pokaler
+
+## Utestenger en bruker: kan ikke logge inn, og alle øktene slettes. Gir "" eller en feilmelding.
+func ban(username: String, reason: String) -> String:
+	var u := store.find_user(username)
+	if u.is_empty():
+		return "Fant ikke brukeren %s."
+	if u.admin:
+		return "Du kan ikke utestenge en admin."
+	u.banned = true
+	u.ban_reason = reason.strip_edges().substr(0, 200)
+	store.save_users()
+	end_sessions_of(int(u.id))
+	return ""
+
+
+func unban(username: String) -> String:
+	var u := store.find_user(username)
+	if u.is_empty():
+		return "Fant ikke brukeren %s."
+	u.banned = false
+	u.ban_reason = ""
+	store.save_users()
+	return ""
+
+
+func is_banned(user_id: int) -> bool:
+	return bool(store.users.get(user_id, {}).get("banned", false))
+
+
+## Utestengte brukere til admin-siden: [{ username, reason }].
+func banned_list() -> Array:
+	var out := []
+	for u in store.users.values():
+		if u.banned:
+			out.append({ "username": u.username, "reason": u.ban_reason })
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.username.naturalnocasecmp_to(b.username) < 0)
+	return out
+
+
+func end_sessions_of(user_id: int) -> void:
+	var changed := false
+	for k in store.sessions.keys():
+		if int(store.sessions[k].user) == user_id:
+			store.sessions.erase(k)
+			changed = true
+	if changed:
+		store.save_sessions()
+
+
+## Legger en pokal til på brukeren (vises på profilen). Nyeste først.
+func award_trophy(user_id: int, entry: Dictionary) -> bool:
+	var u: Dictionary = store.users.get(user_id, {})
+	if u.is_empty():
+		return false
+	u.trophies.push_front(Trophy.normalize_entry(entry))
+	if u.trophies.size() > Trophy.MAX_PER_USER:
+		u.trophies.resize(Trophy.MAX_PER_USER)
+	store.save_users()
+	return true
+
+
 ## Profilen følger siste enhet brukeren logget inn fra.
 func update_profile(user_id: int, skin: String, decal: String, win_fx: String, avatar: String) -> void:
 	var u: Dictionary = store.users.get(user_id, {})
@@ -111,7 +182,8 @@ func username_of(user_id: int) -> String:
 func public_info(u: Dictionary) -> Dictionary:
 	if u.is_empty():
 		return {}
-	return { "id": u.id, "username": u.username, "admin": u.admin, "elo": u.elo, "stats": u.stats }
+	return { "id": u.id, "username": u.username, "admin": u.admin, "elo": u.elo, "stats": u.stats,
+		"trophies": u.trophies }
 
 
 # ---------------------------------------------------------------- Statistikk og Elo
@@ -171,15 +243,16 @@ static func expected(rating: int, opponent: int) -> float:
 	return 1.0 / (1.0 + pow(10.0, (opponent - rating) / 400.0))
 
 
-## Topplister: Elo (minst ett parti), flest seire og lengste tvungne seier.
+## Topplister: Elo (minst ett parti), flest seire og lengste tvungne seier. Utestengte vises ikke.
 func leaderboard(limit := 20) -> Dictionary:
-	var solvers: Array = store.users.values().filter(func(u: Dictionary) -> bool: return u.stats.puzzles_solved > 0)
+	var listed: Array = store.users.values().filter(func(u: Dictionary) -> bool: return not u.banned)
+	var solvers: Array = listed.filter(func(u: Dictionary) -> bool: return u.stats.puzzles_solved > 0)
 	solvers.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if a.stats.puzzles_solved != b.stats.puzzles_solved:
 			return a.stats.puzzles_solved > b.stats.puzzles_solved
 		return a.stats.best_puzzle_streak > b.stats.best_puzzle_streak
 	)
-	var all: Array = store.users.values().filter(func(u: Dictionary) -> bool: return u.stats.games > 0)
+	var all: Array = listed.filter(func(u: Dictionary) -> bool: return u.stats.games > 0)
 	var row := func(u: Dictionary) -> Dictionary:
 		return { "username": u.username, "elo": u.elo, "games": u.stats.games, "wins": u.stats.wins,
 			"losses": u.stats.losses, "draws": u.stats.draws, "best_forced_win": u.stats.best_forced_win,

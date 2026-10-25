@@ -187,7 +187,36 @@
 
 - Fjern github workflow test. Jeg orker ikke mails fra github
 
-## Til senere
 
-- Fast server
 
+
+
+
+## Runde 13 
+
+- Admin kan banne enkelte spillere
+
+- Admin kan gjøre annonseringer
+
+- Turneringer får unike pokaler med navn på. Kan jeg som admin generere en pokal som havner på brukerens statistikk? Gjerne mulighet for å lage unike generte pokaler. Også valg for å randomize pokal i det admin oppretter turneringen.
+
+- Vinner av siste turnering skal vises i hovedmenyen. Må hedres på en eller annen måte. En knapp i menyen for å se tournament summary. Se turnerings treet og pokalen.
+
+## Runde 14 (ikke kjørt)
+
+- Har ikke sjekket, men hvis spectatting ikke er med bør vi ha med det!
+
+- Legge til venner, og se hvem av vennene som er online. Mulighet for invitasjon in game også.
+
+- Offentlige grupperom bør ha flere channels. Kanskje en velkommen, en hvor man kan gi feedbacks osv. 
+
+- Hvordan oppleves det under turneringen. Ser man en oversikt over hvem som spiller? Jeg vil se et knowckout tre hvor vi ser pokalen i midten.
+
+- Sjekk etter potensielle muligheter for å gjøre at serveren jobber enda mindre. Hvis mulig fiks, men viktig at det gjøres riktig (ikke must). Jeg vil også at det er smooth og raskt for de som spiller.
+
+- Stressteste en turnering. Sjekk om server takler 32 på en turnering. Gjerne sjekk at det funker for telefon og pc.
+
+
+## Senere
+
+- progression. Mange av skinsene må unlockes! Lag en realistisk xp system som låser opp dette. Pass på at det ikke abuses helt.

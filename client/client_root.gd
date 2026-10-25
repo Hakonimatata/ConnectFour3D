@@ -154,16 +154,32 @@ func _reveal(control: Control) -> void:
 ## (Stretch-modus er «disabled», så 3D tegnes i full oppløsning.)
 ## Knapper og felt inne i en ScrollContainer slipper musen/fingeren videre (PASS i stedet for STOP).
 ## Da kan man scrolle ved å dra, også når fingeren starter på en knapp (f.eks. skin-knappene).
+## Paneler utenfor en rulleliste (menykortet, chatten, banneret) stopper musen og fingrene, så
+## scrolling over dem ikke zoomer brettet bak. Uten det slapp de gjennom alt som ikke traff en knapp.
 func _on_node_added(n: Node) -> void:
 	var c := n as Control
-	if c == null or c.mouse_filter != Control.MOUSE_FILTER_STOP or c is ScrollContainer or c is Range:
+	if c == null:
 		return
+	var in_scroll := false
 	var p := c.get_parent()
 	while p != null:
 		if p is ScrollContainer:
-			c.mouse_filter = Control.MOUSE_FILTER_PASS
-			return
+			in_scroll = true
+			break
 		p = p.get_parent()
+	if c is PanelContainer and not in_scroll and c.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+		c.mouse_filter = Control.MOUSE_FILTER_STOP
+		# Musehjul og fingerbevegelser går videre selv med STOP hvis ingen bruker dem. Panelet tar dem.
+		c.gui_input.connect(func(e: InputEvent) -> void:
+			var mb := e as InputEventMouseButton
+			if (mb and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT,
+					MOUSE_BUTTON_WHEEL_RIGHT]) or e is InputEventGesture or e is InputEventScreenTouch \
+					or e is InputEventScreenDrag:
+				c.accept_event()
+		)
+		return
+	if in_scroll and c.mouse_filter == Control.MOUSE_FILTER_STOP and not (c is ScrollContainer or c is Range):
+		c.mouse_filter = Control.MOUSE_FILTER_PASS
 
 
 func _update_ui_scale() -> void:
@@ -230,6 +246,10 @@ func show_tournament_edit() -> void:
 	show_screen(TournamentEditScreen.new(self))
 
 
+func show_admin() -> void:
+	show_screen(AdminScreen.new(self))
+
+
 func show_puzzle() -> void:
 	_end_match()
 	show_screen(PuzzleScreen.new(self))
@@ -261,6 +281,13 @@ func _on_net_message(msg: Dictionary) -> void:
 				show_room(msg)
 		Protocol.TOURNAMENT_NOTICE:
 			_show_banner(I18n.server_text(msg), str(msg.get("room", "")))
+		Protocol.GLOBAL_MSG:
+			# Kunngjøring fra admin: banner hos alle som er online (historikken gir ikke banner)
+			if str(msg.get("kind", "")) == "announcement":
+				_show_banner(tr("Kunngjøring: %s") % str(msg.get("text", "")), "")
+		Protocol.ERROR:
+			if msg.get("code") == "banned":
+				_show_banner(I18n.server_text(msg), "")
 		Protocol.ROOM_CLOSED:
 			lobby_message = I18n.server_text(msg)
 			if _screen is RoomScreen:
@@ -322,6 +349,9 @@ func _show_banner(text: String, room: String) -> void:
 	panel.add_child(row)
 	var label := UI.label(text)
 	label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # lange kunngjøringer brytes over flere linjer
+	label.custom_minimum_size.x = clampf(text.length() * 9.0, 120.0, maxf(160.0, minf(480.0, ui.size.x - 170.0)))
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(label)
 	if room != "":
 		row.add_child(UI.button("Gå til kamp", func() -> void: join_room(room), "PrimaryButton"))

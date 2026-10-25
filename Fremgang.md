@@ -313,3 +313,32 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - Med mange partier vises alltid det siste. Kommer det et nytt mens et annet spilles av, byttes det først når avspillingen er ferdig og sluttstillingen har stått litt.
 - Uten nett, eller før noen har spilt, spiller botene som før.
 - Testet: 122 tester, alle grønne (nye: serveren sender siste parti til alle og etter hello, og menyen spiller det av med riktig tekst).
+
+**På nett med eget domene (fourinspace.com) og småfikser:**
+- Spillet kjører fra PC-en på `https://fourinspace.com` (og `www.`) via en navngitt Cloudflare-tunnel: `scripts\online.cmd -Hostname fourinspace.com` (`-NoExport` hopper over eksporten).
+- Skriptene finner Godot 4.7 selv (`scripts\find_godot.ps1`): Nedlastinger, skrivebordet (også «Skrivebord» og OneDrive), Program Files eller `godot` i PATH. `GODOT` kan fortsatt settes.
+- Lastesiden på web har logo, «Fire på rad / i 3D» og en fremdriftslinje i spillets farger (`html/head_include` i `export_presets.cfg`).
+- Hovedmenyen: «Spill online» (uthevet) og «Spill offline» side om side. «Spill offline» er en fane som folder ut «Mot AI» og «To spillere». «Dagens oppgave» og «Innstillinger» deler en rad.
+- Den globale chatten viser hvem som er online (med Elo-merke, og «i parti» for dem som spiller).
+- Tastaturet på mobil: feltet man skriver i (f.eks. i innstillinger) havner over tastaturet. Målingen bruker den synlige delen av spillflaten, og innstillingskortet får hele høyden mens man skriver.
+- Kameraet kunne havne under brettet på mobil (bildet skyves opp, og det senker kameraet). Nå holdes det alltid over brettet.
+- Ryddet bort gamle `__pycache__`-filer fra før Godot-omleggingen.
+
+## Runde 13 – Admin, pokaler og siste vinner
+
+| Ønske | Løsning |
+|---|---|
+| Admin kan utestenge spillere | Ny admin-side («Admin» ved profilbildet i menyen, bare for admin). En utestengt konto kan ikke logge inn, øktene slettes, spilleren kastes ut hvis den er online (og får grunnen), og fjernes fra turneringer med åpen påmelding. Utestengte vises ikke på topplistene. En admin kan ikke utestenges. «Opphev» i listen over utestengte. `"banned": true` i `users.json` virker også, og serveren kaster ut spilleren når filen lastes inn på nytt. |
+| Admin kan gjøre kunngjøringer | Kunngjøringen vises som et banner hos alle som er online, og blir stående (uthevet) i den globale chatten. |
+| Unike pokaler, også fra admin | Pokaler lages fra et frø (`net/trophy.gd`): 6 former (pokal, beger, stjerne, kule med ring, obelisk, krone), 11 metaller (gull, sølv, bronse, platina, rosé, krystall, rubin, smaragd, safir, obsidian og regnbue), hanker, merke foran (bl.a. fire på rad) og sokkel. De tegnes i kode (`TrophyView`) med metallglans og glitter. Hver turnering får sin pokal: tilfeldig, eller trykk «Ny pokal» i skjemaet til du liker den. Vinneren får den med turneringens navn og dato på profilen («Pokaler»). Admin kan gi en egen pokal til hvem som helst. Den kunngjøres i chatten. |
+| Siste vinner hedres i menyen, med turneringsoversikt | Et gyllent kort i hovedmenyen: pokalen (som gløder), «Siste turneringsvinner», navnet i gull og turneringen. Det åpner turneringssiden: vinneren med pokalen øverst og hele turneringstreet (kvartfinale, semifinale, finale) med vinnerne uthevet og finalevinneren i gull. |
+
+**Også i runde 13:**
+- **Enklere å lage turneringer:** dag og klokkeslett med piler (15 min om gangen) eller 18:00–21:00 med ett trykk, og «Starter i morgen kl. 20:00 (om 22 t)». Et tidspunkt som har passert, kan ikke velges. Det sjeldne (beskrivelse, regler, klokke, pauser, møtefrist, publisering) ligger under «Flere valg».
+- **Reklame i hovedmenyen:** den neste turneringen med åpen påmelding får et eget kort med pokalen, tid og antall påmeldte, og «Meld meg på» rett fra menyen (uten konto åpnes innloggingen). Er du påmeldt, står det «Påmeldt».
+- **For deltakerne:** øverst på turneringssiden står din status («Din kamp: Mattias – Duck · starter 22:07», «… nå! Trykk «Gå til kamp»», «… spilles nå», «Du vant kampen!» eller «Du er ute»). I treet er navnet ditt blått og kampen din har blå kant. Kamper som spilles nå, har grønn kant (med «Se på» i listen). Runder som ikke er trukket ennå, vises som tomme bokser.
+- **Scrolling i chatten zoomet brettet:** musehjul og fingre over et panel (chat, menykort, banner) slapp gjennom til brettet når de ikke traff selve meldingene. Paneler utenfor en rulleliste tar nå imot dem.
+- **«Dagens oppgave» ble kuttet på mobil** når den var løst («Dagens oppgav…»). Nå er «løst» et lite grønt merke med hake i hjørnet av knappen.
+- Klienttestene kobler seg ikke lenger til en server som kjører på maskinen (de brukte standardadressen og kunne få ekte data).
+
+**Testet:** 133 automatiske tester, alle grønne. Nye: utestenging (utkastelse, innlogging og økt nektes, opphev, toppliste, åpen turnering, `users.json`), kunngjøringer, pokaler fra admin og til turneringsvinneren, pokalgeneratoren, admin-siden, turneringstreet og deltakerstatus, skjemaet med dato og klokkeslett, reklamekortet og vinnerkortet, pokalhylla, og at scrolling over chatten ikke zoomer brettet. Skjermbilder av alle 66 pokalkombinasjoner, menyen (PC og mobil), turneringssiden (ferdig, og pågående sett fra en deltaker på mobil), skjemaet, admin-siden, profilen og kunngjøringen.

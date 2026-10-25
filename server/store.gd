@@ -9,8 +9,9 @@ extends RefCounted
 ##   puzzles.json      dagens oppgave og hvem som har løst den, de siste dagene
 ##   global_chat.json  de siste meldingene og hendelsene i den globale chatten
 ##
-## Endrer du users.json (f.eks. setter "admin": true) mens serveren kjører, merker serveren
-## det innen et sekund og laster filen inn på nytt.
+## Endrer du users.json (f.eks. setter "admin": true eller "banned": true) mens serveren kjører,
+## merker serveren det innen et sekund og laster filen inn på nytt. En utestengt bruker som er
+## online, blir kastet ut.
 ## Glemt passord: skriv "reset_password": "nytt-passord" på brukeren. Serveren lager en
 ## hash av det og fjerner klarteksten fra filen med en gang. Ugyldig JSON blir ikke lastet; da
 ## beholdes det gamle og en feil skrives til loggen.
@@ -101,10 +102,15 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 	for k in STAT_KEYS:
 		clean_stats[k] = int(stats.get(k, 0))
 	var profile: Dictionary = d.get("profile", {}) if d.get("profile") is Dictionary else {}
+	var trophies: Array = (d.get("trophies", []) if d.get("trophies") is Array else []).map(Trophy.normalize_entry) \
+		.filter(func(e: Dictionary) -> bool: return not e.is_empty())
 	return {
 		"id": int(d.get("id", 0)),
 		"username": str(d.get("username", "")),
 		"admin": bool(d.get("admin", false)),
+		"banned": bool(d.get("banned", false)),
+		"ban_reason": str(d.get("ban_reason", "")),
+		"trophies": trophies,
 		"created": str(d.get("created", "")),
 		"elo": int(d.get("elo", 1200)),
 		"stats": clean_stats,

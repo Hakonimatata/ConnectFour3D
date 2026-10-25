@@ -161,6 +161,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.PUZZLE_SOLVE: _puzzle_solve(p, msg)
 		Protocol.LIST_GAMES: _list_games(p, str(msg.get("username", "")))
 		Protocol.GET_GAME: _send_game(p, int(msg.get("id", 0)))
+		Protocol.ADMIN: _admin(p, msg)
 		Protocol.SET_OPTIONS: _set_options(p, msg)
 		Protocol.READY: _set_ready(p, bool(msg.get("ready", true)), now)
 		Protocol.MOVE: _move(p, msg, now)
@@ -227,14 +228,18 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 	p.peer = peer
 	p.disconnected_at = -1
 	_peers[peer] = p.id
-	# Husket innlogging (økt-nøkkel fra forrige gang)
+	# Husket innlogging (økt-nøkkel fra forrige gang). Utestengte kommer inn som gjest.
 	var user := accounts.user_for_session(str(msg.get("session", "")), clock_s.call())
+	if user.is_empty() and p.user_id != 0 and resumed:
+		user = store.users.get(p.user_id, {})
+	if not user.is_empty() and user.banned:
+		accounts.end_sessions_of(int(user.id))
+		var err := Accounts.banned_error(user)
+		send.call(peer, { "t": Protocol.NOTICE, "key": err.error, "args": err.args, "text": _fill(err.error, err.args) })
+		user = {}
+		p.user_id = 0
 	if not user.is_empty():
 		_sign_in(p, user)
-	elif p.user_id != 0 and resumed:
-		user = store.users.get(p.user_id, {})
-		if not user.is_empty():
-			_sign_in(p, user)
 	send.call(peer, { "t": Protocol.WELCOME, "player_id": p.id, "token": p.token, "resumed": resumed,
 		"user": accounts.public_info(user) if not user.is_empty() else null })
 	send.call(peer, social.history_message())
@@ -604,8 +609,12 @@ func _notice_room(room: Room, key: String, args: Array, except_id: int) -> void:
 
 
 func _error(peer: int, code: String, key: String, args: Array = []) -> void:
-	var text := key % args if not args.is_empty() else key
-	send.call(peer, { "t": Protocol.ERROR, "code": code, "text": text, "key": key, "args": args })
+	send.call(peer, { "t": Protocol.ERROR, "code": code, "text": _fill(key, args), "key": key, "args": args })
+
+
+## Fyller inn args i en tekst med %s (bare hvis det finnes args).
+static func _fill(key: String, args: Array) -> String:
+	return key % args if not args.is_empty() else key
 
 
 func _new_code() -> String:
@@ -626,7 +635,8 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 	var res := accounts.register(username, password) if t == Protocol.REGISTER \
 		else accounts.login(username, password, clock_s.call())
 	if res.has("error"):
-		send.call(p.peer, { "t": Protocol.AUTH_ERROR, "key": res.error, "text": res.error })
+		var args: Array = res.get("args", [])
+		send.call(p.peer, { "t": Protocol.AUTH_ERROR, "key": res.error, "args": args, "text": _fill(res.error, args) })
 		return
 	_sign_in(p, res.user)
 	if t == Protocol.REGISTER:
@@ -690,7 +700,11 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 # ---------------------------------------------------------------- Turneringer
 
 func _list_tournaments(p: Player) -> void:
-	var list := store.tournaments.map(func(t: Dictionary) -> Dictionary: return tournaments.summary(t))
+	var list := store.tournaments.map(func(t: Dictionary) -> Dictionary:
+		var s := tournaments.summary(t)
+		s.joined = p.user_id != 0 and p.user_id in t.players   # så menyen kan si «Du er påmeldt»
+		return s
+	)
 	var admin := accounts.is_admin(p.user_id)
 	if not admin:
 		list = list.filter(func(t: Dictionary) -> bool: return t.status != "draft")
@@ -781,6 +795,97 @@ func _close_room(code: String, key: String, args: Array) -> void:
 				send.call(p.peer, { "t": Protocol.ROOM_CLOSED, "key": key, "args": args, "text": key % args if not args.is_empty() else key })
 	_drop_spectators(room, key, args)
 	rooms.erase(code)
+
+
+# ---------------------------------------------------------------- Admin
+
+## Admin-handlinger: utestenge/oppheve, kunngjøre og gi en pokal. Svarer alltid med admin_result
+## (med listen over utestengte, så admin-siden er oppdatert).
+func _admin(p: Player, msg: Dictionary) -> void:
+	if not accounts.is_admin(p.user_id):
+		_error(p.peer, "admin_only", "Bare admin kan gjøre dette.")
+		return
+	var action := str(msg.get("action", ""))
+	var username := str(msg.get("username", "")).strip_edges()
+	var now_s: int = clock_s.call()
+	var key := ""
+	var args := []
+	var ok := true
+	match action:
+		"ban":
+			key = accounts.ban(username, str(msg.get("reason", "")))
+			ok = key == ""
+			if ok:
+				var u := store.find_user(username)
+				_remove_from_open_tournaments(int(u.id))
+				_kick_banned(int(u.id))
+				key = "%s er utestengt."
+				username = str(u.username)
+		"unban":
+			key = accounts.unban(username)
+			ok = key == ""
+			if ok:
+				key = "%s kan logge inn igjen."
+				username = str(store.find_user(username).username)
+		"announce":
+			var text := str(msg.get("text", "")).strip_edges().substr(0, Protocol.MAX_ANNOUNCEMENT)
+			ok = text != ""
+			if ok:
+				social.announce(p.name, text, now_s)
+				key = "Kunngjøringen er sendt."
+			else:
+				key = "Skriv en kunngjøring først."
+		"award":
+			var u := store.find_user(username)
+			ok = not u.is_empty()
+			if ok:
+				var entry := Trophy.entry(str(msg.get("name", "")), msg.get("design", Trophy.generate(rng.randi())), 0,
+					Time.get_date_string_from_unix_time(now_s))
+				accounts.award_trophy(int(u.id), entry)
+				social.event("%s fikk pokalen «%s»!", [str(u.username), entry.name], now_s)
+				key = "%s fikk pokalen «%s»."
+				args = [str(u.username), entry.name]
+			else:
+				key = "Fant ikke brukeren %s."
+		"banned_list":
+			pass
+		_:
+			ok = false
+			key = "Ukjent handling."
+	if args.is_empty() and key.contains("%s"):
+		args = [username]
+	send.call(p.peer, { "t": Protocol.ADMIN_RESULT, "action": action, "ok": ok, "key": key, "args": args,
+		"text": _fill(key, args), "banned": accounts.banned_list() })
+
+
+## Kaster ut en utestengt bruker som er online: logges ut, får beskjed og kobles fra.
+func _kick_banned(uid: int) -> void:
+	var err := Accounts.banned_error(store.users.get(uid, {}))
+	for p: Player in players.values():
+		if p.user_id != uid:
+			continue
+		p.user_id = 0
+		p.name = p.guest_name
+		_presence_dirty = true
+		if p.peer != 0:
+			var peer := p.peer
+			_error(peer, "banned", err.error, err.args)
+			close_peer.call(peer)
+
+
+func _remove_from_open_tournaments(uid: int) -> void:
+	for t in store.tournaments:
+		if t.status == "open" and uid in t.players:
+			t.players.erase(uid)
+			store.save_tournaments()
+
+
+## Kalles når users.json er lastet inn på nytt (f.eks. "banned": true satt for hånd).
+func on_users_reloaded() -> void:
+	for p: Player in players.values():
+		if p.user_id != 0 and accounts.is_banned(p.user_id):
+			_remove_from_open_tournaments(p.user_id)
+			_kick_banned(p.user_id)
 
 
 # ---------------------------------------------------------------- Tilskuere

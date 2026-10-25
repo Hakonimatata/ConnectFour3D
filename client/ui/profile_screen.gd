@@ -1,6 +1,6 @@
 class_name ProfileScreen
 extends Screen
-## Statistikk for en spiller (deg selv som standard), de siste partiene (med reprise) og topplister.
+## Statistikk for en spiller (deg selv som standard), pokalene, de siste partiene (med reprise) og topplister.
 
 var username := ""          ## tom = deg selv
 var _stats_box: VBoxContainer
@@ -107,6 +107,40 @@ func _show_stats(u: Variant) -> void:
 		value.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 		row.add_child(value)
 		_stats_box.add_child(row)
+	_stats_box.add_child(_trophy_shelf(u.get("trophies", [])))
+
+
+## Pokalhylla: hver pokal med navnet og datoen under. Nyeste først.
+func _trophy_shelf(trophies: Variant) -> Control:
+	var box := UI.vbox(8)
+	box.add_child(UI.section("Pokaler"))
+	var list: Array = trophies if trophies is Array else []
+	if list.is_empty():
+		box.add_child(UI.label("Ingen pokaler ennå. Vinn en turnering for å få en!", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+		return box
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 10)
+	flow.add_theme_constant_override("v_separation", 10)
+	for e in list:
+		if not e is Dictionary:
+			continue
+		var card := UI.vbox(2)
+		card.custom_minimum_size.x = 104
+		var view := TrophyView.new(e.get("design", {}), 92)
+		view.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		card.add_child(view)
+		var name := UI.label(str(e.get("name", "")), "", HORIZONTAL_ALIGNMENT_CENTER, true)
+		name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		name.add_theme_font_size_override("font_size", 14)
+		name.custom_minimum_size.x = 104
+		card.add_child(name)
+		var date := UI.label(str(e.get("date", "")), "Muted", HORIZONTAL_ALIGNMENT_CENTER)
+		date.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		date.add_theme_font_size_override("font_size", 12)
+		card.add_child(date)
+		flow.add_child(card)
+	box.add_child(flow)
+	return box
 
 
 func _show_board() -> void:

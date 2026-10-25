@@ -156,6 +156,40 @@ func test_knockout_with_walkover_and_winner() -> void:
 	check_eq(lobby.store.users[final.p2].stats.tournaments_won, 1)
 
 
+func test_winner_gets_the_trophy_and_list_shows_joined() -> void:
+	var design := { "seed": 42, "shape": "star", "metal": "ruby", "handles": "none", "emblem": "four", "base": "jade" }
+	var id := _create("knockout", { "trophy": design })
+	check_eq(_t(id).trophy, Trophy.normalize(design), "turneringen får pokalen admin valgte:")
+	var other := _create("knockout", { "name": "Uten valg" })
+	check(Trophy.SHAPES.has(str(_t(other).trophy.shape)), "uten valg får den en tilfeldig pokal")
+	var peers := {}
+	for i in 2:
+		var peer := i + 2
+		_user(peer, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = peer
+		_msg(peer, { "t": "tournament_join", "id": id })
+	_msg(2, { "t": "list_tournaments" })
+	var listed: Array = _last(2, "tournament_list").tournaments
+	var mine: Dictionary = listed.filter(func(s: Dictionary) -> bool: return int(s.id) == id)[0]
+	check(mine.joined, "listen sier at du er påmeldt")
+	check(not listed.filter(func(s: Dictionary) -> bool: return int(s.id) == other)[0].joined)
+	check_eq(mine.trophy.shape, "star", "listen har pokalen:")
+	_advance(61)
+	var final: Dictionary = _t(id).rounds[0][0]
+	_play_match(final, peers)
+	var t := _t(id)
+	check_eq(t.status, "finished")
+	check_eq(t.finished_at, unix, "tidspunktet den ble ferdig:")
+	var trophies: Array = lobby.store.users[final.p1].trophies
+	check_eq(trophies.size(), 1, "vinneren får pokalen:")
+	check_eq(trophies[0].name, "Høstcup")
+	check_eq(trophies[0].design, Trophy.normalize(design))
+	check_eq(int(trophies[0].tournament), id)
+	check_eq(lobby.store.users[final.p2].trophies.size(), 0, "taperen får ingen:")
+	_msg(2, { "t": "get_stats", "username": lobby.accounts.username_of(final.p1) })
+	check_eq((_last(2, "stats").user.trophies as Array).size(), 1, "pokalen vises i statistikken:")
+
+
 func test_knockout_draw_is_replayed() -> void:
 	var id := _create()
 	for i in 2:

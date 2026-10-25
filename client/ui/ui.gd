@@ -366,6 +366,50 @@ static func dot(color: Color, diameter := 16.0) -> Panel:
 
 
 ## Unix-tid som lokal dato og klokkeslett, f.eks. «21.10 20:00».
+const WEEKDAYS := ["søndag", "mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag"]
+const MONTHS := ["jan.", "feb.", "mars", "april", "mai", "juni", "juli", "aug.", "sep.", "okt.", "nov.", "des."]
+
+
+## Hvor mange dager fra i dag (lokal tid) et tidspunkt er: 0 = i dag, 1 = i morgen, -1 = i går.
+static func days_from_today(unix: int, now: int = -1) -> int:
+	if now < 0:
+		now = int(Time.get_unix_time_from_system())
+	var bias := int(Time.get_time_zone_from_system().bias) * 60
+	return int(floor((unix + bias) / 86400.0)) - int(floor((now + bias) / 86400.0))
+
+
+## «I dag», «I morgen» eller «lørdag 1. nov.»
+static func format_day(unix: int) -> String:
+	var days := days_from_today(unix)
+	if days == 0:
+		return TranslationServer.translate("I dag")
+	if days == 1:
+		return TranslationServer.translate("I morgen")
+	var bias := int(Time.get_time_zone_from_system().bias) * 60
+	var d := Time.get_datetime_dict_from_unix_time(unix + bias)
+	return TranslationServer.translate("%s %d. %s") % [TranslationServer.translate(WEEKDAYS[int(d.weekday)]),
+		int(d.day), TranslationServer.translate(MONTHS[int(d.month) - 1])]
+
+
+## «I morgen kl. 20:00», «lørdag 1. nov. kl. 20:00»
+static func format_when(unix: int) -> String:
+	var bias := int(Time.get_time_zone_from_system().bias) * 60
+	var d := Time.get_datetime_dict_from_unix_time(unix + bias)
+	return TranslationServer.translate("%s kl. %02d:%02d") % [format_day(unix), int(d.hour), int(d.minute)]
+
+
+## «om 2 t 15 min», «om 3 dager»
+static func format_until(unix: int, now: int = -1) -> String:
+	if now < 0:
+		now = int(Time.get_unix_time_from_system())
+	var s := maxi(0, unix - now)
+	if s >= 2 * 86400:
+		return TranslationServer.translate("om %d dager") % (s / 86400)
+	if s >= 3600:
+		return TranslationServer.translate("om %d t %d min") % [s / 3600, (s % 3600) / 60]
+	return TranslationServer.translate("om %d min") % maxi(1, s / 60)
+
+
 static func format_time(unix: int) -> String:
 	if unix <= 0:
 		return "—"

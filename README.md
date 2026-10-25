@@ -120,7 +120,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 
 | Fil | Innhold |
 |---|---|
-| `users.json` | Brukere: brukernavn, `admin`, Elo, statistikk, profil og passord-hash (aldri passordet selv) |
+| `users.json` | Brukere: brukernavn, `admin`, `banned`, Elo, statistikk, pokaler, profil og passord-hash (aldri passordet selv) |
 | `avatars.json` | Profilbilder |
 | `sessions.json` | Innloggede økter (bare en hash av nøkkelen) |
 | `tournaments.json` | Turneringer |
@@ -144,7 +144,12 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 
 **Ugyldig JSON:** lagrer du `users.json` med en skrivefeil, beholder serveren brukerne den har i minnet og skriver en advarsel. Rett feilen og lagre på nytt.
 
-**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Der velger du format (utslag eller alle mot alle), regler, klokke og starttid. Spillerne melder seg på. Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover.
+**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen.
+
+**Admin-siden** (knappen «Admin» ved profilbildet i hovedmenyen, bare for admin):
+- **Kunngjøring:** vises som et banner hos alle som er online, og blir stående i den globale chatten.
+- **Utesteng / opphev:** en utestengt konto kan ikke logge inn, kastes ut hvis den er online og fjernes fra turneringer med åpen påmelding. Grunnen vises for spilleren. Det samme skjer hvis du skriver `"banned": true` (og eventuelt `"ban_reason": "…"`) på brukeren i `users.json`. Utestengelsen gjelder kontoen: spilleren kan fortsatt spille som gjest.
+- **Gi en pokal:** velg navn og en pokal (trykk «Ny pokal» til du liker den). Den havner på profilen til spilleren og kunngjøres i chatten. Pokalene ligger under `"trophies"` i `users.json` og kan også endres der.
 
 **Invitasjon:** «Del invitasjon» i venterommet gir en lenke som `https://…/?rom=KXRTA`. Turneringer kan deles med `?turnering=3`.
 
