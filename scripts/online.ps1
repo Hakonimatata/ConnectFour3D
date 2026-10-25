@@ -7,7 +7,7 @@
 # Med -Hostname brukes en navngitt tunnel: første gang logger du inn hos Cloudflare i nettleseren,
 # så lages tunnelen og DNS-oppføringen automatisk. Domenet må ligge i Cloudflare.
 # Stopp med Ctrl+C. Adressen kopieres til utklippstavlen.
-# Godot hentes fra miljøvariabelen GODOT, ellers fra Nedlastinger-mappen.
+# Godot finnes automatisk (se scripts\find_godot.ps1), eller settes med miljøvariabelen GODOT.
 param([switch]$NoExport, [int]$WebPort = 8000, [int]$GamePort = 8080, [string]$Hostname = "", [string]$TunnelName = "fire-paa-rad")
 
 $ErrorActionPreference = 'Stop'
@@ -24,12 +24,13 @@ function Find-Cloudflared {
     return $null
 }
 
-$godot = if ($env:GODOT) { $env:GODOT } else { "$env:USERPROFILE\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe" }
-if (-not (Test-Path $godot)) {
-    Write-Host "Fant ikke Godot: $godot" -ForegroundColor Red
+$godot = & "$PSScriptRoot\find_godot.ps1"
+if (-not $godot) {
+    Write-Host "Fant ikke Godot 4.7 i Nedlastinger, på skrivebordet eller i Program Files." -ForegroundColor Red
     Write-Host "Sett miljøvariabelen GODOT til stien til Godot_v4.7-stable_win64_console.exe"
     exit 1
 }
+$env:GODOT = $godot   # så web.cmd (eksporten) bruker samme Godot
 
 $cf = Find-Cloudflared
 if (-not $cf) {

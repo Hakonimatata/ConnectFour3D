@@ -2,14 +2,16 @@
 rem Eksporterer web-bygget og starter serveren med HTTPS, slik at alle paa wifi kan spille.
 rem   scripts\web.cmd          eksporter + start server (stopp med Ctrl+C)
 rem   scripts\web.cmd export   bare eksporter
-rem Godot hentes fra miljoevariabelen GODOT, ellers fra Nedlastinger-mappen.
+rem Godot finnes automatisk (se scripts\find_godot.ps1), eller settes med miljoevariabelen GODOT.
 setlocal
-if "%GODOT%"=="" set "GODOT=%USERPROFILE%\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe"
-if not exist "%GODOT%" (
-	echo Fant ikke Godot: %GODOT%
+set "FOUND="
+for /f "usebackq delims=" %%G in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0find_godot.ps1"`) do set "FOUND=%%G"
+if not defined FOUND (
+	echo Fant ikke Godot 4.7 i Nedlastinger, paa skrivebordet eller i Program Files.
 	echo Sett miljoevariabelen GODOT til stien til Godot_v4.7-stable_win64_console.exe
 	exit /b 1
 )
+set "GODOT=%FOUND%"
 cd /d "%~dp0.."
 if not exist build\web mkdir build\web
 

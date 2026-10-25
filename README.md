@@ -36,6 +36,8 @@ Flytter du Godot til en annen mappe, retter du stien med `notepad $PROFILE`.
 | Server + web-klient på wifi | `godot --headless --path . -- --server --web build/web` (web på port 8000, endre med `--web-port`) |
 | **Eksporter + start alt (Windows)** | `scripts\web.cmd` (bare eksport: `scripts\web.cmd export`) |
 
+Skriptene i `scripts\` finner Godot 4.7 selv i Nedlastinger, på skrivebordet eller i Program Files. Ligger det et annet sted, sett miljøvariabelen `GODOT` til stien til `Godot_v4.7-stable_win64_console.exe`.
+
 ### Spille online lokalt
 
 1. Start serveren med kommandoen over.
