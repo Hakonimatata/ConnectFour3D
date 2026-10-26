@@ -8,7 +8,8 @@ const ELO_K := 32
 const SESSION_DAYS := 90
 const MAX_FAILURES := 5            ## feilede innlogginger før pause
 const FAILURE_WINDOW_S := 600      ## ... innenfor 10 minutter
-const USERNAME_RE := "^[A-Za-z0-9_æøåÆØÅ-]{3,16}$"
+const MAX_FRIENDS := 200
+const USERNAME_RE :="^[A-Za-z0-9_æøåÆØÅ-]{3,16}$"
 
 var store: Store
 var iterations := Password.ITERATIONS   ## testene bruker færre runder for fart
@@ -92,6 +93,68 @@ func set_admin(username: String, on: bool) -> bool:
 
 func is_admin(user_id: int) -> bool:
 	return user_id != 0 and bool(store.users.get(user_id, {}).get("admin", false))
+
+
+# ---------------------------------------------------------------- Venner
+
+## Venneforespørsel fra en bruker til en annen. Har den andre allerede spurt deg, blir dere venner.
+## Gir { state: "requested" | "friends", user } eller { error }.
+func friend_request(from_id: int, to_username: String) -> Dictionary:
+	var me: Dictionary = store.users.get(from_id, {})
+	var other := store.find_user(to_username)
+	if me.is_empty() or other.is_empty():
+		return { "error": "Fant ikke brukeren %s." }
+	if int(other.id) == from_id:
+		return { "error": "Du kan ikke legge til deg selv." }
+	if int(other.id) in me.friends:
+		return { "error": "Dere er allerede venner." }
+	if me.friends.size() >= MAX_FRIENDS or other.friends.size() >= MAX_FRIENDS:
+		return { "error": "Vennelisten er full." }
+	if int(other.id) in me.friend_requests:
+		_make_friends(me, other)
+		return { "state": "friends", "user": other }
+	if not from_id in other.friend_requests:
+		other.friend_requests.append(from_id)
+		store.save_users()
+	return { "state": "requested", "user": other }
+
+
+## Godtar en forespørsel fra username. Gir den andre brukeren, eller {} hvis det ikke fantes en forespørsel.
+func friend_accept(user_id: int, username: String) -> Dictionary:
+	var me: Dictionary = store.users.get(user_id, {})
+	var other := store.find_user(username)
+	if me.is_empty() or other.is_empty() or not int(other.id) in me.friend_requests:
+		return {}
+	_make_friends(me, other)
+	return other
+
+
+func friend_decline(user_id: int, username: String) -> void:
+	var me: Dictionary = store.users.get(user_id, {})
+	var other := store.find_user(username)
+	if not me.is_empty() and not other.is_empty() and me.friend_requests.has(int(other.id)):
+		me.friend_requests.erase(int(other.id))
+		store.save_users()
+
+
+func friend_remove(user_id: int, username: String) -> void:
+	var me: Dictionary = store.users.get(user_id, {})
+	var other := store.find_user(username)
+	if me.is_empty() or other.is_empty():
+		return
+	me.friends.erase(int(other.id))
+	other.friends.erase(user_id)
+	store.save_users()
+
+
+func _make_friends(a: Dictionary, b: Dictionary) -> void:
+	for pair in [[a, b], [b, a]]:
+		var x: Dictionary = pair[0]
+		var y: Dictionary = pair[1]
+		x.friend_requests.erase(int(y.id))
+		if not int(y.id) in x.friends:
+			x.friends.append(int(y.id))
+	store.save_users()
 
 
 # ---------------------------------------------------------------- Admin: utestenging og pokaler

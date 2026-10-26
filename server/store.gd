@@ -7,7 +7,8 @@ extends RefCounted
 ##   tournaments.json  turneringer
 ##   games.jsonl       ett ferdig parti per linje (repriser; id = linjenummer)
 ##   puzzles.json      dagens oppgave og hvem som har løst den, de siste dagene
-##   global_chat.json  de siste meldingene og hendelsene i den globale chatten
+##   global_chat.json  de siste meldingene og hendelsene i den globale chatten (per kanal)
+##   feedback.jsonl    tilbakemeldinger fra kanalen «tilbakemelding», én per linje
 ##
 ## Endrer du users.json (f.eks. setter "admin": true eller "banned": true) mens serveren kjører,
 ## merker serveren det innen et sekund og laster filen inn på nytt. En utestengt bruker som er
@@ -28,6 +29,7 @@ var global_chat: Array = []         ## siste meldinger i den globale chatten (ei
 var next_user_id := 1
 var next_tournament_id := 1
 var _known: Dictionary = {}         ## fil -> hash av innholdet da vi sist leste/skrev det
+var _known_mtime: Dictionary = {}   ## fil -> endringstid da vi sist så på innholdet
 
 
 func open(p_dir: String) -> void:
@@ -67,7 +69,13 @@ func poll() -> bool:
 	var path := dir.path_join("users.json")
 	if not FileAccess.file_exists(path):
 		return false
-	# Sammenlign innholdet (ikke bare endringstid, som bare har hele sekunder).
+	# Billig sjekk først: er endringstiden den samme som sist, og ikke helt fersk, er filen urørt.
+	# (Endringstiden har bare hele sekunder, så de første sekundene etter en endring leses innholdet.)
+	var mtime := FileAccess.get_modified_time(path)
+	if mtime == int(_known_mtime.get(path, -1)) and int(Time.get_unix_time_from_system()) - mtime > 2:
+		return false
+	_known_mtime[path] = mtime
+	# Sammenlign innholdet (så serverens egne lagringer ikke regnes som endringer).
 	if FileAccess.get_file_as_string(path).hash() == _known.get(path, 0):
 		return false
 	var ok := _load_users()
@@ -111,6 +119,8 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"banned": bool(d.get("banned", false)),
 		"ban_reason": str(d.get("ban_reason", "")),
 		"trophies": trophies,
+		"friends": _ids(d.get("friends", [])),                  # venner (bruker-id-er, begge veier)
+		"friend_requests": _ids(d.get("friend_requests", [])),  # venneforespørsler til denne brukeren
 		"created": str(d.get("created", "")),
 		"elo": int(d.get("elo", 1200)),
 		"stats": clean_stats,
@@ -119,6 +129,16 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 			"win_fx": str(profile.get("win_fx", "classic")) },
 		"password": d.get("password", {}),
 	}
+
+
+## En liste med bruker-id-er fra JSON (desimaltall og søppel blir borte, ingen duplikater).
+static func _ids(v: Variant) -> Array:
+	var out := []
+	if v is Array:
+		for x in v:
+			if (x is int or x is float) and int(x) > 0 and not int(x) in out:
+				out.append(int(x))
+	return out
 
 
 const STAT_KEYS := ["games", "wins", "losses", "draws", "current_streak", "best_streak", "fastest_win",
@@ -187,6 +207,17 @@ func save_puzzles() -> void:
 
 func save_global_chat() -> void:
 	_write_json("global_chat.json", global_chat)
+
+
+## Tilbakemeldinger fra kanalen «tilbakemelding» i chatten: én per linje, til admin.
+func append_feedback(record: Dictionary) -> void:
+	if dir == "":
+		return
+	var path := dir.path_join("feedback.jsonl")
+	var f := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
+	if f != null:
+		f.seek_end()
+		f.store_line(JSON.stringify(record))
 
 
 ## Lagrer et ferdig parti (gir det en id) og gir id-en.

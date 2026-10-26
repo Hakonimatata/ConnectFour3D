@@ -13,6 +13,7 @@ var _banner: Control
 var _pending_join := ""       ## romkode fra ?rom= i lenken
 var _pending_tournament := 0  ## turnering fra ?turnering= i lenken
 var keyboard_height := 0.0    ## Hvor mye av skjermen tastaturet dekker (UI-enheter)
+var pending_invite := ""      ## venn som skal inviteres når rommet vi lager er klart («Utfordre»)
 ## Hvor mye av spillflaten (canvas) som ikke synes øverst og nederst, i canvas-piksler («topp,bunn»).
 ## Måles mot canvas og ikke innerHeight, fordi noen nettlesere krymper innerHeight med tastaturet
 ## og andre ikke, og noen skyver siden opp i stedet.
@@ -250,6 +251,20 @@ func show_admin() -> void:
 	show_screen(AdminScreen.new(self))
 
 
+func show_friends(back_to_menu := false) -> void:
+	show_screen(FriendsScreen.new(self, back_to_menu))
+
+
+## «Utfordre» en venn: velg regler for et privat rom. Når rommet er laget, inviteres vennen.
+func challenge(username: String) -> void:
+	pending_invite = username
+	show_setup("online", func(options: GameOptions, _private: bool) -> void: online_create_room(options, true),
+		func() -> void:
+			pending_invite = ""
+			show_friends()
+	)
+
+
 func show_puzzle() -> void:
 	_end_match()
 	show_screen(PuzzleScreen.new(self))
@@ -276,9 +291,18 @@ func join_room(code: String) -> void:
 func _on_net_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.ROOM_STATE:
+			# «Utfordre» fra vennelisten: rommet er laget, inviter vennen
+			if pending_invite != "" and int(msg.get("you", 0)) == 1:
+				Net.send({ "t": Protocol.FRIEND, "action": "invite", "username": pending_invite })
+				pending_invite = ""
 			# Ble med i et rom (fra lobbyen, en lenke eller «Gå til kamp»): vis venterommet.
 			if not (_screen is RoomScreen or _screen is GameScreen or _screen is SetupScreen):
 				show_room(msg)
+		Protocol.FRIEND_NOTICE:
+			match str(msg.get("kind", "")):
+				"invite": _show_banner(I18n.server_text(msg), str(msg.get("code", "")), tr("Bli med"))
+				"request": _show_banner(I18n.server_text(msg), "", tr("Se"), func() -> void: show_friends())
+				_: _show_banner(I18n.server_text(msg), "")
 		Protocol.TOURNAMENT_NOTICE:
 			_show_banner(I18n.server_text(msg), str(msg.get("room", "")))
 		Protocol.GLOBAL_MSG:
@@ -332,7 +356,9 @@ func share_link(param: String, value: String, title: String) -> String:
 	return tr("Koden %s er kopiert.") % value
 
 
-func _show_banner(text: String, room: String) -> void:
+## Et banner øverst. room = romkode for en knapp som går til rommet («Gå til kamp» eller
+## button_text). Uten rom kan action gi en egen knapp (f.eks. «Se» for en venneforespørsel).
+func _show_banner(text: String, room: String, button_text := "Gå til kamp", action := Callable()) -> void:
 	_hide_banner()
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
@@ -354,7 +380,12 @@ func _show_banner(text: String, room: String) -> void:
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(label)
 	if room != "":
-		row.add_child(UI.button("Gå til kamp", func() -> void: join_room(room), "PrimaryButton"))
+		row.add_child(UI.button(button_text, func() -> void: join_room(room), "PrimaryButton"))
+	elif action.is_valid():
+		row.add_child(UI.button(button_text, func() -> void:
+			_hide_banner()
+			action.call()
+		, "PrimaryButton"))
 	row.add_child(UI.button("×", _hide_banner, "GhostButton"))
 	ui.add_child(margin)
 	_banner = margin

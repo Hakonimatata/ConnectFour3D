@@ -26,6 +26,8 @@ var notify: Callable = func(_uid: int, _msg: Dictionary) -> void: pass
 var close_room: Callable = func(_code: String, _key: String, _args: Array) -> void: pass
 ## announce(nøkkel, args): publiseres i den globale chatten (start og vinner).
 var announce: Callable = func(_key: String, _args: Array) -> void: pass
+## changed(id): turneringen er endret (lobbyen sender den nye utgaven til dem som har siden oppe).
+var changed: Callable = func(_id: int) -> void: pass
 var rng := RandomNumberGenerator.new()
 
 
@@ -69,7 +71,7 @@ func create(user_id: int, data: Dictionary, now: int) -> Dictionary:
 	store.next_tournament_id += 1
 	_apply(t, data, now)
 	store.tournaments.append(t)
-	store.save_tournaments()
+	_save(t)
 	return t
 
 
@@ -81,7 +83,7 @@ func update(id: int, data: Dictionary, now: int) -> String:
 	if not t.status in ["draft", "open"]:
 		return "Turneringen har allerede startet."
 	_apply(t, data, now)
-	store.save_tournaments()
+	_save(t)
 	return ""
 
 
@@ -134,7 +136,7 @@ func action(id: int, what: String, now: int) -> String:
 			store.tournaments.erase(t)
 		_:
 			return "Ukjent handling."
-	store.save_tournaments()
+	_save(t)
 	return ""
 
 
@@ -153,7 +155,7 @@ func join(id: int, uid: int, now: int) -> String:
 	if t.players.size() >= int(t.max_players):
 		return "Turneringen er full."
 	t.players.append(uid)
-	store.save_tournaments()
+	_save(t)
 	return ""
 
 
@@ -164,7 +166,7 @@ func leave(id: int, uid: int) -> String:
 	if t.status != "open":
 		return "Du kan ikke melde deg av etter start."
 	t.players.erase(uid)
-	store.save_tournaments()
+	_save(t)
 	return ""
 
 
@@ -174,10 +176,10 @@ func tick(now: int) -> void:
 	for t in store.tournaments.duplicate():
 		if t.status == "open" and now >= int(t.start_time):
 			_start(t, now)
-			store.save_tournaments()
+			_save(t)
 		if t.status == "running":
 			if _tick_round(t, now):
-				store.save_tournaments()
+				_save(t)
 
 
 func _start(t: Dictionary, now: int) -> void:
@@ -280,7 +282,7 @@ func on_match_started(match_id: String) -> void:
 	var found := _find_match(match_id)
 	if not found.is_empty():
 		found.m.status = "playing"
-		store.save_tournaments()
+		_save(found.t)
 
 
 ## Lobbyen melder resultatet av et parti i en turneringskamp.
@@ -297,7 +299,7 @@ func report(match_id: String, winner_uid: int, draw: bool, now: int) -> String:
 		m.draws += 1
 		if t.format == "knockout":
 			if m.draws < MAX_REPLAYS:
-				store.save_tournaments()
+				_save(t)
 				return "replay"
 			# Etter flere uavgjorte går den med høyest Elo videre.
 			winner_uid = m.p1 if _elo(m.p1) >= _elo(m.p2) else m.p2
@@ -308,7 +310,7 @@ func report(match_id: String, winner_uid: int, draw: bool, now: int) -> String:
 		_finish_match(t, m, winner_uid, "played")
 	if _round_done(t, int(t.current_round)):
 		_next_round(t, now)
-	store.save_tournaments()
+	_save(t)
 	return ""
 
 
@@ -435,6 +437,12 @@ func _name_or_dash(uid: int) -> String:
 
 
 # ---------------------------------------------------------------- Hjelpere
+
+## Lagrer alle turneringene og melder at denne er endret.
+func _save(t: Dictionary) -> void:
+	store.save_tournaments()
+	changed.call(int(t.id))
+
 
 func _elo(uid: int) -> int:
 	return int(store.users.get(uid, {}).get("elo", Accounts.START_ELO))

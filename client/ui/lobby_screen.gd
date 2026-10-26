@@ -108,6 +108,7 @@ func _rebuild_account_row() -> void:
 		profile.add_theme_constant_override("icon_max_width", 20)
 		profile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_account_row.add_child(profile)
+		_account_row.add_child(UI.button("Venner", func() -> void: app.show_friends()))
 		_account_row.add_child(UI.button("Logg ut", func() -> void: Net.logout(), "GhostButton"))
 	else:
 		var login := UI.button("Logg inn / ny konto", func() -> void: app.show_account(), "GhostButton")

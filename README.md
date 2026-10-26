@@ -126,7 +126,8 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 | `tournaments.json` | Turneringer |
 | `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse (brukes til repriser) |
 | `puzzles.json` | Dagens oppgave og hvem som har løst den, de siste 14 dagene |
-| `global_chat.json` | De siste 50 meldingene og hendelsene i den globale chatten |
+| `global_chat.json` | De siste 50 meldingene og hendelsene per kanal i den globale chatten |
+| `feedback.jsonl` | Alt som skrives i chatkanalen «Innspill», én melding per linje (til admin) |
 
 **Gjøre noen til admin:** åpne `data/users.json`, finn brukeren og sett `"admin": true`. Lagre filen. Serveren oppdager endringen innen ett sekund, og du trenger ikke starte den på nytt. Du kan også starte serveren med `--admin <brukernavn>`.
 
@@ -144,7 +145,11 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 
 **Ugyldig JSON:** lagrer du `users.json` med en skrivefeil, beholder serveren brukerne den har i minnet og skriver en advarsel. Rett feilen og lagre på nytt.
 
-**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen.
+**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Treet har pokalen i midten (på smale skjermer går det fra venstre mot høyre med pokalen over finalen), og kamper som spilles nå kan trykkes på for å se på. Siden oppdateres med en gang noe skjer. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen. Admin kan bytte pokal på turneringssiden («Ny pokal») før turneringen starter.
+
+**Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Legg til med brukernavn. Den andre får en forespørsel og godtar. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
+
+**Chatkanaler:** den globale chatten har kanalene «Generelt», «Velkommen» (nye kontoer ønskes velkommen her) og «Innspill» (lagres også i `feedback.jsonl`). Kunngjøringer vises i alle kanalene.
 
 **Admin-siden** (knappen «Admin» ved profilbildet i hovedmenyen, bare for admin):
 - **Kunngjøring:** vises som et banner hos alle som er online, og blir stående i den globale chatten.

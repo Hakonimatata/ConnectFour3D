@@ -3,9 +3,23 @@ extends PanelContainer
 ## Global chat i hovedmenyen: alle som er online kan skrive, og serveren publiserer hendelser
 ## her (nye Elo-nivåer, seiersrekker, turneringsvinnere og dagens oppgave) og kunngjøringer fra admin.
 ## Øverst står hvor mange som er online og hvor mange som spiller nå, og under det hvem som er online.
+## Kanalene «Generelt», «Velkommen» og «Innspill» (tilbakemeldinger) velges med faner. En prikk på fanen betyr
+## nye meldinger der. Kunngjøringer vises i alle kanalene.
 ## På mobil er den kompakt: én linje med siste melding og en knapp som åpner hele chatten.
 
 signal toggled(open: bool)
+
+const CHANNELS := ["generelt", "velkommen", "tilbakemelding"]
+const CHANNEL_NAMES := ["Generelt", "Velkommen", "Innspill"]
+const PLACEHOLDERS := ["Skriv til alle…", "Si hei!", "Ønsker, feil eller ros…"]
+const INTROS := ["",
+	"Velkommen til Fire på rad i 3D! Si hei, spør om reglene, eller finn noen å spille med.",
+	"Fant du en feil, eller har du et ønske? Skriv det her. Admin leser alt."]
+
+var channel := "generelt"
+var _tabs: Array[Button] = []
+var _unread := {}            ## kanal -> true
+var _messages: Array = []    ## alle meldingene vi har (alle kanaler)
 
 var compact := false:
 	set(v):
@@ -67,6 +81,31 @@ func _ready() -> void:
 	_who.add_theme_font_size_override("bold_font_size", 14)
 	v.add_child(_who)
 
+	# Kanalene
+	var tabs := UI.hbox(6)
+	var group := ButtonGroup.new()
+	for i in CHANNELS.size():
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_group = group
+		b.theme_type_variation = "ChoiceButton"
+		b.add_theme_font_size_override("font_size", 14)
+		b.custom_minimum_size.y = 32
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		b.button_pressed = i == 0
+		var c: String = CHANNELS[i]
+		b.pressed.connect(func() -> void:
+			Sfx.play("click")
+			set_channel(c)
+		)
+		tabs.add_child(b)
+		_tabs.append(b)
+	v.add_child(tabs)
+	_body.append(tabs)
+
 	_log = RichTextLabel.new()
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
@@ -97,9 +136,42 @@ func _ready() -> void:
 	_online = int(Net.presence.online)
 	_playing = int(Net.presence.playing)
 	_users = Net.presence.get("users", [])
-	for m in Net.global_messages:
-		_append(m)
+	_messages = Net.global_messages.duplicate()
+	_unread.clear()
+	_rebuild()
+	if not _messages.is_empty():
+		_preview.text = _plain(_messages[-1])
 	_update_state()
+
+
+## Bytter kanal: loggen viser bare den kanalen (og kunngjøringene).
+func set_channel(c: String) -> void:
+	channel = c if c in CHANNELS else CHANNELS[0]
+	_unread.erase(channel)
+	for i in _tabs.size():
+		_tabs[i].button_pressed = CHANNELS[i] == channel
+	_input.placeholder_text = tr(PLACEHOLDERS[CHANNELS.find(channel)])
+	_rebuild()
+
+
+func _rebuild() -> void:
+	_log.clear()
+	var intro: String = INTROS[CHANNELS.find(channel)]
+	if intro != "":
+		_log.append_text("[color=#%s][i]%s[/i][/color]\n" % [UI.MUTED.to_html(false), _escape(tr(intro))])
+	for m in _messages:
+		if _channel_of(m) in [channel, "*"]:
+			_render(m)
+	_update_tabs()
+
+
+func _update_tabs() -> void:
+	for i in _tabs.size():
+		_tabs[i].text = tr(CHANNEL_NAMES[i]) + ("  •" if _unread.has(CHANNELS[i]) else "")
+
+
+static func _channel_of(m: Dictionary) -> String:
+	return str(m.get("channel", "generelt"))
 
 
 func _on_connected(_resumed: bool) -> void:
@@ -114,10 +186,11 @@ func _process(_delta: float) -> void:
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.GLOBAL_HISTORY:
-			_log.clear()
-			for m in msg.get("messages", []):
-				if m is Dictionary:
-					_append(m)
+			_messages = (msg.get("messages", []) as Array).filter(func(m: Variant) -> bool: return m is Dictionary)
+			_unread.clear()
+			_rebuild()
+			if not _messages.is_empty():
+				_preview.text = _plain(_messages[-1])
 		Protocol.GLOBAL_MSG:
 			_append(msg)
 		Protocol.PRESENCE:
@@ -144,9 +217,22 @@ func _apply_compact() -> void:
 	_toggle.text = tr("Lukk") if open else tr("Chat")
 
 
+## En ny melding: vises hvis den er i kanalen som er valgt, ellers får fanen en prikk.
 func _append(m: Dictionary) -> void:
+	_messages.append(m)
+	if _messages.size() > Net.GLOBAL_KEEP:
+		_messages.pop_front()
 	_preview.text = _plain(m)
 	_preview.visible = compact and not open and _preview.text != ""
+	var c := _channel_of(m)
+	if c in [channel, "*"]:
+		_render(m)
+	elif c in CHANNELS:
+		_unread[c] = true
+		_update_tabs()
+
+
+func _render(m: Dictionary) -> void:
 	if str(m.get("kind", "chat")) == "announcement":
 		_log.append_text("[bgcolor=#2a3550][color=#cfe0ff] [b]%s[/b] %s [/color][/bgcolor]\n" % [
 			_escape(tr("Kunngjøring:")), _escape(str(m.get("text", "")))])
@@ -176,7 +262,7 @@ func _send() -> void:
 	var t := _input.text.strip_edges()
 	if t == "" or not Net.is_online():
 		return
-	Net.send({ "t": Protocol.GLOBAL_CHAT, "text": t })
+	Net.send({ "t": Protocol.GLOBAL_CHAT, "text": t, "channel": channel })
 	_input.clear()
 
 

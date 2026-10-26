@@ -86,6 +86,15 @@ func test_menu_shows_active_tournaments() -> void:
 		"med «Meld meg på»")
 	check(items[1] is Button and (items[1] as Button).text.begins_with("Fredagsligaen"), "så den som pågår")
 	check(not menu._champion.visible, "ingen vinner å vise ennå")
+	# Når listen hentes på nytt (hvert 20. sekund), skal ikke kortet bli høyere enn innholdet
+	for i in 3:
+		menu.show_tournaments([
+			{ "id": 2, "name": "Vårcupen", "status": "open", "format": "knockout", "start_time": 2000000000, "players": 4 + i, "max_players": 16 },
+			{ "id": 3, "name": "Fredagsligaen", "status": "running", "format": "round_robin", "start_time": 1000, "players": 6, "max_players": 8 },
+		])
+		await _frames(3)
+	check(absf(menu._panel.size.y - menu._panel.get_combined_minimum_size().y) < 1.0,
+		"menykortet har riktig høyde etter ny liste: %.0f, skulle vært %.0f" % [menu._panel.size.y, menu._panel.get_combined_minimum_size().y])
 	# Siste vinner hedres med et eget kort
 	menu.show_tournaments([
 		{ "id": 1, "name": "Høstcup", "status": "finished", "winner": "Ada", "finished_at": 100, "start_time": 0,
@@ -506,7 +515,21 @@ func test_admin_trophies_bracket_and_tournament_form() -> void:
 	check_eq(brackets.size(), 1, "turneringstreet vises:")
 	check_eq((brackets[0] as BracketView)._cols, 2, "semifinale og finale:")
 	var trophies := ts.find_children("*", "TrophyView", true, false)
-	check(trophies.size() == 1 and (trophies[0] as TrophyView).animate, "vinnerens pokal gløder")
+	check(trophies.size() == 2 and (trophies[0] as TrophyView).animate, "vinnerens pokal gløder, og pokalen står i treet")
+	var bracket := brackets[0] as BracketView
+	check(bracket.get_children().has(bracket._trophy), "pokalen i treet")
+	# Trykk på en kamp som spilles nå: se på
+	var live := { "id": "x", "p1": 1, "p2": 2, "p1_name": "A", "p2_name": "B", "status": "playing", "room": "QWERT", "winner": 0 }
+	var watch_tree := BracketView.new([[live, live.duplicate()], []])
+	root.add_child(watch_tree)
+	watch_tree.size = Vector2(900, 200)
+	await _frames(1)
+	check(watch_tree.mirrored, "bredt nok: treet tegnes speilvendt med finalen i midten")
+	check_eq(watch_tree.live_room_at((watch_tree._boxes[0].rect as Rect2).get_center()), "QWERT", "kampen som spilles kan trykkes på:")
+	watch_tree.size = Vector2(300, 200)
+	await _frames(1)
+	check(not watch_tree.mirrored, "smalt: fra venstre mot høyre")
+	watch_tree.queue_free()
 	check_eq(BracketView.round_name(0, 3), "Kvartfinale")
 	check_eq(ts.my_status(), "", "ingen status i en ferdig turnering:")
 	# Pågående: deltakeren ser sin egen kamp
@@ -547,6 +570,51 @@ func test_admin_trophies_bracket_and_tournament_form() -> void:
 	ps._show_stats(u)
 	await _frames(1)
 	check_eq(ps._stats_box.find_children("*", "TrophyView", true, false).size(), 2, "to pokaler på hylla:")
+
+
+func test_friends_screen_chat_channels_and_invites() -> void:
+	# Chatkanaler: melding i en annen kanal gir en prikk på fanen
+	await _frames(2)
+	var chat := (_screen() as MainMenu)._chat
+	chat.add_entry({ "kind": "chat", "channel": "velkommen", "from": "Ada", "elo": -1, "text": "Hei og velkommen" })
+	check(not chat._log.get_parsed_text().contains("Hei og velkommen"), "vises ikke i «Generelt»")
+	check(chat._tabs[1].text.contains("•"), "prikk på «Velkommen»")
+	chat.set_channel("velkommen")
+	check(chat._log.get_parsed_text().contains("Hei og velkommen"), "vises i «Velkommen»")
+	check(not chat._tabs[1].text.contains("•"), "prikken er borte")
+	chat.add_entry({ "kind": "announcement", "channel": "*", "from": "Admin", "text": "Til alle" })
+	check(chat._log.get_parsed_text().contains("Til alle"), "kunngjøringer vises i alle kanaler")
+
+	# Vennesiden (innlogget)
+	var old_user := Net.user
+	Net.user = { "username": "Ada", "elo": 1200 }
+	app.show_friends(true)
+	await _frames(2)
+	var fs := _screen() as FriendsScreen
+	fs.show_friends({ "requests": [{ "username": "Cyan", "elo": 1100 }], "friends": [
+		{ "username": "Bob", "elo": 1300, "online": true, "playing": true, "room": "QWERT" },
+		{ "username": "Di", "elo": 1250, "online": true, "playing": false, "room": "" },
+		{ "username": "Eve", "elo": 1200, "online": false, "playing": false, "room": "" }] })
+	await _frames(1)
+	var texts := fs.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
+	check(texts.has("Godta") and texts.has("Avslå"), "forespørselen kan godtas")
+	check(texts.has("Se på"), "venn som spiller kan ses på")
+	check(texts.has("Utfordre"), "venn som er online kan utfordres")
+	check_eq(texts.count("Fjern"), 3)
+	check(fs._requests_title.visible)
+	Net.user = old_user
+
+	# Invitasjon fra venterommet: bare venner som er ledige
+	app.show_room({ "code": "ABCDE", "you": 1, "options": {}, "players": [{ "seat": 1, "name": "Ada", "skin": "ocean",
+		"ready": false, "connected": true }] })
+	await _frames(2)
+	var rs := _screen() as RoomScreen
+	rs._friend_list.visible = true
+	rs.show_invite_list({ "friends": [{ "username": "Bob", "online": true, "playing": true },
+		{ "username": "Di", "online": true, "playing": false }, { "username": "Eve", "online": false, "playing": false }] })
+	await _frames(1)
+	var invites := rs._friend_list.find_children("*", "Button", true, false)
+	check_eq(invites.size(), 1, "bare Di er ledig:")
 
 
 func test_scrolling_the_chat_does_not_zoom_the_board() -> void:

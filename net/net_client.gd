@@ -23,7 +23,8 @@ var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stat
 var global_messages: Array = []
 var presence := { "online": 0, "playing": 0, "users": [] }
 var last_game: Dictionary = {}  ## siste ferdige parti på serveren (hovedmenyen spiller det av)
-const GLOBAL_KEEP := 60
+const GLOBAL_KEEP := 160   ## for alle kanalene til sammen
+var friends: Dictionary = { "friends": [], "requests": [] }   ## siste venneliste fra serveren
 
 var _ws: WebSocketPeer
 var _token := ""
@@ -143,6 +144,8 @@ func _handle(msg: Dictionary) -> void:
 		Protocol.LAST_GAME:
 			if msg.get("game") is Dictionary:
 				last_game = msg.game
+		Protocol.FRIENDS:
+			friends = { "friends": msg.get("friends", []), "requests": msg.get("requests", []) }
 	if msg.t == Protocol.WELCOME:
 		var resumed := _token != "" and bool(msg.get("resumed", false))
 		_token = str(msg.get("token", ""))
@@ -202,6 +205,8 @@ func _set_user(u: Variant) -> void:
 	if new_user == user:
 		return
 	user = new_user
+	if user.is_empty():
+		friends = { "friends": [], "requests": [] }
 	if user.has("elo") and (int(user.elo) != Settings.last_elo or str(user.username) != Settings.last_username):
 		Settings.last_elo = int(user.elo)
 		Settings.last_username = str(user.username)

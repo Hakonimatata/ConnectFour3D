@@ -214,9 +214,8 @@
 
 - Sjekk etter potensielle muligheter for å gjøre at serveren jobber enda mindre. Hvis mulig fiks, men viktig at det gjøres riktig (ikke must). Jeg vil også at det er smooth og raskt for de som spiller.
 
-- Stressteste en turnering. Sjekk om server takler 32 på en turnering. Gjerne sjekk at det funker for telefon og pc.
-
 
 ## Senere
+
 
 - progression. Mange av skinsene må unlockes! Lag en realistisk xp system som låser opp dette. Pass på at det ikke abuses helt.

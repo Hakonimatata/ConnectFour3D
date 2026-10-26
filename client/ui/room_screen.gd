@@ -14,6 +14,8 @@ var _chat: ChatPanel
 var _is_ready := false
 var _hint_label: Label
 var _invite_button: Button
+var _friends_button: Button
+var _friend_list: VBoxContainer
 var _preview: PiecePreview
 var _preview_names: Label
 var _skin_picker: HFlowContainer
@@ -38,6 +40,17 @@ func _ready() -> void:
 		_hint_label.text = app.share_link("rom", str(_room.get("code", "")), tr("Bli med i rommet mitt!"))
 	)
 	v.add_child(_invite_button)
+	# Venner som er online kan inviteres rett inn i rommet (de får et banner med «Bli med»)
+	_friends_button = UI.button("Inviter en venn", func() -> void:
+		_friend_list.visible = not _friend_list.visible
+		if _friend_list.visible:
+			show_invite_list(Net.friends)
+			Net.send({ "t": Protocol.FRIEND, "action": "list" })
+	)
+	v.add_child(_friends_button)
+	_friend_list = UI.vbox(6)
+	_friend_list.visible = false
+	v.add_child(_friend_list)
 	_desc_label = UI.label("", "", HORIZONTAL_ALIGNMENT_LEFT, true)
 	v.add_child(_desc_label)
 
@@ -161,6 +174,10 @@ func _show(room: Dictionary) -> void:
 		_players_box.add_child(row)
 	_ready_button.text = "Ikke klar likevel" if _is_ready else "Klar!"
 	_ready_button.disabled = not both
+	# Venner kan inviteres så lenge det er en ledig plass (ikke i turneringer eller som tilskuer)
+	_friends_button.visible = not both and not is_tournament and not spectator and Net.is_logged_in()
+	if not _friends_button.visible:
+		_friend_list.visible = false
 	_show_matchup(players, you)
 
 
@@ -217,8 +234,36 @@ func _on_message(msg: Dictionary) -> void:
 			_chat.add_message(str(msg.get("from", "")), str(msg.get("text", "")), color)
 		Protocol.NOTICE, Protocol.ERROR:
 			_chat.add_system(I18n.server_text(msg))
+		Protocol.FRIENDS:
+			if _friend_list.visible:
+				show_invite_list(msg)
 		Protocol.GAME_START, Protocol.GAME_SYNC:
 			app.start_match(OnlineMatch.new(msg))
+
+
+## Venner som er online og ikke spiller, med «Inviter».
+func show_invite_list(data: Dictionary) -> void:
+	for c in _friend_list.get_children():
+		_friend_list.remove_child(c)
+		c.queue_free()
+	var free := (data.get("friends", []) as Array).filter(func(f: Dictionary) -> bool:
+		return f.get("online", false) and not f.get("playing", false))
+	if free.is_empty():
+		_friend_list.add_child(UI.label("Ingen venner er ledige akkurat nå. Legg til venner under «Spill online» → «Venner».",
+			"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+		return
+	for f in free:
+		var row := UI.hbox(8)
+		row.add_child(EloBadge.make(int(f.get("elo", -1)), 20))
+		var name := str(f.username)
+		var l := UI.label(name)
+		l.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		row.add_child(UI.button("Inviter", func() -> void:
+			Net.send({ "t": Protocol.FRIEND, "action": "invite", "username": name })
+		, "PrimaryButton"))
+		_friend_list.add_child(row)
 
 
 func _on_back() -> void:

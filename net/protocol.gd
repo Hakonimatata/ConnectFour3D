@@ -30,7 +30,7 @@ const LOGOUT := "logout"             ## { session }
 const GET_STATS := "get_stats"       ## { username? }  (tom = deg selv)
 const GET_LEADERBOARD := "get_leaderboard"
 const LIST_TOURNAMENTS := "list_tournaments"
-const GET_TOURNAMENT := "get_tournament"       ## { id }
+const GET_TOURNAMENT := "get_tournament"       ## { id }  (følger også siden: endringer sendes med en gang)
 const TOURNAMENT_JOIN := "tournament_join"     ## { id }
 const TOURNAMENT_LEAVE := "tournament_leave"   ## { id }
 const TOURNAMENT_CREATE := "tournament_create" ## { data }        (admin)
@@ -39,13 +39,16 @@ const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publis
 const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away }  (f.eks. byttet skin i venterommet)
 # Runde 9: tilskuere, global chat, dagens oppgave og repriser
 const WATCH := "watch"               ## { code }  (se på et parti som spilles, eller en turneringskamp)
-const GLOBAL_CHAT := "global_chat"   ## { text }
+const GLOBAL_CHAT := "global_chat"   ## { text, channel }  (generelt | velkommen | tilbakemelding)
 const GET_PUZZLE := "get_puzzle"
 const PUZZLE_SOLVE := "puzzle_solve" ## { day, moves: [[x, y], ...] (bare dine trekk), attempts }
 const LIST_GAMES := "list_games"     ## { username? }  (tom = deg selv)
 const GET_GAME := "get_game"         ## { id }
 # Runde 13: admin
 const ADMIN := "admin"               ## { action: ban | unban | announce | award | banned_list, username?, reason?, text?, name?, design? }
+# Runde 14: venner og kanaler
+const FRIEND := "friend"             ## { action: list | request | accept | decline | remove | invite, username? }
+const VIEW_TOURNAMENT := "view_tournament" ## { id }  (0 = slutt å følge). Serveren sender endringer med en gang.
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user? }
@@ -71,14 +74,16 @@ const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room 
 const ROOM_CLOSED := "room_closed"   ## { key, args }
 const PRESENCE := "presence"         ## { online, playing, users: [{ name, elo, playing }] }
 const LAST_GAME := "last_game"       ## { game }  (siste ferdige parti, vises i hovedmenyen. Etter hello og etter hvert parti)
-const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event" | "announcement", time, from?, elo?, text, key?, args? }
-const GLOBAL_HISTORY := "global_history" ## { messages: [...] }  (sendes etter hello)
+const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event" | "announcement", channel ("*" = alle), time, from?, elo?, text, key?, args? }
+const GLOBAL_HISTORY := "global_history" ## { messages: [...], channels: [...] }  (sendes etter hello)
 const SPECTATORS := "spectators"     ## { count }  (til alle i rommet)
 const PUZZLE := "puzzle"             ## { puzzle, solved, count, solvers: [{ username, attempts, elo }] }
 const PUZZLE_RESULT := "puzzle_result" ## { ok, rank, first } eller { ok: false, text }
 const GAME_LIST := "game_list"       ## { username, games: [{ id, time, players, result, reason, moves, tournament }] }
 const GAME_RECORD := "game_record"   ## { game }  (hele partiet, til reprise)
 const ADMIN_RESULT := "admin_result" ## { action, ok, key, args, text, banned: [{ username, reason }] }
+const FRIENDS := "friends"           ## { friends: [{ username, elo, online, playing, room }], requests: [{ username, elo }] }
+const FRIEND_NOTICE := "friend_notice" ## { kind: request | accepted | invite, from, code?, key, args, text }
 
 
 static func encode(msg: Dictionary) -> String:

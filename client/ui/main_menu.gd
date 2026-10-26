@@ -32,6 +32,7 @@ var _chat: GlobalChat
 var _who_name: Label
 var _account_button: Button
 var _admin_button: Button               ## bare for admin
+var _friends_button: Button             ## bare innlogget («Venner (2)» når noen er online)
 var _champion: PanelContainer           ## siste turneringsvinner
 var _champion_trophy: TrophyView
 var _champion_name: Label
@@ -39,6 +40,8 @@ var _champion_sub: Label
 var _champion_id := 0
 const CHAMPION_GOLD := Color("ffd76a")
 var _last_portrait := true
+var _layout_queued := false
+var _last_list: Array = []   ## sist viste turneringsliste
 
 
 func _ready() -> void:
@@ -124,6 +127,11 @@ func _ready() -> void:
 	_admin_button.custom_minimum_size.y = 36
 	_admin_button.visible = false
 	who.add_child(_admin_button)
+	_friends_button = UI.button("Venner", func() -> void: app.show_friends(true), "GhostButton")
+	_friends_button.custom_minimum_size.y = 36
+	_friends_button.visible = false
+	_friends_button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	who.add_child(_friends_button)
 	who.add_child(_account_button)
 	v.add_child(who)
 
@@ -160,6 +168,8 @@ func _ready() -> void:
 
 	resized.connect(_layout)
 	_layout.call_deferred()
+	# Endrer innholdet i kortet høyde (turneringer, vinner, admin-knapp), legges menyen om.
+	_vbox.minimum_size_changed.connect(_queue_layout)
 
 	var timer := Timer.new()
 	timer.wait_time = 0.9
@@ -167,6 +177,15 @@ func _ready() -> void:
 	timer.timeout.connect(_demo_step)
 	add_child(timer)
 	_demo = GameState.new()
+
+
+func _queue_layout() -> void:
+	if not _layout_queued:
+		_layout_queued = true
+		(func() -> void:
+			_layout_queued = false
+			_layout()
+		).call_deferred()
 
 
 ## Bred skjerm: kortet til venstre. Smal (mobil): kortet nederst.
@@ -360,6 +379,8 @@ func _on_net_message(msg: Dictionary) -> void:
 		show_tournaments(msg.get("tournaments", []))
 	elif msg.t == Protocol.TOURNAMENT_STATE:
 		_ask_tournaments()   # meldte seg på fra menyen: oppdater kortet («Påmeldt»)
+	elif msg.t == Protocol.FRIENDS:
+		_update_friends_button()
 
 
 func _on_account_pressed() -> void:
@@ -374,6 +395,21 @@ func _update_badge() -> void:
 	_who_name.text = Settings.display_name()
 	_account_button.text = tr("Min profil") if Net.is_logged_in() else tr("Logg inn")
 	_admin_button.visible = bool(Net.user.get("admin", false))
+	_friends_button.visible = Net.is_logged_in()
+	_update_friends_button()
+	if Net.is_logged_in() and Net.is_online():
+		Net.send({ "t": Protocol.FRIEND, "action": "list" })
+
+
+## «Venner», med hvor mange som er online og en prikk ved nye forespørsler.
+func _update_friends_button() -> void:
+	var online := (Net.friends.get("friends", []) as Array).filter(func(f: Dictionary) -> bool: return f.get("online", false))
+	var text := tr("Venner")
+	if not online.is_empty():
+		text += " (%d)" % online.size()
+	if not (Net.friends.get("requests", []) as Array).is_empty():
+		text += "  •"
+	_friends_button.text = text
 	EloBadge.set_elo(_badge, int(Net.user.get("elo", -1)) if Net.is_logged_in() else -1, 20)
 
 
@@ -436,6 +472,9 @@ static func latest_champion(list: Array) -> Dictionary:
 
 ## Viser turneringer som pågår eller er åpne for påmelding (pågående først), og siste vinner.
 func show_tournaments(list: Array) -> void:
+	if list == _last_list and _tour_list.get_child_count() > 0:
+		return   # listen hentes hvert 20. sekund: ikke bygg alt på nytt når ingenting er endret
+	_last_list = list.duplicate(true)
 	var champ := latest_champion(list)
 	_champion.visible = not champ.is_empty()
 	if not champ.is_empty():
@@ -443,7 +482,10 @@ func show_tournaments(list: Array) -> void:
 		_champion_trophy.set_design(champ.get("trophy", {}))
 		_champion_name.text = str(champ.winner)
 		_champion_sub.text = str(champ.name)
+	# Fjern de gamle med en gang. Med bare queue_free ble de med i høyden _layout regnet ut,
+	# og menyen ble for høy med tomrom nederst.
 	for c in _tour_list.get_children():
+		_tour_list.remove_child(c)
 		c.queue_free()
 	var active := list.filter(func(t: Dictionary) -> bool: return t.get("status") in ["running", "open"])
 	active.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:

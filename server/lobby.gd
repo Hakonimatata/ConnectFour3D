@@ -34,6 +34,7 @@ class Player:
 	var guest_name := ""           ## kallenavnet fra hello (brukes igjen etter utlogging)
 	var watching := ""             ## romkoden spilleren ser på som tilskuer
 	var last_global_ms := -100_000
+	var viewing_tournament := 0    ## turneringen spilleren har oppe (får endringer med en gang)
 
 
 class Room:
@@ -82,6 +83,7 @@ var clock_s: Callable = func() -> int: return int(Time.get_unix_time_from_system
 var _last_ms := 0
 var _presence_dirty := true
 var _presence_sent_ms := -100_000
+var _tournaments_changed := {}   ## turnering-id -> true: sendes til dem som har siden oppe i neste tick
 
 
 func _init() -> void:
@@ -106,6 +108,7 @@ func _hook_tournaments() -> void:
 	tournaments.presence = _room_presence
 	tournaments.notify = _notify_user
 	tournaments.close_room = _close_room
+	tournaments.changed = func(id: int) -> void: _tournaments_changed[id] = true
 
 
 # ---------------------------------------------------------------- Tilkobling
@@ -143,7 +146,12 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.GET_STATS: _stats(p, str(msg.get("username", "")))
 		Protocol.GET_LEADERBOARD: send.call(peer, { "t": Protocol.LEADERBOARD, "boards": accounts.leaderboard() })
 		Protocol.LIST_TOURNAMENTS: _list_tournaments(p)
-		Protocol.GET_TOURNAMENT: _send_tournament(p, int(msg.get("id", 0)))
+		Protocol.GET_TOURNAMENT, Protocol.VIEW_TOURNAMENT:
+			# Siden er oppe: send den nå, og senere endringer med en gang (id 0 = siden er lukket)
+			p.viewing_tournament = int(msg.get("id", 0))
+			if p.viewing_tournament != 0:
+				_send_tournament(p, p.viewing_tournament)
+		Protocol.FRIEND: _friend(p, msg)
 		Protocol.TOURNAMENT_JOIN, Protocol.TOURNAMENT_LEAVE, Protocol.TOURNAMENT_CREATE, \
 		Protocol.TOURNAMENT_UPDATE, Protocol.TOURNAMENT_ACTION:
 			_tournament_request(p, t, msg)
@@ -156,7 +164,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 			else:
 				_leave_room(p, now)
 		Protocol.WATCH: _watch(p, str(msg.get("code", "")), now)
-		Protocol.GLOBAL_CHAT: _global_chat(p, str(msg.get("text", "")), now)
+		Protocol.GLOBAL_CHAT: _global_chat(p, str(msg.get("text", "")), now, str(msg.get("channel", "")))
 		Protocol.GET_PUZZLE: send.call(peer, puzzles.info_message(p.user_id, clock_s.call()))
 		Protocol.PUZZLE_SOLVE: _puzzle_solve(p, msg)
 		Protocol.LIST_GAMES: _list_games(p, str(msg.get("username", "")))
@@ -192,6 +200,16 @@ func tick(now: int) -> void:
 		_presence_dirty = false
 		_presence_sent_ms = now
 		_broadcast_all(presence_message())
+		_push_friends()
+	if not _tournaments_changed.is_empty():
+		var ids := _tournaments_changed.keys()
+		_tournaments_changed.clear()
+		for p: Player in players.values():
+			if p.peer != 0 and p.viewing_tournament in ids:
+				if tournaments.get_t(p.viewing_tournament).is_empty():
+					p.viewing_tournament = 0   # slettet
+				else:
+					_send_tournament(p, p.viewing_tournament)
 
 
 # ---------------------------------------------------------------- Meldinger
@@ -640,7 +658,7 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 		return
 	_sign_in(p, res.user)
 	if t == Protocol.REGISTER:
-		social.event("Velkommen, %s!", [str(res.user.username)], clock_s.call())
+		social.event("Velkommen, %s!", [str(res.user.username)], clock_s.call(), "velkommen")
 	var token := accounts.create_session(res.user.id, clock_s.call())
 	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user) })
 	var room := _room_of(p)
@@ -888,6 +906,122 @@ func on_users_reloaded() -> void:
 			_kick_banned(p.user_id)
 
 
+# ---------------------------------------------------------------- Venner
+
+## Venner krever konto. Etter hver handling får spilleren den oppdaterte vennelisten.
+func _friend(p: Player, msg: Dictionary) -> void:
+	if p.user_id == 0:
+		_error(p.peer, "login_required", "Du må logge inn først.")
+		return
+	var username := str(msg.get("username", "")).strip_edges()
+	match str(msg.get("action", "list")):
+		"request":
+			var res := accounts.friend_request(p.user_id, username)
+			if res.has("error"):
+				_error(p.peer, "friend", res.error, [username] if str(res.error).contains("%s") else [])
+				return
+			var other: Dictionary = res.user
+			if res.state == "friends":
+				_friend_notice(int(other.id), "accepted", p.name, "%s og du er nå venner.", [p.name])
+				_send_friends(int(other.id))
+			else:
+				_friend_notice(int(other.id), "request", p.name, "%s vil bli venn med deg.", [p.name])
+				_send_friends(int(other.id))
+		"accept":
+			var other := accounts.friend_accept(p.user_id, username)
+			if not other.is_empty():
+				_friend_notice(int(other.id), "accepted", p.name, "%s og du er nå venner.", [p.name])
+				_send_friends(int(other.id))
+		"decline":
+			accounts.friend_decline(p.user_id, username)
+		"remove":
+			var other := store.find_user(username)
+			accounts.friend_remove(p.user_id, username)
+			if not other.is_empty():
+				_send_friends(int(other.id))
+		"invite":
+			_invite(p, username)
+	_send_friends(p.user_id)
+
+
+## Inviterer en venn som er online til rommet du venter i.
+func _invite(p: Player, username: String) -> void:
+	var other := store.find_user(username)
+	var room := _room_of(p)
+	if other.is_empty() or not int(other.id) in store.users[p.user_id].friends:
+		_error(p.peer, "friend", "%s er ikke vennen din.", [username])
+	elif room == null or room.match_id != "":
+		_error(p.peer, "friend", "Lag et rom først, så kan du invitere.")
+	elif room.seats[1] != 0 and room.seats[2] != 0:
+		_error(p.peer, "friend", "Rommet er fullt.")
+	elif not _is_online(int(other.id)):
+		_error(p.peer, "friend", "%s er ikke online.", [str(other.username)])
+	else:
+		_friend_notice(int(other.id), "invite", p.name, "%s inviterer deg til et parti (%s).",
+			[p.name, room.options.describe()], room.code)
+		send.call(p.peer, { "t": Protocol.NOTICE, "key": "Invitasjonen er sendt til %s.", "args": [str(other.username)],
+			"text": "Invitasjonen er sendt til %s." % str(other.username) })
+
+
+func _friend_notice(uid: int, kind: String, from: String, key: String, args: Array, code := "") -> void:
+	_notify_user(uid, { "t": Protocol.FRIEND_NOTICE, "kind": kind, "from": from, "code": code, "key": key,
+		"args": args, "text": _fill(key, args) })
+
+
+## Vennelisten til en bruker: venner (online først, med om de spiller og hvor) og forespørsler.
+func friends_message(uid: int) -> Dictionary:
+	var u: Dictionary = store.users.get(uid, {})
+	var online := {}   # bruker-id -> Player som er koblet til
+	for p: Player in players.values():
+		if p.user_id != 0 and p.peer != 0:
+			online[p.user_id] = p
+	var list := []
+	for fid in u.get("friends", []):
+		var f: Dictionary = store.users.get(int(fid), {})
+		if f.is_empty():
+			continue
+		var p: Player = online.get(int(fid))
+		var room: Room = _room_of(p) if p else null
+		var playing := room != null and room.in_game()
+		list.append({ "username": f.username, "elo": f.elo, "online": p != null, "playing": playing,
+			"room": room.code if playing else "" })
+	list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if a.online != b.online:
+			return a.online
+		return a.username.naturalnocasecmp_to(b.username) < 0
+	)
+	var requests := []
+	for rid in u.get("friend_requests", []):
+		var r: Dictionary = store.users.get(int(rid), {})
+		if not r.is_empty():
+			requests.append({ "username": r.username, "elo": r.elo })
+	return { "t": Protocol.FRIENDS, "friends": list, "requests": requests }
+
+
+func _send_friends(uid: int) -> void:
+	if _is_online(uid):
+		_notify_user(uid, friends_message(uid))
+
+
+## Når noen kommer eller går (eller starter et parti), får de som har venner en oppdatert liste.
+func _push_friends() -> void:
+	var sent := {}
+	for p: Player in players.values():
+		if p.user_id == 0 or p.peer == 0 or sent.has(p.user_id):
+			continue
+		sent[p.user_id] = true
+		var u: Dictionary = store.users.get(p.user_id, {})
+		if not (u.get("friends", []) as Array).is_empty() or not (u.get("friend_requests", []) as Array).is_empty():
+			_notify_user(p.user_id, friends_message(p.user_id))
+
+
+func _is_online(uid: int) -> bool:
+	for p: Player in players.values():
+		if p.user_id == uid and p.peer != 0:
+			return true
+	return false
+
+
 # ---------------------------------------------------------------- Tilskuere
 
 ## Se på en turneringskamp. Tilskuere får det samme som spillerne (trekk, chat, resultat), med «you» = 0.
@@ -970,12 +1104,12 @@ func _broadcast_all(msg: Dictionary) -> void:
 			send.call(p.peer, msg)
 
 
-func _global_chat(p: Player, text: String, now: int) -> void:
+func _global_chat(p: Player, text: String, now: int, channel: String) -> void:
 	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
 	if text == "" or now - p.last_global_ms < Social.CHAT_INTERVAL_MS:
 		return
 	p.last_global_ms = now
-	social.chat(p.name, _elo_of(p), text, clock_s.call())
+	social.chat(p.name, _elo_of(p), text, clock_s.call(), channel)
 
 
 ## Hendelser etter et parti: nytt Elo-nivå, seiersrekker og seire med mange tvungne trekk.

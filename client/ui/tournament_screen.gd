@@ -2,7 +2,7 @@ class_name TournamentScreen
 extends Screen
 ## Én turnering: pokalen (og vinneren når den er ferdig), info, påmelding, deltakere,
 ## turneringstreet (utslag), runder/kamper, tabell og admin-knapper.
-## Oppdateres hvert 3. sekund.
+## Serveren sender endringer med en gang mens siden er oppe.
 
 var tournament_id := 0
 var _t: Dictionary = {}
@@ -21,7 +21,7 @@ func _init(p_app: ClientRoot, id: int, p_back_to_menu := false) -> void:
 
 func _ready() -> void:
 	app.camera.auto_rotate = true
-	var v := UI.centered_card(self, 560)
+	var v := UI.centered_card(self, 680)   # bredt nok til treet med pokalen i midten (8 spillere) på PC
 	_content = UI.vbox(10)
 	v.add_child(_content)
 	_content.add_child(UI.label("Henter…", "Muted"))
@@ -29,16 +29,24 @@ func _ready() -> void:
 	v.add_child(_status)
 	v.add_child(UI.button("Tilbake", _on_back))
 	Net.message.connect(_on_message)
+	Net.connected.connect(func(_r: bool) -> void: _refresh())
+	# Serveren sender endringer med en gang (view_tournament). Timeren er bare en reserve.
 	var timer := Timer.new()
-	timer.wait_time = 3.0
+	timer.wait_time = 15.0
 	timer.autostart = true
 	timer.timeout.connect(_refresh)
 	add_child(timer)
 	_refresh()
 
 
+## get_tournament (ikke view_tournament): den nye serveren følger siden og sender endringer med en
+## gang, og en eldre server som ikke kjenner view_tournament, svarer likevel.
 func _refresh() -> void:
 	Net.send({ "t": Protocol.GET_TOURNAMENT, "id": tournament_id })
+
+
+func _exit_tree() -> void:
+	Net.send({ "t": Protocol.VIEW_TOURNAMENT, "id": 0 })   # siden er lukket: ikke send flere endringer
 
 
 func _on_message(msg: Dictionary) -> void:
@@ -129,8 +137,9 @@ func _rebuild() -> void:
 		_content.add_child(UI.section("Turneringstre"))
 		var scroll := ScrollContainer.new()
 		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		var bracket := BracketView.new(t.rounds, _you)
+		var bracket := BracketView.new(t.rounds, _you, t.get("trophy", {}))
 		bracket.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bracket.watch_requested.connect(func(code: String) -> void: Net.send({ "t": Protocol.WATCH, "code": code }))
 		scroll.add_child(bracket)
 		_content.add_child(scroll)
 
@@ -163,6 +172,11 @@ func _rebuild() -> void:
 			row.add_child(UI.button("Publiser", func() -> void: _admin_action("publish"), "PrimaryButton"))
 		if t.status in ["draft", "open"]:
 			row.add_child(UI.button("Start nå", func() -> void: _admin_action("start")))
+			# Bytt pokalen vinneren får (trykk til du liker den; siden oppdateres med en gang)
+			row.add_child(UI.button("Ny pokal", func() -> void:
+				Net.send({ "t": Protocol.TOURNAMENT_UPDATE, "id": tournament_id,
+					"data": { "trophy": Trophy.generate(randi()) } })
+			))
 		if t.status in ["draft", "open", "running"]:
 			row.add_child(UI.button("Avlys", func() -> void: _admin_action("cancel")))
 		row.add_child(UI.button("Slett", func() -> void: _admin_action("delete")))
