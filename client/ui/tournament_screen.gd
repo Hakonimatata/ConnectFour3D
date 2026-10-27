@@ -11,6 +11,7 @@ var _you := 0
 var _content: VBoxContainer
 var _status: Label
 var back_to_menu := false   ## åpnet fra menyen: «Tilbake» går dit
+var _deleted := false       ## admin trykket «Slett»: når listen kommer, gå til turneringslisten
 
 
 func _init(p_app: ClientRoot, id: int, p_back_to_menu := false) -> void:
@@ -27,7 +28,7 @@ func _ready() -> void:
 	_content.add_child(UI.label("Henter…", "Muted"))
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	v.add_child(_status)
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 	Net.message.connect(_on_message)
 	Net.connected.connect(func(_r: bool) -> void: _refresh())
 	# Serveren sender endringer med en gang (view_tournament). Timeren er bare en reserve.
@@ -60,7 +61,10 @@ func _on_message(msg: Dictionary) -> void:
 				_you = int(msg.get("you", 0))
 				_rebuild()
 		Protocol.TOURNAMENT_LIST:
-			app.show_tournaments()   # etter sletting
+			# Serveren svarer med listen når admin har slettet turneringen. Andre lister (f.eks. den
+			# hovedmenyen ba om rett før) skal ikke kaste deg ut av siden.
+			if _deleted:
+				app.show_tournaments()
 		Protocol.ERROR:
 			_status.text = I18n.server_text(msg)
 
@@ -272,6 +276,7 @@ func _send(t: String) -> void:
 
 
 func _admin_action(action: String) -> void:
+	_deleted = action == "delete"
 	Net.send({ "t": Protocol.TOURNAMENT_ACTION, "id": tournament_id, "action": action })
 
 

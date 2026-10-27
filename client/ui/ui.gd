@@ -174,6 +174,26 @@ static func button(text: String, on_pressed: Callable, variation := "") -> Butto
 	return b
 
 
+## Et spillernavn som ser ut som tekst, men kan trykkes på (f.eks. for å se profilen). Lyser opp under musen.
+static func name_button(text: String, on_pressed: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	b.clip_text = true
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	for state in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
+		b.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	b.add_theme_color_override("font_color", TEXT)
+	b.add_theme_color_override("font_hover_color", ACCENT_HOVER)
+	b.add_theme_color_override("font_pressed_color", ACCENT_HOVER)
+	b.add_theme_color_override("font_focus_color", TEXT)
+	b.pressed.connect(func() -> void: Sfx.play("click"))
+	b.pressed.connect(on_pressed)
+	return b
+
+
 ## Tekstfelt som er lett å bruke på mobil: trykk markerer all tekst, og en
 ## liten x-knapp tømmer feltet.
 static func line_edit(text: String, placeholder := "", max_length := 0) -> LineEdit:
@@ -200,33 +220,66 @@ static func hbox(sep := 10) -> HBoxContainer:
 	return h
 
 
-## Et kort midt på skjermen med maks bredde, som kan scrolles hvis det er for høyt.
-## Gir innholds-VBoxen tilbake.
+## Et kort midt på skjermen med maks bredde. Er innholdet for høyt, scrolles det inne i kortet.
+## Gir innholds-VBoxen tilbake. Knapper i card_footer(content) ligger fast nederst i kortet,
+## så «Tilbake» og «Lagre» alltid synes uten at man må scrolle helt ned.
 static func centered_card(parent: Control, max_width := 460.0) -> VBoxContainer:
+	var holder := CardHolder.new()
+	holder.max_width = max_width
+	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(holder)
+	holder.card = PanelContainer.new()
+	holder.add_child(holder.card)
+	var column := vbox(14)
+	holder.card.add_child(column)
 	var scroll := ScrollContainer.new()
-	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	smooth_scroll(scroll)
-	parent.add_child(scroll)
-	var center := CenterContainer.new()
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
-	var margin := MarginContainer.new()
-	for side in ["left", "right", "top", "bottom"]:
-		margin.add_theme_constant_override("margin_" + side, 12)
-	center.add_child(margin)
-	var card := PanelContainer.new()
-	card.custom_minimum_size.x = max_width
-	margin.add_child(card)
-	var content := vbox(14)
-	card.add_child(content)
-	# Krymp kortet på smale skjermer
-	var fit := func() -> void:
-		card.custom_minimum_size.x = minf(max_width, parent.size.x - 24.0)
-	parent.resized.connect(fit)
-	fit.call_deferred()
-	return content
+	column.add_child(scroll)
+	holder.content = vbox(14)
+	holder.content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(holder.content)
+	holder.footer = vbox(10)
+	holder.footer.visible = false
+	column.add_child(holder.footer)
+	holder.content.set_meta("card_footer", holder.footer)
+	holder.resized.connect(holder.fit)
+	holder.content.minimum_size_changed.connect(holder.fit)
+	holder.footer.minimum_size_changed.connect(holder.fit)
+	holder.footer.child_entered_tree.connect(holder.fit_later.unbind(1))
+	holder.footer.child_exiting_tree.connect(holder.fit_later.unbind(1))
+	holder.fit_later()
+	return holder.content
+
+
+## Holder kortet fra centered_card på plass: så høyt som innholdet, men aldri høyere enn skjermen
+## (da scrolles innholdet), midt på, og smalere på smale skjermer.
+class CardHolder extends Control:
+	var max_width := 460.0
+	var card: PanelContainer
+	var content: VBoxContainer
+	var footer: VBoxContainer
+
+	func fit_later() -> void:
+		fit.call_deferred()
+
+	func fit() -> void:
+		if card == null or not is_inside_tree():
+			return
+		footer.visible = footer.get_child_count() > 0
+		var pad := card.get_theme_stylebox("panel").get_minimum_size()
+		var w := minf(max_width, size.x - 24.0)
+		var footer_h := footer.get_combined_minimum_size().y + 14.0 if footer.visible else 0.0
+		var h := minf(content.get_combined_minimum_size().y + footer_h + pad.y, size.y - 24.0)
+		card.size = Vector2(w, maxf(h, 0.0))
+		card.position = ((size - card.size) * 0.5).floor()
+
+
+## Den faste raden nederst i et centered_card (alltid synlig). Legg «Tilbake» og lignende her.
+static func card_footer(content: VBoxContainer) -> VBoxContainer:
+	return content.get_meta("card_footer")
 
 
 ## Musehjulet scroller et fast, lite stykke med en myk overgang. Godot scroller ellers en

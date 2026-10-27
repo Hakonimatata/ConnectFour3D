@@ -8,6 +8,7 @@ extends PanelContainer
 ## På mobil er den kompakt: én linje med siste melding og en knapp som åpner hele chatten.
 
 signal toggled(open: bool)
+signal profile_requested(username: String)   ## trykket på et navn (innloggede spillere)
 
 const CHANNELS := ["generelt", "velkommen", "tilbakemelding"]
 const CHANNEL_NAMES := ["Generelt", "Velkommen", "Innspill"]
@@ -20,6 +21,8 @@ var channel := "generelt"
 var _tabs: Array[Button] = []
 var _unread := {}            ## kanal -> true
 var _messages: Array = []    ## alle meldingene vi har (alle kanaler)
+var _log_links: Array[String] = []   ## navnene det kan trykkes på i chatten ([url=l<indeks>])
+var _who_links: Array[String] = []   ## og i «hvem er online» ([url=w<indeks>])
 
 var compact := false:
 	set(v):
@@ -76,7 +79,9 @@ func _ready() -> void:
 	_who.fit_content = true
 	_who.scroll_active = false
 	_who.selection_enabled = false
-	_who.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_who.mouse_filter = Control.MOUSE_FILTER_PASS
+	_who.meta_underlined = false
+	_who.meta_clicked.connect(_on_link)
 	_who.add_theme_font_size_override("normal_font_size", 14)
 	_who.add_theme_font_size_override("bold_font_size", 14)
 	v.add_child(_who)
@@ -110,6 +115,8 @@ func _ready() -> void:
 	_log.bbcode_enabled = true
 	_log.scroll_following = true
 	_log.selection_enabled = false
+	_log.meta_underlined = false
+	_log.meta_clicked.connect(_on_link)
 	_log.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_log.custom_minimum_size.y = 60
 	_log.add_theme_font_size_override("normal_font_size", 15)
@@ -156,6 +163,7 @@ func set_channel(c: String) -> void:
 
 func _rebuild() -> void:
 	_log.clear()
+	_log_links.clear()
 	var intro: String = INTROS[CHANNELS.find(channel)]
 	if intro != "":
 		_log.append_text("[color=#%s][i]%s[/i][/color]\n" % [UI.MUTED.to_html(false), _escape(tr(intro))])
@@ -249,8 +257,7 @@ func _render(m: Dictionary) -> void:
 		_log.add_image(EloBadge.icon(elo, 16), 16, 16)
 		_log.append_text(" ")
 	var who := str(m.get("from", "?"))
-	_log.append_text("[color=#%s][b]%s[/b][/color]  %s\n" % [name_color(who).to_html(false),
-		_escape(who), _escape(str(m.get("text", "")))])
+	_log.append_text(_name_bbcode(who, elo >= 0, _log_links, "l") + "  %s\n" % _escape(str(m.get("text", ""))))
 
 
 ## Skriver spilleren i chatten nå? (Da er tastaturet oppe på mobil.)
@@ -284,6 +291,7 @@ func _update_state() -> void:
 ## Navnene på dem som er online, med Elo-merke og samme farge som i chatten.
 func _show_users(users: Array) -> void:
 	_who.clear()
+	_who_links.clear()
 	_apply_compact()
 	var first := true
 	for u in users:
@@ -297,9 +305,27 @@ func _show_users(users: Array) -> void:
 			_who.add_image(EloBadge.icon(elo, 14), 14, 14)
 			_who.append_text(" ")
 		var who := str(u.get("name", "?"))
-		_who.append_text("[color=#%s][b]%s[/b][/color]" % [name_color(who).to_html(false), _escape(who)])
+		_who.append_text(_name_bbcode(who, elo >= 0, _who_links, "w"))
 		if u.get("playing", false):
 			_who.append_text(" [color=#%s](%s)[/color]" % [UI.MUTED.to_html(false), tr("i parti")])
+
+
+## Navnet i fargen sin. Innloggede spillere (med Elo) kan trykkes på for å se profilen.
+func _name_bbcode(who: String, link: bool, links: Array[String], prefix: String) -> String:
+	var text := "[color=#%s][b]%s[/b][/color]" % [name_color(who).to_html(false), _escape(who)]
+	if not link:
+		return text
+	links.append(who)
+	return "[url=%s%d]%s[/url]" % [prefix, links.size() - 1, text]
+
+
+func _on_link(meta: Variant) -> void:
+	var s := str(meta)
+	var links := _who_links if s.begins_with("w") else _log_links
+	var i := int(s.substr(1))
+	if i >= 0 and i < links.size():
+		Sfx.play("click")
+		profile_requested.emit(links[i])
 
 
 ## En fast farge per navn, så det er lett å se hvem som skriver. Samme navn gir alltid samme farge.

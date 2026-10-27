@@ -358,3 +358,37 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 | Mindre arbeid for serveren, raskt for spillerne | Turneringssiden spurte serveren hvert 3. sekund. Nå sender serveren endringer med en gang til dem som har siden oppe (samlet opp per tick), og siden spør bare hvert 15. sekund som reserve. Serveren leste hele `users.json` hvert sekund for å se etter endringer for hånd. Nå sjekkes bare endringstiden, og filen leses bare når den er endret. Hovedmenyen bygger ikke turneringslisten på nytt når ingenting er endret. Web-filene var allerede komprimert og lagret i minnet. |
 
 **Testet:** 139 automatiske tester, alle grønne. Nye: venner (forespørsel, godta, gjensidig forespørsel, fjerne, online-status som oppdateres, feil, invitasjon til rom, «spiller nå» med rom), kanaler (hver kanal for seg, ukjent kanal, velkomst, grense per kanal), turneringssiden som får endringer med en gang (og ikke etter at den er lukket), menyhøyden etter ny turneringsliste, vennesiden, kanalfanene, invitasjonslisten og treet (speilvendt når det er plass, trykk for å se på). Skjermbilder av treet på PC (pågående og ferdig) og mobil, chatkanalene, vennesiden og invitasjonen.
+
+**Stresstest: turnering med 32 spillere** (`tools/stress_tournament.gd`, se README). En egen testserver på port 9080/9000 med egen datamappe, så serveren på nett ikke ble påvirket. 32 boter over ekte WebSocket registrerte seg, meldte seg på og spilte hele utslagsturneringen (5 runder).
+- Med blandede boter: 31 partier, 1 367 trekk og 8 396 meldinger på 4 minutter. Serveren brukte 0,9 % CPU i snitt (maks 4 %) og 130 MB minne, uten feil.
+- Med raske boter (`--level easy`, måler serveren og ikke botene): 33 partier (2 uavgjorte ble spilt om), 1 615 trekk. Svartid fra trekk sendt til trekk bekreftet: median 14 ms, 99 % under 34 ms, tregeste 44 ms.
+- De første målingene hadde noen svar på 0,8–1,2 sekunder. Det var testen selv: alle botene kjører i én prosess, og en vanskelig bot kan tenke i opptil 0,23 sekunder mens de andre venter.
+- Fant og rettet en feil: turneringssiden hoppet tilbake til turneringslisten når en liste kom fra serveren (f.eks. den hovedmenyen ba om rett før). Nå skjer det bare når admin har slettet turneringen. Ny test.
+- Funn: endres `users.json` for hånd mens mange registrerer seg samtidig, kan serveren skrive over endringen før den rekker å lese den. Vent til det er rolig, eller bruk admin-siden.
+- Skjermbilder: påmeldingen, treet med 32 spillere på PC (fra venstre mot høyre, pokalen over finalen), en kamp sett som tilskuer, det ferdige treet og mobil (treet scrolles sidelengs).
+
+## Tilbakemeldinger fra chatten (27.10.2026)
+
+Ønsker og feil fra den globale chatten, og et ønske om menyen:
+
+| Tilbakemelding | Løsning |
+|---|---|
+| «Står bare Ukjent melding: friend» og «Fint om innspill ikke kommer i Generelt-chatten» | Serveren på nett kjørte koden fra før runde 14 (venner og kanaler). Begge er løst når serveren startes på nytt med den nye koden. |
+| «Se andres profil ved å klikke på brukernavn, og hurtigknapp for å adde venner» | Navnene i chatten, «hvem er online», topplisten, søket og vennelisten kan trykkes på og åpner profilen. Gjester kan ikke trykkes på, de har ingen profil. På andres profil står profilbildet, og under navnet en venneknapp: «Legg til venn», «Godta», «Forespørsel sendt», eller «Utfordre» / «Se på» når dere er venner. |
+| «Burde få opp treff på profilen man søker opp» | Søkefeltet på vennesiden viser treff mens du skriver. Treffene sorteres slik at navn som begynner med teksten, kommer først. Hvert treff viser Elo, om spilleren er online, og «Legg til», «Godta», «Sendt» eller «Venner». |
+| «Blir profilbilde lastet opp? Det kommer opp på mobil, men ikke på PC med samme bruker» | Bildet ble bare sendt når appen startet. Logget man inn på en enhet uten bilde, ble bildet på kontoen slettet. Nå hører bildet til kontoen. Ved innlogging får enheten kontoens bilde. Har kontoen ikke bilde ennå, tar den bildet fra enheten. Nytt eller fjernet bilde lagres på kontoen med en gang. Fjerner du bildet, kommer det ikke tilbake fra en annen enhet som fortsatt har det. Andre ser bildet på profilen din. |
+| «Lagre/Tilbake-knappen bør synes uten å scrolle helt ned» | Kortene (profil, venner, turneringer, oppsett, konto, admin, lobby) har en fast rad nederst med «Tilbake» (og «Opprett» / «Lagre»). Innholdet scrolles inne i kortet, og kortet er aldri høyere enn skjermen. Det samme gjelder «Lagre» i innstillingene og knappene i oppgavene. |
+| «Fint å kunne åpne/lukke menyen på mobil når man er inne i et spill/oppgave» | Oppgavepanelet har «Skjul» øverst. Da står bare tittelen, statusen og knappene (Tilbake, Vis løsning, Prøv igjen) igjen nederst, og brettet får resten av skjermen. «Vis mer» åpner panelet igjen. I et parti lukkes pausemenyen også når man trykker utenfor kortet. |
+| Mindre «Siste parti»-tekst, og rotere mellom de tre siste partiene | Teksten og boksen er mindre. Serveren sender de tre siste partiene. Menyen spiller av ett om gangen, tilfeldig valgt, men aldri det samme to ganger på rad. Det nyeste heter «Siste parti», de andre «Nylig parti». |
+
+**Testet:** 145 automatiske tester, alle grønne. De nye tester:
+- søket (store og små bokstaver, eget navn utelatt) og «sendt»-listen;
+- at profilbildet følger kontoen: PC-en får mobilens bilde, et fjernet bilde forblir fjernet, et nytt bilde følger med, og ugyldige bilder avvises;
+- de tre siste partiene;
+- rotasjonen i menyen;
+- at «Tilbake» synes på mobil med mye innhold;
+- at oppgavepanelet kan skjules;
+- trykk på navn i chatten;
+- venneknappen på profilen.
+
+Skjermbilder på mobil: profil, innstillinger, vennesøk, oppgaven (åpen og skjult) og menyen.

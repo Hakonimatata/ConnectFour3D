@@ -50,7 +50,7 @@ func _ready() -> void:
 		_refresh()
 	, "GhostButton")
 	v.add_child(_toggle)
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)

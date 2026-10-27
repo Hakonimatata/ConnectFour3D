@@ -132,7 +132,7 @@ func _ready() -> void:
 	_create_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buttons.add_child(back)
 	buttons.add_child(_create_button)
-	v.add_child(buttons)
+	UI.card_footer(v).add_child(buttons)
 	Net.message.connect(_on_message)
 	_update_when()
 	# Hold «om X min» og «har passert» oppdatert

@@ -138,6 +138,14 @@ func test_last_game_is_sent_to_everyone_and_on_hello() -> void:
 	check(not g.has("analysis"), "uten analysen (mindre melding)")
 	_hello(4, "Di")
 	check_eq(_last(4, "last_game").game.reason, float(GameState.EndReason.LINE), "nye får det etter hello:")
+	check_eq((_last(4, "last_game").games as Array).size(), 1, "listen over de siste har bare dette ennå:")
+	# Flere partier: de tre siste, nyeste først (menyen spiller av ett av dem om gangen)
+	for i in 4:
+		lobby.store.games.append({ "id": 100 + i, "moves": [], "players": [], "analysis": {} })
+	var msg := lobby.last_game_message()
+	check_eq((msg.games as Array).map(func(g: Dictionary) -> int: return g.id), [103, 102, 101], "de tre siste:")
+	check_eq(msg.game.id, 103, "game er fortsatt det nyeste")
+	check(not msg.games[1].has("analysis"), "uten analysen")
 
 
 func test_global_chat_presence_and_history() -> void:

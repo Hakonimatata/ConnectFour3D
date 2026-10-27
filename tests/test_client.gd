@@ -532,6 +532,10 @@ func test_admin_trophies_bracket_and_tournament_form() -> void:
 	watch_tree.queue_free()
 	check_eq(BracketView.round_name(0, 3), "Kvartfinale")
 	check_eq(ts.my_status(), "", "ingen status i en ferdig turnering:")
+	# En turneringsliste (f.eks. den hovedmenyen ba om) skal ikke kaste deg ut av siden
+	Net.message.emit({ "t": Protocol.TOURNAMENT_LIST, "tournaments": [], "admin": false })
+	await _frames(2)
+	check(_screen() == ts, "turneringssiden blir stående når en liste kommer")
 	# Pågående: deltakeren ser sin egen kamp
 	var running := t.duplicate(true)
 	running.status = "running"
@@ -875,3 +879,100 @@ func test_account_profile_and_tournament_screens() -> void:
 	Net.logout()
 	await _frames(2)
 	Settings.session_token = old_session
+
+
+func test_menu_rotates_the_last_three_games() -> void:
+	var old := Net.last_games
+	var g := func(n: String) -> Dictionary:
+		return { "options": {}, "first": 1, "result": 1, "moves": [[0, 0]], "players": [{ "name": n }, { "name": "Bob" }] }
+	Net.last_games = [g.call("Ada"), g.call("Cyan"), g.call("Duck")]
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	check_eq(menu._caption.get_theme_font_size("font_size"), 13, "liten tekst:")
+	var seen := {}
+	var prev := ""
+	for i in 40:
+		menu._start_replay(menu.next_replay())
+		var first := str(menu._replay.players[0].name)
+		check(first != prev, "aldri samme parti to ganger på rad")
+		prev = first
+		seen[first] = true
+	check_eq(seen.size(), 3, "alle tre spilles av:")
+	menu._start_replay(Net.last_games[0])
+	check(menu._caption.text.begins_with("Siste parti"), "det nyeste er «Siste parti»")
+	menu._start_replay(Net.last_games[2])
+	check(menu._caption.text.begins_with("Nylig parti"), "de andre «Nylig parti»")
+	Net.last_games = old
+
+
+func test_back_button_stays_visible_and_puzzle_can_be_collapsed() -> void:
+	var old_size := app.get_window().size
+	app.get_window().size = Vector2i(400, 700)   # mobil på høykant
+	await _frames(2)
+	app.show_profile("", true)
+	await _frames(3)
+	var screen := _screen()
+	var back: Button = null
+	for b in screen.find_children("*", "Button", true, false):
+		if (b as Button).text == "Tilbake":
+			back = b
+	check(back != null and back.is_visible_in_tree(), "Tilbake finnes")
+	var ps := screen as ProfileScreen
+	for i in 40:   # mye innhold: kortet blir høyere enn skjermen
+		ps._board_box.add_child(UI.label("Rad %d" % i))
+	await _frames(3)
+	var view := screen.get_global_rect()
+	check(view.encloses(back.get_global_rect()), "Tilbake synes uten å scrolle: %s i %s" % [back.get_global_rect(), view])
+
+	app.show_puzzle()
+	await _frames(3)
+	var pz := _screen() as PuzzleScreen
+	var open_h := pz._panel.size.y
+	pz.toggle_collapsed()
+	await _frames(2)
+	check(not pz._scroll.visible, "innholdet er skjult")
+	check(pz._panel.size.y < open_h * 0.6, "kortet er lavere: %d mot %d" % [pz._panel.size.y, open_h])
+	check(pz._status.is_visible_in_tree() and pz._retry_button.get_parent().is_visible_in_tree(), "status og knapper synes")
+	check(pz.get_global_rect().encloses(pz._panel.get_global_rect()), "kortet er på skjermen")
+	pz.toggle_collapsed()
+	check(pz._scroll.visible, "og kan åpnes igjen")
+	app.get_window().size = old_size
+
+
+func test_names_open_profiles_with_friend_button() -> void:
+	await _frames(2)
+	var chat := (_screen() as MainMenu)._chat
+	chat.add_entry({ "kind": "chat", "channel": "generelt", "from": "Bob", "elo": 1300, "text": "Hei" })
+	chat.add_entry({ "kind": "chat", "channel": "generelt", "from": "Gjest 12", "elo": -1, "text": "Hallo" })
+	check_eq(chat._log_links.back(), "Bob", "innloggede kan trykkes på (gjester ikke):")
+	var asked := []
+	chat.profile_requested.connect(func(n: String) -> void: asked.append(n))
+	chat._on_link("l%d" % (chat._log_links.size() - 1))
+	check_eq(asked, ["Bob"], "trykk på navnet:")
+
+	var old_user := Net.user
+	var old_friends := Net.friends
+	Net.user = { "username": "Ada", "elo": 1200 }
+	Net.friends = { "friends": [], "requests": [], "sent": [] }
+	app.show_profile("Bob", true)
+	await _frames(2)
+	var ps := _screen() as ProfileScreen
+	check(ps.is_other(), "andres profil")
+	var bob := { "username": "Bob", "elo": 1300, "stats": Store.normalize_user({}).stats, "trophies": [], "avatar": "" }
+	ps._show_stats(bob)
+	var buttons := func() -> Array: return ps._actions.get_children().filter(func(c: Node) -> bool: return c is Button) \
+		.map(func(b: Button) -> String: return b.text)
+	check_eq(buttons.call(), ["Legg til venn"], "hurtigknapp for å legge til:")
+	Net.friends = { "friends": [], "requests": [], "sent": ["bob"] }
+	ps._update_actions()
+	check_eq(buttons.call(), ["Forespørsel sendt"])
+	Net.friends = { "friends": [{ "username": "Bob", "online": true, "playing": false }], "requests": [], "sent": [] }
+	ps._update_actions()
+	check_eq(buttons.call(), ["Utfordre"], "venner som er online kan utfordres:")
+	# Egen profil: ingen venneknapp
+	app.show_profile("ada", true)
+	await _frames(2)
+	(_screen() as ProfileScreen)._show_stats(bob.merged({ "username": "Ada" }, true))
+	check(not (_screen() as ProfileScreen)._actions.visible, "ingen venneknapp på egen profil")
+	Net.user = old_user
+	Net.friends = old_friends

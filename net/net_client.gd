@@ -7,6 +7,7 @@ signal connected(resumed: bool)
 signal disconnected
 signal message(msg: Dictionary)
 signal account_changed          ## innlogget/utlogget (se `user`)
+signal avatar_changed           ## profilbildet kom fra kontoen (innlogget på en annen enhet)
 
 enum Status { OFFLINE, CONNECTING, ONLINE }
 
@@ -22,9 +23,10 @@ var user: Dictionary = {}       ## innlogget bruker { username, admin, elo, stat
 ## (serveren sender historikken bare rett etter tilkobling).
 var global_messages: Array = []
 var presence := { "online": 0, "playing": 0, "users": [] }
-var last_game: Dictionary = {}  ## siste ferdige parti på serveren (hovedmenyen spiller det av)
+var last_game: Dictionary = {}  ## siste ferdige parti på serveren
+var last_games: Array = []      ## de tre siste partiene, nyeste først (hovedmenyen spiller av ett om gangen)
 const GLOBAL_KEEP := 160   ## for alle kanalene til sammen
-var friends: Dictionary = { "friends": [], "requests": [] }   ## siste venneliste fra serveren
+var friends: Dictionary = { "friends": [], "requests": [], "sent": [] }   ## siste venneliste fra serveren
 
 var _ws: WebSocketPeer
 var _token := ""
@@ -144,8 +146,12 @@ func _handle(msg: Dictionary) -> void:
 		Protocol.LAST_GAME:
 			if msg.get("game") is Dictionary:
 				last_game = msg.game
+			var games: Array = msg.get("games", []) if msg.get("games") is Array else []
+			last_games = games.filter(func(g: Variant) -> bool: return g is Dictionary)
+			if last_games.is_empty() and not last_game.is_empty():
+				last_games = [last_game]
 		Protocol.FRIENDS:
-			friends = { "friends": msg.get("friends", []), "requests": msg.get("requests", []) }
+			friends = { "friends": msg.get("friends", []), "requests": msg.get("requests", []), "sent": msg.get("sent", []) }
 	if msg.t == Protocol.WELCOME:
 		var resumed := _token != "" and bool(msg.get("resumed", false))
 		_token = str(msg.get("token", ""))
@@ -154,11 +160,13 @@ func _handle(msg: Dictionary) -> void:
 		_keep_trying = true   # kom vi først inn, prøver vi igjen ved brudd (også etter en «titt»)
 		_retry_delay = 1.0
 		last_error = ""
+		_adopt_avatar(msg)
 		_set_user(msg.get("user"))
 		connected.emit(resumed)
 	elif msg.t == Protocol.SESSION:
 		Settings.session_token = str(msg.get("token", ""))
 		Settings.save()
+		_adopt_avatar(msg)
 		_set_user(msg.get("user"))
 	elif msg.t == Protocol.LOGGED_OUT:
 		_set_user(null)
@@ -181,6 +189,20 @@ func _handle(msg: Dictionary) -> void:
 func send_look() -> void:
 	send({ "t": Protocol.SET_LOOK, "skin": Settings.skin_id, "decal": Settings.decal_id,
 		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id, "away": Settings.kit_away })
+
+
+## Nytt eller fjernet profilbilde. Innlogget lagres det på kontoen, så det følger med til andre enheter.
+func send_avatar() -> void:
+	send({ "t": Protocol.SET_LOOK, "avatar": Settings.avatar })
+
+
+## Innlogget er profilbildet kontoens: det samme på alle enheter (serveren sender det ved innlogging).
+func _adopt_avatar(msg: Dictionary) -> void:
+	var avatar = msg.get("avatar")
+	if avatar is String and avatar != Settings.avatar:
+		Settings.avatar = avatar
+		Settings.save()
+		avatar_changed.emit()
 
 
 func is_logged_in() -> bool:
@@ -206,7 +228,7 @@ func _set_user(u: Variant) -> void:
 		return
 	user = new_user
 	if user.is_empty():
-		friends = { "friends": [], "requests": [] }
+		friends = { "friends": [], "requests": [], "sent": [] }
 	if user.has("elo") and (int(user.elo) != Settings.last_elo or str(user.username) != Settings.last_username):
 		Settings.last_elo = int(user.elo)
 		Settings.last_username = str(user.username)

@@ -219,15 +219,25 @@ func award_trophy(user_id: int, entry: Dictionary) -> bool:
 	return true
 
 
-## Profilen følger siste enhet brukeren logget inn fra.
-func update_profile(user_id: int, skin: String, decal: String, win_fx: String, avatar: String) -> void:
+## Utseendet (skin, merke, seiersanimasjon) følger siste enhet brukeren logget inn fra.
+func update_profile(user_id: int, skin: String, decal: String, win_fx: String) -> void:
 	var u: Dictionary = store.users.get(user_id, {})
 	if u.is_empty():
 		return
-	var profile := { "skin": skin, "decal": decal, "win_fx": win_fx }
-	var changed: bool = u.profile != profile
-	u.profile = profile
-	if changed:
+	var profile := { "skin": skin, "decal": decal, "win_fx": win_fx,
+		"avatar_removed": bool(u.profile.get("avatar_removed", false)) }
+	if u.profile != profile:
+		u.profile = profile
+		store.save_users()
+
+
+## Profilbildet hører til kontoen, så det er det samme på alle enheter. "" = fjernet.
+func set_avatar(user_id: int, avatar: String) -> void:
+	var u: Dictionary = store.users.get(user_id, {})
+	if u.is_empty():
+		return
+	if bool(u.profile.get("avatar_removed", false)) != (avatar == ""):
+		u.profile.avatar_removed = avatar == ""
 		store.save_users()
 	if store.avatars.get(user_id, "") != avatar:
 		if avatar == "":
@@ -235,6 +245,39 @@ func update_profile(user_id: int, skin: String, decal: String, win_fx: String, a
 		else:
 			store.avatars[user_id] = avatar
 		store.save_avatars()
+
+
+## Bildet etter innlogging. Har kontoen et bilde, vinner det (samme bilde på alle enheter).
+## Har den ikke, tas enhetens bilde (første gang), med mindre brukeren har fjernet bildet sitt.
+func avatar_on_sign_in(user_id: int, device_avatar: String) -> String:
+	var stored: String = store.avatars.get(user_id, "")
+	if stored != "":
+		return stored
+	var u: Dictionary = store.users.get(user_id, {})
+	if u.is_empty() or bool(u.profile.get("avatar_removed", false)):
+		return ""
+	if device_avatar != "":
+		set_avatar(user_id, device_avatar)
+	return device_avatar
+
+
+## Brukere med navn som inneholder teksten, de som begynner med den først (søket etter spillere).
+func search(query: String, limit := 10) -> Array:
+	var q := query.strip_edges().to_lower()
+	if q == "":
+		return []
+	var hits := []
+	for u: Dictionary in store.users.values():
+		if not u.banned and str(u.username).to_lower().contains(q):
+			hits.append(u)
+	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		var pa := str(a.username).to_lower().begins_with(q)
+		var pb := str(b.username).to_lower().begins_with(q)
+		if pa != pb:
+			return pa
+		return str(a.username).naturalnocasecmp_to(str(b.username)) < 0
+	)
+	return hits.slice(0, limit)
 
 
 func username_of(user_id: int) -> String:

@@ -33,10 +33,13 @@ func _ready() -> void:
 	add_child(_panel)
 	var card := PanelContainer.new()
 	_panel.add_child(card)
+	var column := UI.vbox(12)
+	card.add_child(column)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	UI.smooth_scroll(scroll)
-	card.add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(scroll)
 	var v := UI.vbox(14)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(v)
@@ -161,8 +164,7 @@ func _ready() -> void:
 	_server_edit = UI.line_edit(Settings.server_url, Settings.resolved_server_url(), 200)
 	v.add_child(_server_edit)
 
-	v.add_child(UI.spacer(6))
-	v.add_child(UI.button("Lagre", _on_back, "PrimaryButton"))
+	column.add_child(UI.button("Lagre", _on_back, "PrimaryButton"))   # fast nederst, alltid synlig
 	_refresh_avatar()
 
 
@@ -272,12 +274,14 @@ func _on_avatar_picked(bytes: PackedByteArray) -> void:
 	if b64 != "":
 		Settings.avatar = b64
 		Settings.save()
+		Net.send_avatar()
 		_refresh_avatar()
 
 
 func _clear_avatar() -> void:
 	Settings.avatar = ""
 	Settings.save()
+	Net.send_avatar()
 	_refresh_avatar()
 
 

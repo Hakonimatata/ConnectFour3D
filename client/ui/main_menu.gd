@@ -11,6 +11,8 @@ var _demo: GameState
 var _replay: Dictionary = {}    ## partiet som spilles av (fra serveren). Tom = bot-demo
 var _replay_i := 0
 var _replay_pause := 0
+var _replay_title := ""         ## «Siste parti: Ada – Bob» eller «Nylig parti: …»
+var _replay_last: Dictionary = {}   ## forrige parti som ble spilt av (neste blir et annet)
 var _caption_box: PanelContainer
 var _caption: Label
 const REPLAY_PAUSE_STEPS := 5  ## hvor lenge sluttstillingen blir stående (i demo-steg)
@@ -112,6 +114,8 @@ func _ready() -> void:
 	var avatar := AvatarView.new(30)
 	avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
 	who.add_child(avatar)
+	Net.avatar_changed.connect(func() -> void:
+		avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id)))
 	_badge = EloBadge.make(-1, 20)
 	who.add_child(_badge)
 	_who_name = UI.label(Settings.display_name(), "Muted")
@@ -151,16 +155,18 @@ func _ready() -> void:
 
 	# Teksten over brettet: hvem som spilte det siste partiet, og hvordan det endte
 	_caption_box = PanelContainer.new()
-	_caption_box.add_theme_stylebox_override("panel", UI._box(UI.PANEL, 12, UI.BORDER, 14, 8))
+	_caption_box.add_theme_stylebox_override("panel", UI._box(UI.PANEL, 10, UI.BORDER, 10, 5))
 	_caption_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_caption_box.visible = false
 	_caption = UI.label("", "", HORIZONTAL_ALIGNMENT_CENTER)
 	_caption.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_caption.add_theme_font_size_override("font_size", 13)
 	_caption_box.add_child(_caption)
 	add_child(_caption_box)
 
 	_chat = GlobalChat.new()
 	_chat.toggled.connect(func(_open: bool) -> void: _layout())
+	_chat.profile_requested.connect(func(username: String) -> void: app.show_profile(username, true))
 	add_child(_chat)
 	# Når man begynner/slutter å skrive, legges chatten om (tastaturet på mobil)
 	_chat._input.focus_entered.connect(_layout)
@@ -620,10 +626,12 @@ static func _dot_icon(color: Color) -> Texture2D:
 
 
 func _demo_step() -> void:
-	# Det siste partiet på serveren vinner over bot-demoen
-	if _replay.is_empty() and not Net.last_game.is_empty():
-		_start_replay(Net.last_game)
-		return
+	# De siste partiene på serveren vinner over bot-demoen
+	if _replay.is_empty():
+		var next := next_replay()
+		if not next.is_empty():
+			_start_replay(next)
+			return
 	if not _replay.is_empty():
 		_replay_step()
 		return
@@ -640,8 +648,19 @@ func _demo_step() -> void:
 
 # ---------------------------------------------------------------- Siste parti
 
+## Et tilfeldig av de tre siste partiene, men ikke det samme som sist (så de går på rundgang).
+func next_replay() -> Dictionary:
+	var games: Array = Net.last_games if not Net.last_games.is_empty() \
+		else ([Net.last_game] if not Net.last_game.is_empty() else [])
+	var choices := games.filter(func(g: Dictionary) -> bool: return g != _replay_last)
+	if choices.is_empty():
+		choices = games
+	return choices.pick_random() if not choices.is_empty() else {}
+
+
 func _start_replay(rec: Dictionary) -> void:
 	_replay = rec
+	_replay_last = rec
 	_replay_i = 0
 	_replay_pause = 0
 	var opts := GameOptions.from_dict(rec.get("options", {}) if rec.get("options") is Dictionary else {})
@@ -658,7 +677,9 @@ func _start_replay(rec: Dictionary) -> void:
 			str(p.get("decal", "none")), "classic", bool(p.get("away", false)), str(p.get("decal_color", "auto"))))
 	var pair := Skins.resolve_pair(looks[0], looks[1])
 	app.board.set_looks(pair[0], pair[1])
-	_caption.text = tr("Siste parti: %s") % _names(rec)
+	var newest: bool = Net.last_games.is_empty() or rec == Net.last_games[0]
+	_replay_title = (tr("Siste parti: %s") if newest else tr("Nylig parti: %s")) % _names(rec)
+	_caption.text = _replay_title
 	_caption_box.visible = true
 
 
@@ -674,9 +695,9 @@ func _replay_step() -> void:
 		if _replay_i == moves.size():
 			if not _demo.winning_line.is_empty():
 				app.board.highlight(_demo.winning_line)
-			_caption.text = tr("Siste parti: %s") % _names(_replay) + "\n" + result_text(_replay)
+			_caption.text = _replay_title + "\n" + result_text(_replay)
 		return
-	# Sluttstillingen står en stund, så starter siste parti (kanskje et nytt) på nytt
+	# Sluttstillingen står en stund, så kommer et av de andre siste partiene
 	_replay_pause += 1
 	if _replay_pause >= REPLAY_PAUSE_STEPS:
 		_replay = {}

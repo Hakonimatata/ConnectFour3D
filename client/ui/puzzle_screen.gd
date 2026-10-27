@@ -26,6 +26,9 @@ var _solved := false
 var _shown_solution := false
 var _generation := 0
 var _panel: MarginContainer
+var _scroll: ScrollContainer
+var _collapse_button: Button
+var _collapsed := false
 var _goal: Label
 var _legend: HBoxContainer
 var _status: Label
@@ -45,17 +48,32 @@ func _ready() -> void:
 	add_child(_panel)
 	var card := PanelContainer.new()
 	_panel.add_child(card)
-	var scroll := ScrollContainer.new()
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	UI.smooth_scroll(scroll)
-	card.add_child(scroll)
+	var column := UI.vbox(10)
+	card.add_child(column)
+	# Fast øverst: tittelen og «Skjul», som legger kortet sammen så hele brettet synes (mobil)
+	var head := UI.hbox(8)
+	var title := UI.label("Oppgaver", "Heading")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(title)
+	_collapse_button = UI.button("Skjul", toggle_collapsed, "GhostButton")
+	_collapse_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(_collapse_button)
+	column.add_child(head)
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UI.smooth_scroll(_scroll)
+	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(_scroll)
 	var v := UI.vbox(12)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(v)
+	_scroll.add_child(v)
 	resized.connect(_layout)
+	_panel.minimum_size_changed.connect(func() -> void:
+		if _collapsed:
+			_layout()
+	)
 	_layout.call_deferred()
 
-	v.add_child(UI.label("Oppgaver", "Heading"))
 	v.add_child(UI.choice(MODES, 0, set_mode))
 	_progress = UI.label("", "Muted")
 	_progress.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -65,22 +83,9 @@ func _ready() -> void:
 	v.add_child(_goal)
 	_legend = UI.hbox(8)
 	v.add_child(_legend)
-	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
-	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	v.add_child(_status)
 	_attempts_label = UI.label("", "Muted")
 	_attempts_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_attempts_label)
-	var row := UI.hbox(8)
-	_retry_button = UI.button("Prøv igjen", _retry, "PrimaryButton")
-	_retry_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(_retry_button)
-	_solution_button = UI.button("Vis løsning", _show_solution)
-	row.add_child(_solution_button)
-	v.add_child(row)
-	_next_button = UI.button("Neste oppgave", _next_puzzle, "PrimaryButton")
-	_next_button.visible = false
-	v.add_child(_next_button)
 	v.add_child(UI.label("Tips: et tvunget trekk lager en trussel motstanderen må blokkere. Sett opp to trusler samtidig, så vinner du.",
 		"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 
@@ -91,8 +96,23 @@ func _ready() -> void:
 	_solvers_box = UI.vbox(4)
 	daily.add_child(_solvers_box)
 	v.add_child(daily)
-	v.add_child(UI.spacer(4))
-	v.add_child(UI.button("Tilbake", _on_back))
+
+	# Fast nederst (synes også når kortet er lagt sammen): status og knappene
+	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	column.add_child(_status)
+	_next_button = UI.button("Neste oppgave", _next_puzzle, "PrimaryButton")
+	_next_button.visible = false
+	column.add_child(_next_button)
+	var row := UI.hbox(8)
+	row.add_child(UI.button("Tilbake", _on_back))
+	_solution_button = UI.button("Vis løsning", _show_solution)
+	_solution_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_solution_button)
+	_retry_button = UI.button("Prøv igjen", _retry, "PrimaryButton")
+	_retry_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_retry_button)
+	column.add_child(row)
 
 	app.board.column_tapped.connect(_on_column_tapped)
 	app.board.column_hovered.connect(_on_column_hovered)
@@ -119,8 +139,30 @@ func _exit_tree() -> void:
 	Engine.time_scale = 1.0
 
 
+## «Skjul» / «Vis mer»: lagt sammen viser kortet bare tittelen, status og knappene, og brettet får plassen.
+func toggle_collapsed() -> void:
+	_collapsed = not _collapsed
+	_scroll.visible = not _collapsed
+	_collapse_button.text = tr("Vis mer") if _collapsed else tr("Skjul")
+	_layout()
+
+
 ## Kortet til venstre (PC) eller nederst (mobil), brettet ved siden av.
+## Lagt sammen er kortet bare så høyt som det trenger, nederst (mobil) eller øverst til venstre (PC).
 func _layout() -> void:
+	if _collapsed:
+		var h := _panel.get_combined_minimum_size().y
+		var portrait := size.y > size.x
+		_panel.anchor_left = 0.0
+		_panel.anchor_right = 1.0 if portrait else 0.0
+		_panel.anchor_top = 1.0 if portrait else 0.0
+		_panel.anchor_bottom = 1.0 if portrait else 0.0
+		_panel.offset_left = 10 if portrait else 16
+		_panel.offset_right = -10 if portrait else 16 + minf(420.0, size.x * 0.42)
+		_panel.offset_top = -10 - h if portrait else 16
+		_panel.offset_bottom = -10 if portrait else 16 + h
+		app.camera.view_offset = Vector2(0, -1.2) if portrait else Vector2(-1.2, 0)
+		return
 	if size.y > size.x:
 		_panel.anchor_left = 0.0
 		_panel.anchor_right = 1.0

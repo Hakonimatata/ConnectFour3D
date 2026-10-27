@@ -200,6 +200,13 @@ func _open_menu() -> void:
 
 func _build_menu_overlay() -> void:
 	_menu_overlay = _overlay()
+	# Trykk utenfor kortet lukker menyen (som «Fortsett»)
+	_menu_overlay.gui_input.connect(func(e: InputEvent) -> void:
+		var tap := e as InputEventMouseButton
+		if tap and tap.pressed and tap.button_index == MOUSE_BUTTON_LEFT:
+			_menu_overlay.visible = false
+			accept_event()
+	)
 	var v := UI.centered_card(_menu_overlay, 360)
 	v.add_child(UI.label("Pause", "Heading"))
 	v.add_child(UI.label(match_ctrl.options.describe(), "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))

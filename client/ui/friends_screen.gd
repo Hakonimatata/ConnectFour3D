@@ -1,11 +1,14 @@
 class_name FriendsScreen
 extends Screen
-## Venner: legg til med brukernavn, godta eller avslå forespørsler, og se hvem som er online.
+## Venner: søk opp spillere (treff mens du skriver), godta eller avslå forespørsler, og se hvem som er online.
+## Trykk på et navn for å se profilen.
 ## «Utfordre» åpner oppsettet for et privat rom, og vennen inviteres når rommet er laget.
 ## Spiller vennen nå, kan du se på partiet. Listen oppdateres av seg selv når noen kommer eller går.
 
 var _add_edit: LineEdit
 var _status: Label
+var _results: VBoxContainer   ## søketreff under feltet
+var _search_timer: Timer
 var _requests_title: Label
 var _requests_box: VBoxContainer
 var _friends_box: VBoxContainer
@@ -26,15 +29,23 @@ func _ready() -> void:
 		v.add_child(UI.label("Logg inn for å legge til venner og se hvem som er online.", "Muted",
 			HORIZONTAL_ALIGNMENT_LEFT, true))
 		v.add_child(UI.button("Logg inn / ny konto", func() -> void: app.show_account(_back_to_menu), "PrimaryButton"))
-		v.add_child(UI.button("Tilbake", _on_back))
+		UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 		return
 	var add := UI.hbox(8)
-	_add_edit = UI.line_edit("", "Brukernavn", Protocol.MAX_NAME)
+	_add_edit = UI.line_edit("", "Søk etter spillere", Protocol.MAX_NAME)
+	_add_edit.text_changed.connect(func(_t: String) -> void: _search_timer.start())
 	_add_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_add_edit.text_submitted.connect(func(_t: String) -> void: _add())
 	add.add_child(_add_edit)
 	add.add_child(UI.button("Legg til", _add, "PrimaryButton"))
 	v.add_child(add)
+	_results = UI.vbox(6)
+	v.add_child(_results)
+	_search_timer = Timer.new()
+	_search_timer.one_shot = true
+	_search_timer.wait_time = 0.25   # vent til man har skrevet litt
+	_search_timer.timeout.connect(_search)
+	add_child(_search_timer)
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_status)
@@ -45,8 +56,7 @@ func _ready() -> void:
 	v.add_child(UI.section("Vennene dine"))
 	_friends_box = UI.vbox(6)
 	v.add_child(_friends_box)
-	v.add_child(UI.spacer(4))
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	Net.connected.connect(func(_r: bool) -> void: _send("list"))
@@ -66,12 +76,17 @@ func _add() -> void:
 	_send("request", name)
 	_status.text = tr("Forespørsel sendt til %s.") % name
 	_add_edit.clear()
+	show_results([])
 
 
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.FRIENDS:
 			show_friends(msg)
+			_search()   # oppdater «Legg til» / «Sendt» i treffene
+		Protocol.USERS:
+			if str(msg.get("query", "")) == _add_edit.text.strip_edges():
+				show_results(msg.get("users", []))
 		Protocol.ERROR, Protocol.NOTICE:
 			_status.text = I18n.server_text(msg)
 
@@ -118,6 +133,48 @@ func show_friends(data: Dictionary) -> void:
 		_friends_box.add_child(row)
 
 
+func _search() -> void:
+	var q := _add_edit.text.strip_edges()
+	if q == "":
+		show_results([])
+	else:
+		Net.send({ "t": Protocol.USER_SEARCH, "query": q })
+
+
+## Søketreffene: navn (trykk for profilen), online eller ikke, og «Legg til» / «Godta» / «Sendt».
+func show_results(users: Array) -> void:
+	for c in _results.get_children():
+		_results.remove_child(c)
+		c.queue_free()
+	if users.is_empty():
+		if _add_edit.text.strip_edges() != "":
+			_results.add_child(UI.label("Ingen treff.", "Muted"))
+		return
+	var friends: Array = (Net.friends.get("friends", []) as Array).map(func(f: Variant) -> String: return str(f.username).to_lower())
+	var asked: Array = (Net.friends.get("requests", []) as Array).map(func(r: Variant) -> String: return str(r.username).to_lower())
+	var sent: Array = (Net.friends.get("sent", []) as Array).map(func(s: Variant) -> String: return str(s).to_lower())
+	for u in users:
+		var name := str(u.username)
+		var key := name.to_lower()
+		var online := bool(u.get("online", false))
+		var row := _name_row(name, int(u.get("elo", -1)), tr("online") if online else tr("offline"),
+			UI.SUCCESS if online else Color(UI.MUTED, 0.5))
+		if key in friends:
+			row.add_child(UI.label("Venner", "Muted"))
+		elif key in asked:
+			row.add_child(UI.button("Godta", func() -> void: _send("accept", name), "PrimaryButton"))
+		elif key in sent:
+			var b := UI.button("Sendt", func() -> void: pass)
+			b.disabled = true
+			row.add_child(b)
+		else:
+			row.add_child(UI.button("Legg til", func() -> void:
+				_send("request", name)
+				_status.text = tr("Forespørsel sendt til %s.") % name
+			, "PrimaryButton"))
+		_results.add_child(row)
+
+
 ## [prikk] [Elo-merke] Navn · status
 func _name_row(name: String, elo: int, state: String, color: Color) -> HBoxContainer:
 	var row := UI.hbox(8)
@@ -127,11 +184,8 @@ func _name_row(name: String, elo: int, state: String, color: Color) -> HBoxConta
 	row.add_child(EloBadge.make(elo, 20))
 	var texts := UI.vbox(0)
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var n := UI.label(name)
-	n.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	n.clip_text = true
-	n.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	texts.add_child(n)
+	# Navnet er en knapp: trykk for å se profilen
+	texts.add_child(UI.name_button(name, func() -> void: app.show_profile(name, _back_to_menu)))
 	var s := UI.label(state, "Muted")
 	s.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	texts.add_child(s)

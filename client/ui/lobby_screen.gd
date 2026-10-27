@@ -53,8 +53,7 @@ func _ready() -> void:
 	_live_box = UI.vbox(8)
 	v.add_child(_live_box)
 
-	v.add_child(UI.spacer(4))
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)

@@ -16,8 +16,7 @@ func _ready() -> void:
 	_list_box = UI.vbox(8)
 	v.add_child(_list_box)
 	_list_box.add_child(UI.label("Henter…", "Muted"))
-	v.add_child(UI.spacer(4))
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	var timer := Timer.new()

@@ -1,6 +1,8 @@
 class_name ProfileScreen
 extends Screen
 ## Statistikk for en spiller (deg selv som standard), pokalene, de siste partiene (med reprise) og topplister.
+## Er det en annen spiller, står venneknappen øverst: «Legg til venn», «Godta», «Forespørsel sendt» eller
+## «Utfordre» / «Se på» når dere er venner. Navnene i topplisten kan trykkes på for å se profilen deres.
 
 var username := ""          ## tom = deg selv
 var _stats_box: VBoxContainer
@@ -9,6 +11,8 @@ var _board := "elo"
 var _boards: Dictionary = {}
 var _games_box: VBoxContainer
 var _back_to_menu := false
+var _actions: HBoxContainer   ## venneknappene (bare på andres profil)
+var _user: Dictionary = {}
 
 
 func _init(p_app: ClientRoot, p_username := "", back_to_menu := false) -> void:
@@ -37,11 +41,12 @@ func _ready() -> void:
 	))
 	_board_box = UI.vbox(4)
 	v.add_child(_board_box)
-	v.add_child(UI.spacer(4))
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	Net.send({ "t": Protocol.GET_STATS, "username": username })
+	if is_other() and Net.is_logged_in():
+		Net.send({ "t": Protocol.FRIEND, "action": "list" })
 	Net.send({ "t": Protocol.GET_LEADERBOARD })
 	Net.send({ "t": Protocol.LIST_GAMES, "username": username })
 
@@ -49,7 +54,10 @@ func _ready() -> void:
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.STATS:
-			_show_stats(msg.get("user"))
+			if not is_other() or (msg.get("user") is Dictionary and str(msg.user.username).to_lower() == username.to_lower()):
+				_show_stats(msg.get("user"))
+		Protocol.FRIENDS:
+			_update_actions()
 		Protocol.LEADERBOARD:
 			_boards = msg.get("boards", {})
 			_show_board()
@@ -71,7 +79,11 @@ func _show_stats(u: Variant) -> void:
 	var games := int(s.games)
 	var pct := int(round(100.0 * int(s.wins) / games)) if games > 0 else 0
 	var elo := int(u.elo)
+	_user = u
 	var head := UI.hbox(14)
+	var avatar := AvatarView.new(56)
+	avatar.set_avatar(str(u.get("avatar", "")), str(u.username), UI.ACCENT)
+	head.add_child(avatar)
 	head.add_child(EloBadge.make(elo, 52))
 	var head_text := UI.vbox(0)
 	var title := UI.label(str(u.username), "Title")
@@ -85,6 +97,9 @@ func _show_stats(u: Variant) -> void:
 	head_text.add_child(tier_label)
 	head.add_child(head_text)
 	_stats_box.add_child(head)
+	_actions = UI.hbox(8)
+	_stats_box.add_child(_actions)
+	_update_actions()
 	var rows := [
 		["Elo", str(int(u.elo))],
 		["Partier", str(games)],
@@ -108,6 +123,56 @@ func _show_stats(u: Variant) -> void:
 		row.add_child(value)
 		_stats_box.add_child(row)
 	_stats_box.add_child(_trophy_shelf(u.get("trophies", [])))
+
+
+## Er dette en annen spillers profil (ikke din egen)?
+func is_other() -> bool:
+	return username != "" and username.to_lower() != str(Net.user.get("username", "")).to_lower()
+
+
+## Venneknappene etter hvordan dere står: venner, forespørsel til deg, sendt av deg, eller ingenting ennå.
+func _update_actions() -> void:
+	if _actions == null or _user.is_empty():
+		return
+	for c in _actions.get_children():
+		_actions.remove_child(c)
+		c.queue_free()
+	_actions.visible = is_other() and Net.is_logged_in()
+	if not _actions.visible:
+		return
+	var name := str(_user.username)
+	var key := name.to_lower()
+	var friend: Dictionary = {}
+	for f in Net.friends.get("friends", []):
+		if str(f.username).to_lower() == key:
+			friend = f
+	var asked := (Net.friends.get("requests", []) as Array).any(func(r: Variant) -> bool: return str(r.username).to_lower() == key)
+	var sent := (Net.friends.get("sent", []) as Array).any(func(s: Variant) -> bool: return str(s).to_lower() == key)
+	var friend_request := func(action: String) -> void: Net.send({ "t": Protocol.FRIEND, "action": action, "username": name })
+	if not friend.is_empty():
+		var state := UI.label("Venner", "Muted")
+		state.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_actions.add_child(state)
+		if bool(friend.get("playing", false)) and str(friend.get("room", "")) != "":
+			var code := str(friend.room)
+			_actions.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
+		elif bool(friend.get("online", false)):
+			_actions.add_child(UI.button("Utfordre", func() -> void: app.challenge(name), "PrimaryButton"))
+	elif asked:
+		var ask := UI.label(tr("%s vil bli venn med deg.") % name, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+		ask.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		ask.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_actions.add_child(ask)
+		_actions.add_child(UI.button("Godta", friend_request.bind("accept"), "PrimaryButton"))
+	elif sent:
+		var b := UI.button("Forespørsel sendt", func() -> void: pass)
+		b.disabled = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_actions.add_child(b)
+	else:
+		var b := UI.button("Legg til venn", friend_request.bind("request"), "PrimaryButton")
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_actions.add_child(b)
 
 
 ## Pokalhylla: hver pokal med navnet og datoen under. Nyeste først.
@@ -157,8 +222,9 @@ func _show_board() -> void:
 		place.custom_minimum_size.x = 32
 		row.add_child(place)
 		row.add_child(EloBadge.make(int(e.get("elo", -1)), 20))
-		var name := UI.label(str(e.username))
-		name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		# Navnet er en knapp: trykk for å se profilen
+		var who := str(e.username)
+		var name := UI.name_button(who, func() -> void: app.show_profile(who, _back_to_menu))
 		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name)
 		var value := ""

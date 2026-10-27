@@ -12,6 +12,7 @@ const CODE_LETTERS := "ABCDEFGHJKLMNPQRSTUVWXYZ"   # uten I og O
 const CODE_LENGTH := 5
 const PRESENCE_INTERVAL_MS := 1000
 const MAX_PRESENCE_USERS := 100   ## så mange navn sendes i «hvem er online»
+const LAST_GAMES := 3              ## så mange av de siste partiene hovedmenyen får (spilles av etter tur)
 const STREAK_MILESTONES := [5, 10, 15, 20, 30, 50]
 const FORCED_WIN_EVENT := 3       ## seier med minst så mange tvungne trekk på rad blir en hendelse
 
@@ -152,6 +153,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 			if p.viewing_tournament != 0:
 				_send_tournament(p, p.viewing_tournament)
 		Protocol.FRIEND: _friend(p, msg)
+		Protocol.USER_SEARCH: _search(p, str(msg.get("query", "")))
 		Protocol.TOURNAMENT_JOIN, Protocol.TOURNAMENT_LEAVE, Protocol.TOURNAMENT_CREATE, \
 		Protocol.TOURNAMENT_UPDATE, Protocol.TOURNAMENT_ACTION:
 			_tournament_request(p, t, msg)
@@ -259,7 +261,8 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 	if not user.is_empty():
 		_sign_in(p, user)
 	send.call(peer, { "t": Protocol.WELCOME, "player_id": p.id, "token": p.token, "resumed": resumed,
-		"user": accounts.public_info(user) if not user.is_empty() else null })
+		"user": accounts.public_info(user) if not user.is_empty() else null,
+		"avatar": p.avatar if not user.is_empty() else null })
 	send.call(peer, social.history_message())
 	send.call(peer, presence_message())
 	if not store.games.is_empty():
@@ -660,7 +663,7 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 	if t == Protocol.REGISTER:
 		social.event("Velkommen, %s!", [str(res.user.username)], clock_s.call(), "velkommen")
 	var token := accounts.create_session(res.user.id, clock_s.call())
-	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user) })
+	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user), "avatar": p.avatar })
 	var room := _room_of(p)
 	if room:
 		_broadcast_room_state(room)
@@ -670,7 +673,8 @@ func _sign_in(p: Player, user: Dictionary) -> void:
 	p.user_id = int(user.id)
 	p.name = str(user.username)
 	_presence_dirty = true   # nytt navn i «hvem er online»
-	accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx, p.avatar)
+	accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx)
+	p.avatar = accounts.avatar_on_sign_in(p.user_id, p.avatar)   # samme bilde på alle enheter
 
 
 ## Byttet utseende (skin, merke, seiersanimasjon). Rommet får beskjed, så motstanderen ser det før start.
@@ -680,8 +684,14 @@ func _set_look(p: Player, msg: Dictionary) -> void:
 	p.win_fx = str(msg.get("win_fx", p.win_fx)).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", p.decal_color)).substr(0, 24)
 	p.away = bool(msg.get("away", p.away))
+	if msg.has("avatar"):   # nytt eller fjernet profilbilde
+		var avatar = msg.avatar
+		if avatar == "" or AvatarData.is_valid(avatar):
+			p.avatar = avatar
+			if p.user_id != 0:
+				accounts.set_avatar(p.user_id, p.avatar)
 	if p.user_id != 0:
-		accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx, p.avatar)
+		accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx)
 	var room := _room_of(p)
 	if room and not room.in_game():
 		_broadcast_room_state(room)
@@ -697,7 +707,19 @@ func _logout(p: Player, msg: Dictionary) -> void:
 
 func _stats(p: Player, username: String) -> void:
 	var u: Dictionary = store.find_user(username) if username != "" else store.users.get(p.user_id, {})
-	send.call(p.peer, { "t": Protocol.STATS, "user": accounts.public_info(u) if not u.is_empty() else null })
+	var info := accounts.public_info(u)
+	if not u.is_empty():
+		info.avatar = store.avatars.get(int(u.id), "")
+	send.call(p.peer, { "t": Protocol.STATS, "user": info if not u.is_empty() else null })
+
+
+## Søk etter spillere på navn (venner-skjermen): treff mens man skriver.
+func _search(p: Player, query: String) -> void:
+	var users := []
+	for u: Dictionary in accounts.search(query.substr(0, Protocol.MAX_NAME)):
+		if int(u.id) != p.user_id:
+			users.append({ "username": u.username, "elo": u.elo, "online": _is_online(int(u.id)) })
+	send.call(p.peer, { "t": Protocol.USERS, "query": query, "users": users })
 
 
 func _user_in_seat(room: Room, seat: int) -> int:
@@ -995,7 +1017,11 @@ func friends_message(uid: int) -> Dictionary:
 		var r: Dictionary = store.users.get(int(rid), {})
 		if not r.is_empty():
 			requests.append({ "username": r.username, "elo": r.elo })
-	return { "t": Protocol.FRIENDS, "friends": list, "requests": requests }
+	var sent := []   # forespørsler du har sendt og som venter på svar
+	for other: Dictionary in store.users.values():
+		if uid in other.friend_requests:
+			sent.append(other.username)
+	return { "t": Protocol.FRIENDS, "friends": list, "requests": requests, "sent": sent }
 
 
 func _send_friends(uid: int) -> void:
@@ -1071,10 +1097,14 @@ func _drop_spectators(room: Room, key: String, args: Array = []) -> void:
 # ---------------------------------------------------------------- Global chat, online og hendelser
 
 ## Det siste ferdige partiet (uten analysen), til hovedmenyen.
+## Det siste partiet og de tre siste (nyeste først). Hovedmenyen spiller av ett av dem om gangen.
 func last_game_message() -> Dictionary:
-	var g: Dictionary = store.games[-1].duplicate()
-	g.erase("analysis")
-	return { "t": Protocol.LAST_GAME, "game": g }
+	var games := []
+	for i in mini(LAST_GAMES, store.games.size()):
+		var g: Dictionary = store.games[-1 - i].duplicate()
+		g.erase("analysis")
+		games.append(g)
+	return { "t": Protocol.LAST_GAME, "game": games[0], "games": games }
 
 
 ## Hvor mange som er online og spiller, og hvem (navn, Elo og om de spiller nå), sortert på navn.

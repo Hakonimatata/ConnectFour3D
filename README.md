@@ -111,7 +111,7 @@ Online kan man spille som gjest, eller logge inn for å få statistikk, Elo-rati
 
 Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Nivåene låser også opp merker på brikken (krone, flamme, laurbær m.fl.). Serveren sjekker at du har låst dem opp.
 
-På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier å finne hver dag, med toppliste) og en **global chat** med hvor mange som er online. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
+På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier å finne hver dag, med toppliste) Bak menyen spilles et av de tre siste partiene på serveren av, ett om gangen. og en **global chat** med hvor mange som er online. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
 
 **Hvor ligger dataene?** Serveren lagrer alt som lesbare JSON-filer i én mappe:
 - Kjører serveren fra prosjektet (`scripts\web.cmd`, `scripts\online.cmd` eller `godot … -- --server`), ligger de i `data/` i prosjektmappen. Mappen er i `.gitignore`.
@@ -121,7 +121,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 | Fil | Innhold |
 |---|---|
 | `users.json` | Brukere: brukernavn, `admin`, `banned`, Elo, statistikk, pokaler, profil og passord-hash (aldri passordet selv) |
-| `avatars.json` | Profilbilder |
+| `avatars.json` | Profilbilder. Bildet hører til kontoen, så det er det samme på alle enheter du logger inn fra. |
 | `sessions.json` | Innloggede økter (bare en hash av nøkkelen) |
 | `tournaments.json` | Turneringer |
 | `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse (brukes til repriser) |
@@ -147,7 +147,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 
 **Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Treet har pokalen i midten (på smale skjermer går det fra venstre mot høyre med pokalen over finalen), og kamper som spilles nå kan trykkes på for å se på. Siden oppdateres med en gang noe skjer. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen. Admin kan bytte pokal på turneringssiden («Ny pokal») før turneringen starter.
 
-**Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Legg til med brukernavn. Den andre får en forespørsel og godtar. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
+**Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Søk etter spillere (treff mens du skriver) og trykk «Legg til». Den andre får en forespørsel og godtar. Trykk på et navn (i chatten, «hvem er online», topplisten, søket eller vennelisten) for å se profilen, med «Legg til venn» rett der. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
 
 **Chatkanaler:** den globale chatten har kanalene «Generelt», «Velkommen» (nye kontoer ønskes velkommen her) og «Innspill» (lagres også i `feedback.jsonl`). Kunngjøringer vises i alle kanalene.
 
@@ -199,6 +199,13 @@ HTTPS automatisk, og IP-adressen hjemme vises ikke.
 
 **Sjekket i runde 10:** web-eksporten bygger, serveren serverer web-klienten med gzip og `/ws`, og en
 hel turnering er testet over ekte WebSocket-tilkoblinger (`tests/test_tournament_online.gd`).
+
+**Stresstest av en turnering** (påvirker ikke serveren på nett: egne porter og egen datamappe):
+```
+godot --headless --path . -- --server --port 9080 --web build/web --web-port 9000 --data build/stresstest
+godot --headless --path . --script res://tools/stress_tournament.gd -- --url ws://127.0.0.1:9080 --data build/stresstest --players 32
+```
+32 boter registrerer seg, melder seg på og spiller en hel utslagsturnering. Følg med på `http://localhost:9000/?turnering=1`. Til slutt skrives svartider og antall partier. `--level easy` gir raske boter, så svartiden måler serveren og ikke botene. Se også `--signup`, `--delay` og `--report`.
 
 **Tester** kjøres lokalt (se «Kom i gang»). Det er ingen automatisk CI på GitHub (fjernet etter runde 12, så det ikke kommer e-post ved hver push).
 

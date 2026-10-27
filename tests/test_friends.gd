@@ -176,3 +176,56 @@ func test_tournament_page_gets_changes_pushed() -> void:
 	_msg(1, { "t": "tournament_join", "id": id })
 	_tick()
 	check(_last(2, "tournament_state").is_empty(), "ingen flere når siden er lukket")
+
+
+# ---------------------------------------------------------------- Søk, profilbilde og siste partier
+
+func test_search_finds_players_and_sent_requests_are_listed() -> void:
+	_register(1, "Ada")
+	_register(2, "Adrian")
+	_register(3, "Bob")
+	_register(4, "Hilda")
+	_msg(1, { "t": "user_search", "query": "ad" })
+	var hits: Array = _last(1, "users").users
+	check_eq(hits.size(), 1, "Ada ser ikke seg selv, bare Adrian:")
+	check_eq(hits[0].username, "Adrian")
+	check(hits[0].online, "med online-status")
+	_msg(3, { "t": "user_search", "query": "A" })
+	var names: Array = (_last(3, "users").users as Array).map(func(u: Dictionary) -> String: return u.username)
+	check_eq(names, ["Ada", "Adrian", "Hilda"], "store og små bokstaver likt, de som begynner med teksten først:")
+	_msg(3, { "t": "user_search", "query": "" })
+	check((_last(3, "users").users as Array).is_empty(), "tomt søk gir ingen treff")
+	_friend(1, "request", "Bob")
+	check_eq(_last(1, "friends").sent, ["Bob"], "Ada ser at forespørselen er sendt:")
+	_friend(3, "accept", "Ada")
+	check((_last(1, "friends").sent as Array).is_empty(), "borte når Bob har godtatt")
+
+
+func test_avatar_follows_the_account_to_other_devices() -> void:
+	var img := Image.create(64, 64, false, Image.FORMAT_RGB8)
+	img.fill(Color.ORANGE)
+	var pic := AvatarData.from_bytes(img.save_png_to_buffer())
+	check(pic != "", "testbildet er gyldig")
+	# Mobilen har bildet og logger inn: kontoen får det
+	_msg(1, { "t": "hello", "name": "Ada", "skin": "ocean", "version": Protocol.VERSION, "avatar": pic })
+	_msg(1, { "t": "register", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(1, "session").avatar, pic, "kontoen tar enhetens bilde:")
+	# PC-en har ikke bildet: får det ved innlogging, og det slettes ikke
+	_hello(2, "Ada")
+	_msg(2, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(2, "session").avatar, pic, "samme bilde på PC-en:")
+	_hello(3, "Gjest")
+	_msg(3, { "t": "get_stats", "username": "Ada" })
+	check_eq(_last(3, "stats").user.avatar, pic, "andre ser bildet på profilen")
+	# Fjernet på PC-en: mobilen (som fortsatt har det lokalt) får det ikke tilbake på kontoen
+	_msg(2, { "t": "set_look", "avatar": "" })
+	_msg(4, { "t": "hello", "name": "Ada", "skin": "ocean", "version": Protocol.VERSION, "avatar": pic })
+	_msg(4, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(4, "session").avatar, "", "fjernet bilde blir borte overalt:")
+	# Nytt bilde lagres på kontoen med en gang
+	_msg(4, { "t": "set_look", "avatar": pic })
+	_hello(5, "Ada")
+	_msg(5, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(5, "session").avatar, pic, "nytt bilde følger med:")
+	_msg(5, { "t": "set_look", "avatar": "aGVp" })   # gyldig base64, men ikke et bilde
+	check_eq(lobby.store.avatars.get(int(_last(5, "session").user.id)), pic, "ugyldig bilde ignoreres")

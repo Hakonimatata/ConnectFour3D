@@ -63,6 +63,9 @@ $server = Start-Process $godot -ArgumentList '--headless', '--path', '.', '--', 
 $tunnelArgs = @('tunnel', '--no-autoupdate', '--url', "http://localhost:$WebPort")
 if ($Hostname) {
     # Navngitt tunnel på eget domene: logg inn (første gang), lag tunnelen og pek domenet dit.
+    # cloudflared skriver advarsler (f.eks. «Your version is outdated») til stderr. Med 'Stop' gjør
+    # Windows PowerShell det til en feil som stopper skriptet, så her ser vi bare på $LASTEXITCODE.
+    $ErrorActionPreference = 'Continue'
     if (-not (Test-Path "$env:USERPROFILE\.cloudflared\cert.pem")) {
         Write-Host "Første gang: logg inn hos Cloudflare i nettleseren som åpnes, og velg domenet ditt." -ForegroundColor Yellow
         & $cf tunnel login
@@ -79,6 +82,7 @@ if ($Hostname) {
     & $cf tunnel route dns --overwrite-dns $TunnelName $Hostname
     if ($LASTEXITCODE -ne 0) { Write-Host "Kunne ikke peke $Hostname til tunnelen. Ligger domenet i Cloudflare?" -ForegroundColor Red; exit 1 }
     $tunnelArgs = @('tunnel', '--no-autoupdate', 'run', '--url', "http://localhost:$WebPort", $TunnelName)
+    $ErrorActionPreference = 'Stop'
 }
 $tunnel = Start-Process $cf -ArgumentList $tunnelArgs `
     -NoNewWindow -PassThru -RedirectStandardOutput build\tunnel.out.log -RedirectStandardError build\tunnel.log

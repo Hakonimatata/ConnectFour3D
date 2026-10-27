@@ -68,7 +68,7 @@ func _ready() -> void:
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_status)
-	v.add_child(UI.button("Tilbake", _on_back))
+	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)

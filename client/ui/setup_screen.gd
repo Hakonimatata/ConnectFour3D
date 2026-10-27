@@ -49,7 +49,6 @@ func _ready() -> void:
 		v.add_child(UI.toggle_row("Privat rom", "Vises ikke i listen. Venner blir med med koden.",
 			_private, func(on: bool) -> void: _private = on))
 
-	v.add_child(UI.spacer(6))
 	var buttons := UI.hbox(10)
 	var back := UI.button("Tilbake", _on_back)
 	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -60,7 +59,7 @@ func _ready() -> void:
 	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	buttons.add_child(back)
 	buttons.add_child(start)
-	v.add_child(buttons)
+	UI.card_footer(v).add_child(buttons)
 
 
 ## Brett, regler og klokke. Brukes også av turneringsskjemaet.
