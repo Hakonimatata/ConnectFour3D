@@ -121,7 +121,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 | Fil | Innhold |
 |---|---|
 | `users.json` | Brukere: brukernavn, `admin`, `banned`, Elo, statistikk, pokaler, profil og passord-hash (aldri passordet selv) |
-| `avatars.json` | Profilbilder. Bildet hører til kontoen, så det er det samme på alle enheter du logger inn fra. |
+| `avatars.json` | Profilbilder. Bildet hører til kontoen, så det er det samme på alle enheter du logger inn fra. Utseendet (brikke, merke, farge, drakt, seiersanimasjon) ligger under `"profile"` i `users.json` og følger også kontoen. |
 | `sessions.json` | Innloggede økter (bare en hash av nøkkelen) |
 | `tournaments.json` | Turneringer |
 | `games.jsonl` | Ett ferdig parti per linje, med trekk og analyse (brukes til repriser) |

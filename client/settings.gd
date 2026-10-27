@@ -22,6 +22,7 @@ var language := "auto"
 var session_token := ""       ## Husket innlogging (nøkkel fra serveren)
 var last_elo := -1            ## Siste kjente Elo (låser opp merker også uten nett). -1 = aldri innlogget
 var puzzle_day := ""          ## Datoen for sist løste «Dagens oppgave"
+var look_pending := false     ## Utseendet er endret uten nett: kontoen får det ved neste innlogging
 var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
 var persist := true           ## false = ikke skriv til disk (brukes av testene)
 var sound := true
@@ -48,6 +49,7 @@ func _ready() -> void:
 		last_username = str(cfg.get_value("account", "last_username", ""))
 		solved_puzzles.assign(cfg.get_value("game", "solved_puzzles", []))
 		puzzle_day = str(cfg.get_value("game", "puzzle_day", ""))
+		look_pending = bool(cfg.get_value("player", "look_pending", false))
 		if int(cfg.get_value("app", "version", 1)) < 2:
 			# Runde 7: «Må blokkere» og «Ikke gi bort seier» er nå på som standard.
 			last_options["must_block"] = true
@@ -131,6 +133,7 @@ func save() -> void:
 	cfg.set_value("account", "last_username", last_username)
 	cfg.set_value("game", "solved_puzzles", solved_puzzles)
 	cfg.set_value("game", "puzzle_day", puzzle_day)
+	cfg.set_value("player", "look_pending", look_pending)
 	cfg.set_value("player", "avatar", avatar)
 	cfg.set_value("app", "sound", sound)
 	cfg.set_value("app", "vibration", vibration)

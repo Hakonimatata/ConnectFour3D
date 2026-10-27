@@ -26,6 +26,7 @@ class Player:
 	var decal_color := "auto"
 	var away := false              ## valgt drakt (bortedrakt)
 	var avatar := ""               ## base64-JPEG, sjekket med AvatarData.is_valid
+	var look_pending := false      ## utseendet ble endret uten nett: enhetens utseende vinner ved innlogging
 	var token: String
 	var peer := 0                  ## 0 = frakoblet
 	var room_code := ""
@@ -243,6 +244,7 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 	p.win_fx = str(msg.get("win_fx", "classic")).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", "auto")).substr(0, 24)
 	p.away = bool(msg.get("away", false))
+	p.look_pending = bool(msg.get("look_pending", false))
 	var avatar = msg.get("avatar", "")
 	p.avatar = avatar if AvatarData.is_valid(avatar) else ""
 	p.peer = peer
@@ -262,7 +264,7 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		_sign_in(p, user)
 	send.call(peer, { "t": Protocol.WELCOME, "player_id": p.id, "token": p.token, "resumed": resumed,
 		"user": accounts.public_info(user) if not user.is_empty() else null,
-		"avatar": p.avatar if not user.is_empty() else null })
+		"avatar": p.avatar if not user.is_empty() else null, "look": _look_of(p) if not user.is_empty() else null })
 	send.call(peer, social.history_message())
 	send.call(peer, presence_message())
 	if not store.games.is_empty():
@@ -659,22 +661,39 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 		var args: Array = res.get("args", [])
 		send.call(p.peer, { "t": Protocol.AUTH_ERROR, "key": res.error, "args": args, "text": _fill(res.error, args) })
 		return
-	_sign_in(p, res.user)
+	_sign_in(p, res.user, t == Protocol.REGISTER)
 	if t == Protocol.REGISTER:
 		social.event("Velkommen, %s!", [str(res.user.username)], clock_s.call(), "velkommen")
 	var token := accounts.create_session(res.user.id, clock_s.call())
-	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user), "avatar": p.avatar })
+	send.call(p.peer, { "t": Protocol.SESSION, "token": token, "user": accounts.public_info(res.user), "avatar": p.avatar,
+		"look": _look_of(p) })
 	var room := _room_of(p)
 	if room:
 		_broadcast_room_state(room)
 
 
-func _sign_in(p: Player, user: Dictionary) -> void:
+## Utseendet og profilbildet hører til kontoen: ved innlogging får enheten kontoens utseende.
+## En ny konto tar utseendet enheten har valgt.
+func _sign_in(p: Player, user: Dictionary, new_account := false) -> void:
 	p.user_id = int(user.id)
 	p.name = str(user.username)
 	_presence_dirty = true   # nytt navn i «hvem er online»
-	accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx)
+	if new_account or p.look_pending:
+		p.look_pending = false
+		accounts.update_profile(p.user_id, _look_of(p))
+	else:
+		var look: Dictionary = user.profile
+		p.skin = look.skin
+		p.decal = look.decal
+		p.win_fx = look.win_fx
+		p.decal_color = look.decal_color
+		p.away = look.away
 	p.avatar = accounts.avatar_on_sign_in(p.user_id, p.avatar)   # samme bilde på alle enheter
+
+
+## Utseendet slik klienten lagrer det (sendes ved innlogging, så enheten får kontoens utseende).
+func _look_of(p: Player) -> Dictionary:
+	return { "skin": p.skin, "decal": p.decal, "win_fx": p.win_fx, "decal_color": p.decal_color, "away": p.away }
 
 
 ## Byttet utseende (skin, merke, seiersanimasjon). Rommet får beskjed, så motstanderen ser det før start.
@@ -691,7 +710,7 @@ func _set_look(p: Player, msg: Dictionary) -> void:
 			if p.user_id != 0:
 				accounts.set_avatar(p.user_id, p.avatar)
 	if p.user_id != 0:
-		accounts.update_profile(p.user_id, p.skin, p.decal, p.win_fx)
+		accounts.update_profile(p.user_id, _look_of(p))
 	var room := _room_of(p)
 	if room and not room.in_game():
 		_broadcast_room_state(room)

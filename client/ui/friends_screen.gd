@@ -59,9 +59,13 @@ func _ready() -> void:
 	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 
 	Net.message.connect(_on_message)
-	Net.connected.connect(func(_r: bool) -> void: _send("list"))
+	Net.connected.connect(_on_connected)
 	Net.ensure_connected()
 	show_friends(Net.friends)
+	_send("list")
+
+
+func _on_connected(_resumed: bool) -> void:
 	_send("list")
 
 

@@ -60,7 +60,9 @@ func _ready() -> void:
 	avatar_row.add_child(_avatar_view)
 	var avatar_buttons := UI.vbox(8)
 	avatar_buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	avatar_buttons.add_child(UI.button("Velg bilde…", _pick_avatar))
+	var pick := UI.button("Velg bilde…", _pick_avatar)
+	pick.button_down.connect(func() -> void: _picker.arm())   # iPhone: velgeren åpnes når fingeren slippes
+	avatar_buttons.add_child(pick)
 	_remove_avatar = UI.button("Fjern bilde", _clear_avatar)
 	avatar_buttons.add_child(_remove_avatar)
 	avatar_row.add_child(avatar_buttons)
@@ -314,4 +316,10 @@ func _store_fields() -> void:
 func _on_back() -> void:
 	_store_fields()
 	Settings.save()
+	# Utseendet hører til kontoen. Uten nett sendes det ved neste innlogging (look_pending i hello).
+	if Net.is_online():
+		Net.send_look()
+	else:
+		Settings.look_pending = true
+		Settings.save()
 	app.show_menu()

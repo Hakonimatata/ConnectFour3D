@@ -7,7 +7,7 @@ signal connected(resumed: bool)
 signal disconnected
 signal message(msg: Dictionary)
 signal account_changed          ## innlogget/utlogget (se `user`)
-signal avatar_changed           ## profilbildet kom fra kontoen (innlogget på en annen enhet)
+signal profile_synced           ## profilbildet eller utseendet kom fra kontoen (ved innlogging)
 
 enum Status { OFFLINE, CONNECTING, ONLINE }
 
@@ -112,6 +112,7 @@ func _process(delta: float) -> void:
 					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id,
 					"away": Settings.kit_away,
 					"avatar": Settings.avatar,
+					"look_pending": Settings.look_pending,
 					"version": Protocol.VERSION, "token": _token, "session": Settings.session_token })
 			while _ws and _ws.get_available_packet_count() > 0:
 				var msg := Protocol.decode(_ws.get_packet().get_string_from_utf8())
@@ -160,13 +161,13 @@ func _handle(msg: Dictionary) -> void:
 		_keep_trying = true   # kom vi først inn, prøver vi igjen ved brudd (også etter en «titt»)
 		_retry_delay = 1.0
 		last_error = ""
-		_adopt_avatar(msg)
+		_adopt_profile(msg)
 		_set_user(msg.get("user"))
 		connected.emit(resumed)
 	elif msg.t == Protocol.SESSION:
 		Settings.session_token = str(msg.get("token", ""))
 		Settings.save()
-		_adopt_avatar(msg)
+		_adopt_profile(msg)
 		_set_user(msg.get("user"))
 	elif msg.t == Protocol.LOGGED_OUT:
 		_set_user(null)
@@ -196,13 +197,38 @@ func send_avatar() -> void:
 	send({ "t": Protocol.SET_LOOK, "avatar": Settings.avatar })
 
 
-## Innlogget er profilbildet kontoens: det samme på alle enheter (serveren sender det ved innlogging).
-func _adopt_avatar(msg: Dictionary) -> void:
+## Innlogget er profilbildet og utseendet kontoens: det samme på alle enheter (serveren sender dem
+## ved innlogging). Ukjente verdier (f.eks. fra en nyere versjon) hoppes over.
+func _adopt_profile(msg: Dictionary) -> void:
+	if Settings.look_pending and msg.get("user") is Dictionary:
+		Settings.look_pending = false   # innlogget: serveren har lagret enhetens utseende (fra hello)
+		Settings.save()
+	var changed := false
 	var avatar = msg.get("avatar")
 	if avatar is String and avatar != Settings.avatar:
 		Settings.avatar = avatar
+		changed = true
+	var look = msg.get("look")
+	if look is Dictionary:
+		var skin := str(look.get("skin", ""))
+		var decal := str(look.get("decal", ""))
+		var win_fx := str(look.get("win_fx", ""))
+		var decal_color := str(look.get("decal_color", ""))
+		var away := bool(look.get("away", Settings.kit_away))
+		var before := [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away]
+		if Skins.is_valid(skin):
+			Settings.skin_id = skin
+		if Skins.is_valid_decal(decal):
+			Settings.decal_id = decal
+		if Skins.is_valid_fx(win_fx):
+			Settings.win_fx_id = win_fx
+		if Skins.is_valid_decal_color(decal_color):
+			Settings.decal_color_id = decal_color
+		Settings.kit_away = away
+		changed = changed or before != [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away]
+	if changed:
 		Settings.save()
-		avatar_changed.emit()
+		profile_synced.emit()
 
 
 func is_logged_in() -> bool:

@@ -11,7 +11,7 @@ const MAX_CHAT := 200
 const MAX_ANNOUNCEMENT := 300
 
 # Klient -> server
-const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, version, token?, session? }
+const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, look_pending?, version, token?, session? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }
@@ -52,7 +52,7 @@ const VIEW_TOURNAMENT := "view_tournament" ## { id }  (0 = slutt å følge). Ser
 const USER_SEARCH := "user_search"   ## { query }  (finn spillere på navn)
 
 # Server -> klient
-const WELCOME := "welcome"           ## { player_id, token, resumed, user?, avatar? }  (avatar: kontoens profilbilde)
+const WELCOME := "welcome"           ## { player_id, token, resumed, user?, avatar?, look? }  (innlogget: kontoens profilbilde og utseende)
 const ROOM_LIST := "room_list"       ## { rooms: [{ code, host, options }], live: [{ code, players, moves, spectators, tournament }] }
 const ROOM_STATE := "room_state"     ## { code, private, options, you, in_game, players: [...] }
 const GAME_START := "game_start"     ## { options, first, you, players, clocks, number }
@@ -64,7 +64,7 @@ const CHAT_MSG := "chat"             ## { from, seat, text }
 const NOTICE := "notice"             ## { text }  (statusmeldinger)
 const ERROR := "error"               ## { code, text }
 const PONG := "pong"
-const SESSION := "session"           ## { token, user, avatar }  (innlogget. avatar: kontoens profilbilde, "" = ingen)
+const SESSION := "session"           ## { token, user, avatar, look }  (innlogget. Kontoens profilbilde ("" = ingen) og utseende { skin, decal, win_fx, decal_color, away })
 const AUTH_ERROR := "auth_error"     ## { key, text }
 const LOGGED_OUT := "logged_out"
 const STATS := "stats"               ## { user }  (user har også avatar)

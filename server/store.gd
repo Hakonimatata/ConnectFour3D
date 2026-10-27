@@ -126,7 +126,8 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"stats": clean_stats,
 		"last_puzzle": str(d.get("last_puzzle", "")),   # dato for sist løste oppgave (for rekken)
 		"profile": { "skin": str(profile.get("skin", "ocean")), "decal": str(profile.get("decal", "none")),
-			"win_fx": str(profile.get("win_fx", "classic")),
+			"win_fx": str(profile.get("win_fx", "classic")), "decal_color": str(profile.get("decal_color", "auto")),
+			"away": bool(profile.get("away", false)),
 			"avatar_removed": bool(profile.get("avatar_removed", false)) },   # fjernet bildet: ikke hent det fra en annen enhet
 		"password": d.get("password", {}),
 	}

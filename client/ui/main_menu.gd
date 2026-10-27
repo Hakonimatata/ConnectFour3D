@@ -15,6 +15,7 @@ var _replay_title := ""         ## «Siste parti: Ada – Bob» eller «Nylig pa
 var _replay_last: Dictionary = {}   ## forrige parti som ble spilt av (neste blir et annet)
 var _caption_box: PanelContainer
 var _caption: Label
+var _avatar: AvatarView
 const REPLAY_PAUSE_STEPS := 5  ## hvor lenge sluttstillingen blir stående (i demo-steg)
 var _demo_bot := Bot.new(BotProfile.create(BotProfile.Level.MEDIUM))
 var _panel: Control
@@ -111,11 +112,10 @@ func _ready() -> void:
 	v.add_child(UI.spacer(4))
 
 	var who := UI.hbox(8)
-	var avatar := AvatarView.new(30)
-	avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
-	who.add_child(avatar)
-	Net.avatar_changed.connect(func() -> void:
-		avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id)))
+	_avatar = AvatarView.new(30)
+	who.add_child(_avatar)
+	_on_profile_synced()
+	Net.profile_synced.connect(_on_profile_synced)
 	_badge = EloBadge.make(-1, 20)
 	who.add_child(_badge)
 	_who_name = UI.label(Settings.display_name(), "Muted")
@@ -408,6 +408,11 @@ func _update_badge() -> void:
 
 
 ## «Venner», med hvor mange som er online og en prikk ved nye forespørsler.
+## Profilbildet (og fargen fra skinnet) ved navnet. Oppdateres når kontoens profil kommer ved innlogging.
+func _on_profile_synced() -> void:
+	_avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
+
+
 func _update_friends_button() -> void:
 	var online := (Net.friends.get("friends", []) as Array).filter(func(f: Dictionary) -> bool: return f.get("online", false))
 	var text := tr("Venner")

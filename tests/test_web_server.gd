@@ -111,6 +111,49 @@ func test_websocket_on_ws_path_reaches_game_server() -> void:
 	await tree.process_frame
 
 
+## Profilbildet fra telefonen (gjennom /ws på web-porten) lagres på kontoen.
+func test_avatar_upload_through_web_port() -> void:
+	server.stop()
+	var game := ServerMain.new()
+	game.data_dir = ":memory:"
+	game.port = 18774
+	game.web_dir = DIR
+	game.web_port = 18775
+	root.add_child(game)
+	var img := Image.create(AvatarData.SIZE, AvatarData.SIZE, false, Image.FORMAT_RGB8)
+	for y in img.get_height():
+		for x in img.get_width():
+			img.set_pixel(x, y, Color(randf(), randf(), randf()))   # støy gir et stort JPEG, som et foto
+	var pic := Marshalls.raw_to_base64(img.save_jpg_to_buffer(0.85))
+	check(AvatarData.is_valid(pic), "testbildet er gyldig (%d tegn)" % pic.length())
+	var ws := WebSocketPeer.new()
+	ws.connect_to_url("ws://127.0.0.1:18775/ws")
+	var got := {}
+	var sent := false
+	var end := Time.get_ticks_msec() + 8000
+	while Time.get_ticks_msec() < end and not got.has("stats"):
+		ws.poll()
+		if ws.get_ready_state() == WebSocketPeer.STATE_OPEN:
+			if not sent:
+				ws.send_text(Protocol.encode({ "t": "hello", "name": "Mobil", "skin": "ocean", "version": Protocol.VERSION }))
+				ws.send_text(Protocol.encode({ "t": "register", "username": "Mobil", "password": "hemmelig123" }))
+				sent = true
+			while ws.get_available_packet_count() > 0:
+				var msg := Protocol.decode(ws.get_packet().get_string_from_utf8())
+				got[msg.get("t", "")] = msg
+				if msg.get("t") == Protocol.SESSION:
+					ws.send_text(Protocol.encode({ "t": "set_look", "avatar": pic }))
+					ws.send_text(Protocol.encode({ "t": "get_stats", "username": "Mobil" }))
+		await tree.process_frame
+	check(got.has("session"), "innlogget: %s" % str(got.keys()))
+	check(got.has("stats"), "fikk svar: %s" % str(got.keys()))
+	if got.has("stats"):
+		check_eq(str(got.stats.user.get("avatar", "")).length(), pic.length(), "bildet er lagret på kontoen:")
+	ws.close()
+	game.queue_free()
+	await tree.process_frame
+
+
 func test_https_with_certificate() -> void:
 	server.stop()
 	var crypto := Crypto.new()

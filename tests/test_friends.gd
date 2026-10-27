@@ -229,3 +229,30 @@ func test_avatar_follows_the_account_to_other_devices() -> void:
 	check_eq(_last(5, "session").avatar, pic, "nytt bilde følger med:")
 	_msg(5, { "t": "set_look", "avatar": "aGVp" })   # gyldig base64, men ikke et bilde
 	check_eq(lobby.store.avatars.get(int(_last(5, "session").user.id)), pic, "ugyldig bilde ignoreres")
+
+
+func test_look_follows_the_account() -> void:
+	# Ny konto tar enhetens utseende
+	_msg(1, { "t": "hello", "name": "Ada", "skin": "lava", "decal": "star", "win_fx": "fireworks",
+		"decal_color": "gold", "away": true, "version": Protocol.VERSION })
+	_msg(1, { "t": "register", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(1, "session").look.skin, "lava", "kontoen tar enhetens utseende:")
+	# PC-en (standard utseende) logger inn: får kontoens
+	_hello(2, "Ada")
+	_msg(2, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	var look: Dictionary = _last(2, "session").look
+	check_eq([look.skin, look.decal, look.win_fx, look.decal_color, look.away], ["lava", "star", "fireworks", "gold", true],
+		"PC-en får kontoens utseende:")
+	# Endret på PC-en: lagres på kontoen
+	_msg(2, { "t": "set_look", "skin": "glass", "decal": "none", "win_fx": "classic", "decal_color": "auto", "away": false })
+	_hello(3, "Ada")
+	_msg(3, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(3, "session").look.skin, "glass", "endringen følger med:")
+	# Endret uten nett (look_pending): enhetens utseende vinner ved innlogging med husket økt
+	var token := str(_last(3, "session").token)
+	_msg(4, { "t": "hello", "name": "Ada", "skin": "gold", "look_pending": true, "version": Protocol.VERSION, "session": token })
+	check_eq(_last(4, "welcome").look.skin, "gold", "enheten vinner når den har endret uten nett:")
+	check_eq(lobby.store.find_user("Ada").profile.skin, "gold", "og kontoen er oppdatert")
+	# Gjester får ikke noe utseende fra serveren
+	_hello(5, "Gjest")
+	check(_last(5, "welcome").get("look") == null, "gjest: ingen look")

@@ -219,12 +219,14 @@ func award_trophy(user_id: int, entry: Dictionary) -> bool:
 	return true
 
 
-## Utseendet (skin, merke, seiersanimasjon) følger siste enhet brukeren logget inn fra.
-func update_profile(user_id: int, skin: String, decal: String, win_fx: String) -> void:
+## Utseendet (skin, merke, farge på merket, drakt, seiersanimasjon) hører til kontoen. Det lagres når
+## det endres, og enheten får det ved innlogging (se Lobby._sign_in).
+func update_profile(user_id: int, look: Dictionary) -> void:
 	var u: Dictionary = store.users.get(user_id, {})
 	if u.is_empty():
 		return
-	var profile := { "skin": skin, "decal": decal, "win_fx": win_fx,
+	var profile := { "skin": str(look.skin), "decal": str(look.decal), "win_fx": str(look.win_fx),
+		"decal_color": str(look.decal_color), "away": bool(look.away),
 		"avatar_removed": bool(u.profile.get("avatar_removed", false)) }
 	if u.profile != profile:
 		u.profile = profile

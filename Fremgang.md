@@ -392,3 +392,9 @@ Ja. Lag web-bygget én gang, og kjør så `godot --headless --path . -- --server
 - venneknappen på profilen.
 
 Skjermbilder på mobil: profil, innstillinger, vennesøk, oppgaven (åpen og skjult) og menyen.
+
+**Oppfølging samme kveld:**
+- **Profilbildet kunne ikke velges på iPhone (Chrome og Safari).** Begge bruker WebKit, og WebKit åpner bare filvelgeren midt i selve trykket. Godot behandler trykket først i neste bilde, så velgeren ble stille blokkert (Android var mer tolerant). Nå gjør spillet nettleseren klar når fingeren treffer «Velg bilde…», og velgeren åpnes i nettleserens egen «slipp»-hendelse. Flyttet fingeren seg (scrolling), åpnes den ikke. En ny test sender et bilde på størrelse med et foto gjennom web-porten, slik telefonen gjør, og sjekker at det lagres på kontoen.
+- **Skins følger kontoen.** Brikke, merke, farge på merket, drakt og seiersanimasjon lagres på kontoen når du lagrer innstillingene, og en enhet får kontoens utseende når du logger inn. En ny konto tar utseendet enheten har valgt. Endrer du utseendet uten nett, vinner enhetens utseende ved neste innlogging.
+- **Feilretting:** hovedmenyen, vennesiden og turneringssiden koblet lambdaer til nettverkssignaler. De ble hengende igjen etter at skjermen var lukket, og ga skriptfeil ved neste innlogging eller tilkobling. Nå er det metoder, og Godot kobler dem fra når skjermen lukkes.
+- **Testet:** 148 automatiske tester, alle grønne. Nye: utseendet følger kontoen (ny konto, annen enhet, endring, endret uten nett, gjest), klienten tar i bruk kontoens utseende og bilde, og bildeopplasting gjennom web-porten. JavaScript-koden til bildevelgeren er syntakssjekket. Den er ikke prøvd på en ekte iPhone.

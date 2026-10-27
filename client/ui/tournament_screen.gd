@@ -30,7 +30,7 @@ func _ready() -> void:
 	v.add_child(_status)
 	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 	Net.message.connect(_on_message)
-	Net.connected.connect(func(_r: bool) -> void: _refresh())
+	Net.connected.connect(_on_connected)
 	# Serveren sender endringer med en gang (view_tournament). Timeren er bare en reserve.
 	var timer := Timer.new()
 	timer.wait_time = 15.0
@@ -42,6 +42,10 @@ func _ready() -> void:
 
 ## get_tournament (ikke view_tournament): den nye serveren følger siden og sender endringer med en
 ## gang, og en eldre server som ikke kjenner view_tournament, svarer likevel.
+func _on_connected(_resumed: bool) -> void:
+	_refresh()
+
+
 func _refresh() -> void:
 	Net.send({ "t": Protocol.GET_TOURNAMENT, "id": tournament_id })
 

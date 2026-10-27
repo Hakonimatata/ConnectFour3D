@@ -976,3 +976,28 @@ func test_names_open_profiles_with_friend_button() -> void:
 	check(not (_screen() as ProfileScreen)._actions.visible, "ingen venneknapp på egen profil")
 	Net.user = old_user
 	Net.friends = old_friends
+
+
+func test_login_adopts_the_account_look_and_avatar() -> void:
+	var old := [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away,
+		Settings.avatar, Settings.look_pending]
+	Settings.skin_id = "ocean"
+	Settings.look_pending = true
+	var synced := []
+	var on_sync := func() -> void: synced.append(true)
+	Net.profile_synced.connect(on_sync)
+	Net._adopt_profile({ "user": { "username": "Ada" }, "avatar": "",
+		"look": { "skin": "lava", "decal": "finnes-ikke", "win_fx": Settings.win_fx_id, "decal_color": "auto", "away": true } })
+	check_eq(Settings.skin_id, "lava", "kontoens skin:")
+	check(Settings.decal_id != "finnes-ikke", "ukjent merke hoppes over")
+	check(Settings.kit_away, "bortedrakt")
+	check(not Settings.look_pending, "innlogget: utseendet er levert")
+	check_eq(synced.size(), 1, "menyen får beskjed:")
+	Net.profile_synced.disconnect(on_sync)
+	Settings.skin_id = old[0]
+	Settings.decal_id = old[1]
+	Settings.win_fx_id = old[2]
+	Settings.decal_color_id = old[3]
+	Settings.kit_away = old[4]
+	Settings.avatar = old[5]
+	Settings.look_pending = old[6]
