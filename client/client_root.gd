@@ -23,6 +23,7 @@ var _keyboard_check := 0.0
 var _keyboard_top := 0.0
 var _keyboard_focus: Control
 var _keyboard_window := Vector2i.ZERO
+var _background: ShaderMaterial
 
 
 func _ready() -> void:
@@ -60,6 +61,8 @@ func _build_world() -> void:
 	bg_mat.set_shader_parameter("top_color", UI.BG_TOP)
 	bg_mat.set_shader_parameter("bottom_color", UI.BG_BOTTOM)
 	bg_mat.set_shader_parameter("glow_color", UI.BG_GLOW)
+	bg_mat.set_shader_parameter("style", Skins.background_style(Settings.background))
+	_background = bg_mat
 	bg.material = bg_mat
 	bg_layer.add_child(bg)
 
@@ -92,6 +95,11 @@ func _build_world() -> void:
 	board = BoardView.new()
 	board.camera_rig = camera
 	world.add_child(board)
+
+
+## Bytter bakgrunn (Innstillinger → Bakgrunn).
+func set_background(id: String) -> void:
+	_background.set_shader_parameter("style", Skins.background_style(id))
 
 
 ## Når skjermtastaturet er oppe på mobil, krymper UI-laget til den delen av skjermen som synes,
@@ -304,7 +312,16 @@ func _on_net_message(msg: Dictionary) -> void:
 				"request": _show_banner(I18n.server_text(msg), "", tr("Se"), func() -> void: show_friends())
 				_: _show_banner(I18n.server_text(msg), "")
 		Protocol.TOURNAMENT_NOTICE:
-			_show_banner(I18n.server_text(msg), str(msg.get("room", "")))
+			# Kampen starter: spilleren kastes rett inn (med mindre et annet parti online pågår).
+			var code := str(msg.get("room", ""))
+			if code != "" and not _busy_online():
+				if _screen is GameScreen or _screen is SetupScreen:
+					_end_match()   # ser på et annet parti eller spiller mot boten
+					show_online()
+				join_room(code)
+				_show_banner(I18n.server_text(msg), "")
+			else:
+				_show_banner(I18n.server_text(msg), code)
 		Protocol.GLOBAL_MSG:
 			# Kunngjøring fra admin: banner hos alle som er online (historikken gir ikke banner)
 			if str(msg.get("kind", "")) == "announcement":
@@ -314,8 +331,22 @@ func _on_net_message(msg: Dictionary) -> void:
 				_show_banner(I18n.server_text(msg), "")
 		Protocol.ROOM_CLOSED:
 			lobby_message = I18n.server_text(msg)
-			if _screen is RoomScreen:
+			var tour := int(msg.get("tournament", 0))
+			if tour != 0 and (_screen is RoomScreen or _screen is GameScreen):
+				# Walkover eller avlyst: tilbake til turneringen, med beskjeden øverst
+				_end_match()
+				show_tournament(tour)
+				_show_banner(lobby_message, "")
+				lobby_message = ""
+			elif _screen is RoomScreen:
 				show_online()
+
+
+## Spiller vi et parti online akkurat nå? (Da skal ikke en turneringskamp ta over skjermen.)
+func _busy_online() -> bool:
+	var online := current_match as OnlineMatch
+	return online != null and _screen is GameScreen and online.state != null and not online.state.is_over() \
+		and not online.is_spectator()
 
 
 func _on_net_connected(_resumed: bool) -> void:

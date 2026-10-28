@@ -9,6 +9,7 @@ const MAX_BYTES := 64 * 1024   ## Meldinger med profilbilder kan bli noen titall
 const MAX_NAME := 16
 const MAX_CHAT := 200
 const MAX_ANNOUNCEMENT := 300
+const COUNTDOWN_MS := 3000   ## nedtelling (3, 2, 1) før hvert parti: klokken og trekkene venter så lenge
 
 # Klient -> server
 const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, look_pending?, version, token?, session? }
@@ -50,11 +51,14 @@ const ADMIN := "admin"               ## { action: ban | unban | announce | award
 const FRIEND := "friend"             ## { action: list | request | accept | decline | remove | invite, username? }
 const VIEW_TOURNAMENT := "view_tournament" ## { id }  (0 = slutt å følge). Serveren sender endringer med en gang.
 const USER_SEARCH := "user_search"   ## { query }  (finn spillere på navn)
+# Runde 15: tilbakemeldinger etter første turnering
+const REACT := "react"               ## { kind }  (tilskuer reagerer: en av REACTIONS)
+const TOURNAMENT_CHAT := "tournament_chat" ## { id, text }  (tom tekst = send historikken)
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user?, avatar?, look? }  (innlogget: kontoens profilbilde og utseende)
 const ROOM_LIST := "room_list"       ## { rooms: [{ code, host, options }], live: [{ code, players, moves, spectators, tournament }] }
-const ROOM_STATE := "room_state"     ## { code, private, options, you, in_game, players: [...] }
+const ROOM_STATE := "room_state"     ## { code, private, options, you, in_game, players: [...], tournament?: { id, name, ranked, walkover_in } }
 const GAME_START := "game_start"     ## { options, first, you, players, clocks, number }
 const GAME_SYNC := "game_sync"       ## som game_start + { moves, running, over, result, reason, line }
 const MOVE_MADE := "move_made"       ## { x, y, player, ply, clocks, running }
@@ -72,7 +76,7 @@ const LEADERBOARD := "leaderboard"   ## { elo: [...], wins: [...], forced: [...]
 const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin }
 const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
 const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room }  («Gå til kamp»)
-const ROOM_CLOSED := "room_closed"   ## { key, args }
+const ROOM_CLOSED := "room_closed"   ## { key, args, tournament? }  (turnering-id når det var en turneringskamp)
 const PRESENCE := "presence"         ## { online, playing, users: [{ name, elo, playing }] }
 const LAST_GAME := "last_game"       ## { game, games }  (siste ferdige parti og de tre siste, nyeste først. Vises i hovedmenyen. Etter hello og etter hvert parti)
 const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event" | "announcement", channel ("*" = alle), time, from?, elo?, text, key?, args? }
@@ -86,6 +90,11 @@ const ADMIN_RESULT := "admin_result" ## { action, ok, key, args, text, banned: [
 const FRIENDS := "friends"           ## { friends: [{ username, elo, online, playing, room }], requests: [{ username, elo }], sent: [username] }
 const USERS := "users"               ## { query, users: [{ username, elo, online }] }  (svar på user_search)
 const FRIEND_NOTICE := "friend_notice" ## { kind: request | accepted | invite, from, code?, key, args, text }
+const REACTION := "reaction"         ## { kind, from }  (til alle i rommet)
+const TOURNAMENT_CHAT_MSG := "tournament_chat_msg" ## { id, history, messages: [{ from, elo, text }] }  (history = hele loggen)
+
+## Reaksjoner tilskuere kan sende (tegnes som ikoner, se ReactionView)
+const REACTIONS := ["heart", "star", "fire", "bolt"]
 
 
 static func encode(msg: Dictionary) -> String:

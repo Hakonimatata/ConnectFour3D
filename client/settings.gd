@@ -17,6 +17,7 @@ var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
 var decal_color_id := "auto"  ## Farge på merket (Skins.DECAL_COLORS)
 var kit_away := false         ## Drakten du vil bruke: false = hjemme, true = borte
 var board_theme := "slate"    ## Brett-tema (Skins.BOARDS), bare for deg selv
+var background := "standard"  ## Bakgrunn (Skins.BACKGROUNDS), bare for deg selv
 var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardmeldinger på valgt språk.
 var language := "auto"
 var session_token := ""       ## Husket innlogging (nøkkel fra serveren)
@@ -42,6 +43,7 @@ func _ready() -> void:
 		decal_color_id = str(cfg.get_value("player", "decal_color", decal_color_id))
 		kit_away = bool(cfg.get_value("player", "kit_away", false))
 		board_theme = str(cfg.get_value("app", "board_theme", board_theme))
+		background = str(cfg.get_value("app", "background", background))
 		chat_presets.assign(cfg.get_value("player", "chat_presets", []))
 		language = str(cfg.get_value("app", "language", language))
 		session_token = str(cfg.get_value("account", "session", ""))
@@ -125,6 +127,7 @@ func save() -> void:
 	cfg.set_value("player", "decal_color", decal_color_id)
 	cfg.set_value("player", "kit_away", kit_away)
 	cfg.set_value("app", "board_theme", board_theme)
+	cfg.set_value("app", "background", background)
 	cfg.set_value("player", "chat_presets", chat_presets)
 	cfg.set_value("app", "language", language)
 	cfg.set_value("app", "version", VERSION)

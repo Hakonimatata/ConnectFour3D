@@ -24,6 +24,14 @@ var _replay: ReplayPlayer
 var _resign_button: Button
 var _leave_button: Button
 var _change_button: Button
+var _chat_tabs: HBoxContainer        ## «Kamp» / «Turnering» (bare i turneringskamper)
+var _tchat: ChatPanel                 ## turneringschatten
+var _tab := 0                         ## 0 = kampen, 1 = turneringen
+var _match_tab: Button
+var _tour_tab: Button
+var _reactions: HBoxContainer         ## reaksjonsknappene (tilskuere)
+var _countdown: Label                  ## 3, 2, 1 før partiet
+var _countdown_shown := -1
 
 
 func _init(p_app: ClientRoot, p_match: MatchController) -> void:
@@ -42,6 +50,10 @@ func _ready() -> void:
 	match_ctrl.chat_received.connect(_on_chat)
 	match_ctrl.info.connect(func(t: String) -> void: _show_status(t, UI.MUTED, 3.0))
 	match_ctrl.players_changed.connect(_refresh_players)
+	if match_ctrl is OnlineMatch:
+		var online := match_ctrl as OnlineMatch
+		online.reaction_received.connect(_on_reaction)
+		online.tournament_chat_received.connect(_on_tournament_chat)
 	app.board.column_tapped.connect(_on_column_tapped)
 	app.board.column_hovered.connect(_on_column_hovered)
 
@@ -95,6 +107,18 @@ func _build_hud() -> void:
 	_watchers.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_watchers.visible = false
 	bar.add_child(_watchers)
+	_reactions = UI.hbox(4)
+	_reactions.visible = false
+	for kind in Protocol.REACTIONS:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(44, 44)
+		b.theme_type_variation = "GhostButton"
+		var icon := ReactionView.new(kind, 26)
+		icon.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		b.add_child(icon)
+		b.pressed.connect(func() -> void: (match_ctrl as OnlineMatch).send_reaction(kind))
+		_reactions.add_child(b)
+	bar.add_child(_reactions)
 	_chat_button = UI.button("Chat", _toggle_chat)
 	_chat_button.visible = match_ctrl.supports_chat()
 	bar.add_child(_chat_button)
@@ -112,6 +136,21 @@ func _build_hud() -> void:
 	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_flash)
+
+	_countdown = UI.label("", "Title", HORIZONTAL_ALIGNMENT_CENTER)
+	_countdown.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_countdown.add_theme_font_size_override("font_size", 96)
+	_countdown.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	_countdown.add_theme_constant_override("shadow_offset_y", 4)
+	_countdown.set_anchors_preset(Control.PRESET_CENTER)
+	_countdown.offset_left = -160
+	_countdown.offset_right = 160
+	_countdown.offset_top = -70
+	_countdown.offset_bottom = 70
+	_countdown.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_countdown.visible = false
+	add_child(_countdown)
 
 	_build_menu_overlay()
 	_build_result_overlay()
@@ -308,8 +347,21 @@ func _build_chat_drawer() -> void:
 	_chat_drawer = MarginContainer.new()
 	_chat_drawer.visible = false
 	add_child(_chat_drawer)
+	var inner := UI.vbox(6)
+	_chat_drawer.add_child(inner)
+	# Faner (bare i turneringskamper): chatten i kampen og turneringschatten
+	_chat_tabs = UI.hbox(6)
+	_chat_tabs.visible = false
+	_match_tab = UI.button("Kamp", func() -> void: _show_tab(0), "ChoiceButton")
+	_tour_tab = UI.button("Turnering", func() -> void: _show_tab(1), "ChoiceButton")
+	for b in [_match_tab, _tour_tab]:
+		b.toggle_mode = true
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_chat_tabs.add_child(b)
+	inner.add_child(_chat_tabs)
 	_chat = ChatPanel.new()
-	_chat_drawer.add_child(_chat)
+	_chat.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inner.add_child(_chat)
 	_chat.send_requested.connect(func(t: String) -> void: match_ctrl.send_chat(t))
 	resized.connect(_layout_chat)
 	_layout_chat.call_deferred()
@@ -334,6 +386,53 @@ func _layout_chat() -> void:
 func _toggle_chat() -> void:
 	_chat_drawer.visible = not _chat_drawer.visible
 	_chat_button.text = "Chat"
+
+
+## Turneringskamp: turneringschatten blir en egen fane ved siden av chatten i kampen.
+func _setup_tournament_chat(online: OnlineMatch) -> void:
+	if _tchat != null or online.tournament.is_empty():
+		return
+	_tchat = ChatPanel.new(false, "Skriv til turneringen…")
+	_tchat.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tchat.visible = false
+	_chat.get_parent().add_child(_tchat)
+	_tchat.send_requested.connect(func(t: String) -> void: online.send_tournament_chat(t))
+	_chat_tabs.visible = true
+	_show_tab(0)
+	online.send_tournament_chat("")   # hent det som er skrevet før
+	if online.is_spectator():
+		_chat.add_system(tr("Spillerne ser ikke det tilskuerne skriver her, bare reaksjonene."))
+
+
+func _show_tab(i: int) -> void:
+	_tab = i
+	_match_tab.set_pressed_no_signal(i == 0)
+	_tour_tab.set_pressed_no_signal(i == 1)
+	_chat.visible = i == 0
+	if _tchat:
+		_tchat.visible = i == 1
+	_tour_tab.text = tr("Turnering")
+	_match_tab.text = tr("Kamp")
+
+
+func _on_tournament_chat(messages: Array, history: bool) -> void:
+	if _tchat == null:
+		return
+	if history:
+		_tchat.clear_log()
+	for m in messages:
+		if m is Dictionary:
+			_tchat.add_message(str(m.get("from", "")), str(m.get("text", "")), UI.ACCENT_HOVER)
+	if not history and (not _chat_drawer.visible or _tab != 1):
+		_tour_tab.text = tr("Turnering") + " •"
+		if not _chat_drawer.visible:
+			_chat_button.text = "Chat •"
+
+
+## En tilskuer reagerte: ikonet flyr opp fra hjørnet der antall tilskuere står.
+func _on_reaction(kind: String) -> void:
+	if kind in Protocol.REACTIONS and is_inside_tree():
+		ReactionView.float_up(self, kind, Vector2(size.x - 70, size.y - 120))
 
 
 func _overlay() -> ColorRect:
@@ -362,6 +461,12 @@ func _on_started() -> void:
 	app.board.input_enabled = true
 	_update_turn_status()
 	_update_clocks()
+	var online := match_ctrl as OnlineMatch
+	if online:
+		_setup_tournament_chat(online)
+		_reactions.visible = online.is_spectator()
+	_countdown_shown = -1
+	WinFx.prewarm(app.board)
 
 
 func _on_move_applied(_col: Vector2i, pos: Vector3i, player: int) -> void:
@@ -458,7 +563,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 
 func _on_chat(from_name: String, text: String) -> void:
 	_chat.add_message(from_name, text)
-	if not _chat_drawer.visible:
+	if not _chat_drawer.visible or (_tchat != null and _tab != 0):
 		_chat_button.text = "Chat •"
 		_show_status("%s: %s" % [from_name, text], UI.TEXT, 3.0)
 
@@ -499,6 +604,9 @@ func _update_turn_status() -> void:
 		return
 	var p := s.current_player
 	var text := ""
+	if match_ctrl.countdown_left_ms() > 0:
+		_show_status(tr("Gjør deg klar…"), UI.TEXT, 0.0)
+		return
 	match match_ctrl.mode:
 		"local":
 			text = tr("%s sin tur") % match_ctrl.players[p].name
@@ -516,7 +624,36 @@ func _show_status(text: String, color: Color, duration: float) -> void:
 	_status_timer = duration
 
 
+## Nedtellingen før partiet: 3, 2, 1 midt på skjermen. Brikkene kan ikke legges før den er ferdig.
+func _update_countdown() -> void:
+	var left := match_ctrl.countdown_left_ms()
+	var n := ceili(left / 1000.0)
+	if n == _countdown_shown:
+		return
+	var was := _countdown_shown
+	_countdown_shown = n
+	if n <= 0:
+		if was > 0:
+			_flash_countdown(tr("Spill!"), UI.SUCCESS)
+			app.board.refresh_hover()
+			_update_turn_status()
+		return
+	_flash_countdown(str(n), UI.TEXT)
+	Sfx.play("tick")
+
+
+func _flash_countdown(text: String, color: Color) -> void:
+	_countdown.text = text
+	_countdown.add_theme_color_override("font_color", color)
+	_countdown.visible = true
+	_countdown.pivot_offset = _countdown.size * 0.5
+	var t := _countdown.create_tween().set_parallel().set_ignore_time_scale(true)
+	t.tween_property(_countdown, "scale", Vector2.ONE, 0.35).from(Vector2.ONE * 1.8).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	t.tween_property(_countdown, "modulate:a", 0.0, 0.3).from(1.0).set_delay(0.6)
+
+
 func _process(delta: float) -> void:
+	_update_countdown()
 	if _status_timer > 0.0:
 		_status_timer -= delta
 		if _status_timer <= 0.0:

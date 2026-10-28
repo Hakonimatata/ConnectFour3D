@@ -35,8 +35,9 @@ func start_game() -> void:
 	var first := options.first_player(game_number, _rng)
 	state = GameState.new(options, first)
 	clock = ChessClock.new(options)
+	play_at_ms = Time.get_ticks_msec() + countdown_ms
 	if clock.enabled:
-		clock.start(first, Time.get_ticks_msec())
+		clock.start(first, play_at_ms)
 	started.emit()
 	turn_changed.emit(first)
 	_maybe_let_bot_play()
@@ -91,7 +92,7 @@ func _maybe_let_bot_play() -> void:
 	if bot == null or state.is_over() or state.current_player != bot_seat:
 		return
 	var game := game_number
-	await get_tree().create_timer(bot.profile.think_time_s).timeout
+	await get_tree().create_timer(bot.profile.think_time_s + countdown_left_ms() / 1000.0).timeout
 	if game != game_number or state.is_over() or state.current_player != bot_seat:
 		return
 	_apply(bot.choose_move(state))

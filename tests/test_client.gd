@@ -1001,3 +1001,106 @@ func test_login_adopts_the_account_look_and_avatar() -> void:
 	Settings.kit_away = old[4]
 	Settings.avatar = old[5]
 	Settings.look_pending = old[6]
+
+
+## Nedtelling (3, 2, 1) før hvert parti, også mot boten: brikkene kan ikke legges, og klokken står.
+func test_countdown_before_every_game() -> void:
+	MatchController.countdown_ms = 3000
+	var o := GameOptions.from_dict({ "must_block": false, "no_gift": false, "time_base_s": 60 })
+	var m := OfflineMatch.new(o)
+	app.start_match(m)
+	MatchController.countdown_ms = 0
+	await _frames(3)
+	var gs := _screen() as GameScreen
+	check(m.countdown_left_ms() > 2000, "nedtellingen går")
+	check(not m.is_local_turn(), "kan ikke legge under nedtellingen")
+	check(gs._countdown.visible and gs._countdown.text == "3", "viser 3: «%s»" % gs._countdown.text)
+	app.board.column_tapped.emit(Vector2i(0, 0), false)
+	check_eq(m.state.history.size(), 0, "trykket ble ignorert:")
+	check_eq(m.time_left_ms(m.state.current_player), 60_000, "klokken står:")
+	m.play_at_ms = Time.get_ticks_msec()   # hopp over resten
+	await _frames(2)
+	check(m.is_local_turn(), "etter nedtellingen kan man spille")
+	check_eq(gs._countdown.text, tr("Spill!"))
+
+
+## Chatfeltet beholder fokus etter Enter (før måtte man klikke i feltet for hver melding på PC).
+func test_chat_field_keeps_focus_after_sending() -> void:
+	var chat := ChatPanel.new()
+	root.add_child(chat)
+	await _frames(1)
+	check(chat._input.keep_editing_on_text_submit, "feltet fortsetter å redigere etter Enter")
+	var sent := []
+	chat.send_requested.connect(func(t: String) -> void: sent.append(t))
+	chat._input.grab_focus()
+	chat._input.text = "Hei"
+	chat._input.text_submitted.emit("Hei")
+	await _frames(1)
+	check_eq(sent, ["Hei"])
+	check(chat._input.has_focus(), "fokus er fortsatt i feltet")
+	chat.queue_free()
+
+
+## Menyen viser bare rangerte turneringer. Uranket finnes i turneringslisten, men ikke i hall of fame.
+func test_menu_and_hall_of_fame_only_show_ranked() -> void:
+	var menu := _screen() as MainMenu
+	var unranked := { "id": 1, "name": "Treningscup", "format": "knockout", "status": "open", "start_time": 2_000_000_000,
+		"players": 1, "max_players": 8, "options": {}, "ranked": false }
+	var champ := { "id": 2, "name": "Kosecup", "format": "knockout", "status": "finished", "start_time": 1000,
+		"players": 2, "max_players": 8, "options": {}, "winner": "Ada", "finished_at": 2000, "ranked": false }
+	menu.show_tournaments([unranked, champ])
+	await _frames(1)
+	check(not menu._tour_box.visible, "uranket turnering vises ikke i menyen")
+	check(not menu._champion.visible, "uranket vinner hedres ikke i menyen")
+	app.show_tournaments()
+	await _frames(2)
+	var list := _screen() as TournamentsScreen
+	var ranked_champ := champ.duplicate()
+	ranked_champ.merge({ "id": 3, "name": "Mesterskapet", "winner": "Bob", "ranked": true }, true)
+	list._on_message({ "t": Protocol.TOURNAMENT_LIST, "tournaments": [unranked, champ, ranked_champ], "admin": false })
+	await _frames(1)
+	var texts := list.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
+	check(texts.any(func(s: String) -> bool: return s.contains("Treningscup")), "uranket står i listen")
+	check(texts.has("Bob"), "rangert vinner i hall of fame: %s" % str(texts))
+	check(not texts.has("Ada"), "uranket vinner ikke i hall of fame")
+
+
+## Turneringssiden: nedtelling og regler før start, del-lenke og kalender bare før start.
+func test_tournament_page_countdown_rules_and_links() -> void:
+	app.show_tournament(4, true)
+	await _frames(2)
+	var ts := _screen() as TournamentScreen
+	var now := int(Time.get_unix_time_from_system())
+	var t := { "id": 4, "name": "Fredagscup", "description": "", "format": "knockout", "status": "open",
+		"start_time": now + 3725, "players": 0, "max_players": 8, "show_up_s": 300, "round_gap_s": 120,
+		"options": { "time_base_s": 180, "time_increment_s": 2 }, "current_round": -1, "winner": "",
+		"player_list": [], "rounds": [], "ranked": false, "with_trophy": false }
+	ts._on_message({ "t": Protocol.TOURNAMENT_STATE, "tournament": t, "admin": false, "you": 0, "now": now })
+	await _frames(2)
+	var labels := ts.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(labels.has(TournamentScreen.countdown_text(3725)), "nedtelling til start: %s" % TournamentScreen.countdown_text(3725))
+	check(labels.any(func(s: String) -> bool: return s.contains(I18n.t("Uranket: partiene endrer ikke Elo."))), "reglene sier uranket")
+	check(labels.any(func(s: String) -> bool: return s.contains("3 min")), "tidskontrollen står i reglene")
+	var buttons := ts.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
+	check(buttons.has("Legg i kalender") or buttons.has(tr("Legg i kalender")), "kalenderknapp før start")
+	check(buttons.has("Del lenke til turneringen") or buttons.has(tr("Del lenke til turneringen")), "del-lenke før start")
+	check(ts.find_children("*", "TrophyView", true, false).is_empty(), "ingen pokal når turneringen er uten")
+	t = t.duplicate(true)   # siden sammenligner med det den har (samme objekt = ingen endring)
+	t.status = "running"
+	t.rounds = [[{ "id": "a", "p1": 1, "p2": 2, "p1_name": "A", "p2_name": "B", "status": "waiting", "start_at": now,
+		"room": "ABCDE", "winner": 0, "reason": "", "here": [true, false], "walkover_at": now + 90 }]]
+	t.current_round = 0
+	ts._on_message({ "t": Protocol.TOURNAMENT_STATE, "tournament": t, "admin": false, "you": 0, "now": now })
+	await _frames(2)
+	buttons = ts.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
+	check(not buttons.has("Del lenke til turneringen") and not buttons.has(tr("Del lenke til turneringen")), "ingen del-lenke etter start")
+	labels = ts.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(labels.any(func(s: String) -> bool: return s.contains("venter på B")), "hvem som mangler: %s" % str(labels))
+
+
+func test_backgrounds_can_be_chosen() -> void:
+	for b in Skins.BACKGROUNDS:
+		app.set_background(b.id)
+		await _frames(1)
+		check_eq(int(app._background.get_shader_parameter("style")), int(b.style))
+	app.set_background("standard")

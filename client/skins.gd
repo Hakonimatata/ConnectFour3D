@@ -86,6 +86,22 @@ static var BOARDS: Array[Dictionary] = [
 	{ "id": "felt", "name": "Filt", "base": Color("1f4d3b"), "line": Color("2e6b53"), "side": Color("163a2c"), "grain": 0.0 },
 ]
 
+## Bakgrunner bak brettet (tegnes i assets/shaders/background.gdshader, «style»). Bare for deg selv.
+const BACKGROUNDS: Array[Dictionary] = [
+	{ "id": "standard", "name": "Standard", "style": 0 },
+	{ "id": "nebula", "name": "Nebula", "style": 1 },
+	{ "id": "stars", "name": "Stjernehimmel", "style": 2 },
+	{ "id": "cafe", "name": "Kaffebar", "style": 3 },
+]
+
+
+static func background_style(id: String) -> int:
+	for b in BACKGROUNDS:
+		if b.id == id:
+			return int(b.style)
+	return 0
+
+
 ## Seiersanimasjoner (se client/fx/win_fx.gd)
 const WIN_FX: Array[Dictionary] = [
 	{ "id": "classic", "name": "Klassisk" },

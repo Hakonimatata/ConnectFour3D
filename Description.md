@@ -215,6 +215,11 @@
 - Sjekk etter potensielle muligheter for å gjøre at serveren jobber enda mindre. Hvis mulig fiks, men viktig at det gjøres riktig (ikke must). Jeg vil også at det er smooth og raskt for de som spiller.
 
 
+## Runde 15
+
+- Forbedre analyse av spill: Bruk AI til å vurdere spillet ved å se hvor man legger i forhold til hva Ai verdsetter trekket. Dette kan gi en score for hvor bra man har spilt (rating på runden og på motstander). gi også kort tips per trekk dersom man brude lagt et annet sted feks. 
+
+
 ## Senere
 
 

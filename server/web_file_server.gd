@@ -27,6 +27,8 @@ var root := ""
 var port := 0
 var ws_port := 0              ## Spillserverens port (0 = ingen videresending av /ws)
 var tls: TLSOptions = null    ## Satt = HTTPS
+## Sider som lages underveis (f.eks. kalenderfiler): dynamic(sti, vert) -> { type, body } eller {}.
+var dynamic: Callable
 var _gzip_cache: Dictionary = {}   ## full sti -> { mtime, data } (komprimert innhold i minnet)
 var _tcp := TCPServer.new()
 var _clients: Array[Dictionary] = []
@@ -163,6 +165,12 @@ func _respond(c: Dictionary, request: String) -> void:
 	if clean.contains("..") or clean.begins_with("/"):
 		c.pending = _header(403, "text/plain", 0)
 		return
+	if dynamic.is_valid():
+		var page: Dictionary = dynamic.call(clean, _host(request))
+		if not page.is_empty():
+			var bytes: PackedByteArray = str(page.body).to_utf8_buffer()
+			c.pending = _header(200, str(page.type), bytes.size()) + bytes
+			return
 	var full := root.path_join(clean)
 	var f := FileAccess.open(full, FileAccess.READ)
 	if f == null:
@@ -179,6 +187,14 @@ func _respond(c: Dictionary, request: String) -> void:
 			return
 	c.pending = _header(200, type, f.get_length())
 	c.file = f
+
+
+static func _host(request: String) -> String:
+	for line in request.split("
+"):
+		if line.to_lower().begins_with("host:"):
+			return line.substr(5).strip_edges()
+	return ""
 
 
 static func _accepts_gzip(request: String) -> bool:

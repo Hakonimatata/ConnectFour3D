@@ -18,6 +18,9 @@ var options := GameOptions.new()
 var state: GameState
 var clock := ChessClock.new()
 var game_number := 0
+## Nedtelling før hvert parti (ms). Testene setter den til 0.
+static var countdown_ms := Protocol.COUNTDOWN_MS
+var play_at_ms := 0           ## Time.get_ticks_msec() når nedtellingen er ferdig og partiet starter
 ## Spillerne: name, skin, decal, win_fx, away (se Skins.look), avatar (base64, kan være ""),
 ## local (styres fra denne enheten), subtitle, elo (-1 = ingen konto)
 var players := {
@@ -64,7 +67,13 @@ func my_seat() -> int:
 # ---- Felles
 
 func is_local_turn() -> bool:
-	return state != null and not state.is_over() and players[state.current_player].local
+	return state != null and not state.is_over() and players[state.current_player].local \
+		and countdown_left_ms() == 0
+
+
+## Hvor lenge det er igjen av nedtellingen før partiet (0 = i gang).
+func countdown_left_ms() -> int:
+	return maxi(0, play_at_ms - Time.get_ticks_msec())
 
 
 func time_left_ms(player: int) -> int:

@@ -31,20 +31,26 @@ func switch(now_ms: int) -> void:
 	if running_player == 0:
 		return
 	var p := running_player
-	remaining_ms[p] = max(0, remaining_ms[p] - (now_ms - _turn_started_ms)) + increment_ms
+	remaining_ms[p] = max(0, remaining_ms[p] - _elapsed(now_ms)) + increment_ms
 	start(3 - p, now_ms)
 
 
 func stop(now_ms: int) -> void:
 	if running_player != 0:
-		remaining_ms[running_player] = max(0, remaining_ms[running_player] - (now_ms - _turn_started_ms))
+		remaining_ms[running_player] = max(0, remaining_ms[running_player] - _elapsed(now_ms))
 	running_player = 0
 
 
 func time_left(player: int, now_ms: int) -> int:
 	if player == running_player:
-		return max(0, remaining_ms[player] - (now_ms - _turn_started_ms))
+		return max(0, remaining_ms[player] - _elapsed(now_ms))
 	return remaining_ms[player]
+
+
+## Tid brukt på dette trekket. Klokken kan startes frem i tid (etter nedtellingen før partiet);
+## før det er det ikke brukt noe.
+func _elapsed(now_ms: int) -> int:
+	return maxi(0, now_ms - _turn_started_ms)
 
 
 ## Spilleren som har gått tom for tid, eller 0.

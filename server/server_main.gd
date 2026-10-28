@@ -63,6 +63,7 @@ func _start_web() -> void:
 	if web.start(web_dir, web_port, port, options) != OK:
 		push_error("Kunne ikke starte web-serveren på port %d" % web_port)
 		return
+	web.dynamic = lobby.web_page
 	_web = web
 	_print_lan_help()
 

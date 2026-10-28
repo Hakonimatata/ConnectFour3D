@@ -12,6 +12,9 @@ extends RefCounted
 ## Uavgjort i utslag spilles om (inntil 3 ganger). I alle-mot-alle gir uavgjort ½ poeng.
 ## Hver turnering har sin egen pokal (Trophy). Admin kan velge den i skjemaet, ellers lages en
 ## tilfeldig. Vinneren får pokalen med turneringens navn på profilen sin.
+## Uranket turnering («ranked» = false): partiene endrer ikke Elo, og turneringen vises ikke i
+## hovedmenyen, kunngjøres ikke i chatten og hedres ikke (ingen hall of fame, ingen turneringsseier
+## i statistikken). Pokal er et eget valg («with_trophy»).
 
 const FORMATS := ["knockout", "round_robin"]
 const MAX_REPLAYS := 3
@@ -44,6 +47,8 @@ static func normalize(t: Dictionary) -> void:
 	for k in ["id", "current_round", "winner", "created_by", "created_at", "max_players", "start_time",
 			"signup_deadline", "round_gap_s", "show_up_s", "finished_at"]:
 		t[k] = int(t.get(k, 0))
+	t.ranked = bool(t.get("ranked", true))
+	t.with_trophy = bool(t.get("with_trophy", true))
 	# Turneringer fra før pokalene fantes, får en fast pokal ut fra id-en.
 	t.trophy = Trophy.normalize(t.trophy) if t.get("trophy") is Dictionary else Trophy.generate(int(t.id) * 7919)
 	t.players = (t.get("players", []) as Array).map(func(v: Variant) -> int: return int(v))
@@ -103,6 +108,8 @@ func _apply(t: Dictionary, d: Dictionary, now: int) -> void:
 	t.signup_deadline = mini(int(d.get("signup_deadline", t.get("signup_deadline", t.start_time))), t.start_time)
 	t.round_gap_s = clampi(int(d.get("round_gap_s", t.get("round_gap_s", 120))), 0, 3600)
 	t.show_up_s = clampi(int(d.get("show_up_s", t.get("show_up_s", 300))), 30, 1800)
+	t.ranked = bool(d.get("ranked", t.get("ranked", true)))
+	t.with_trophy = bool(d.get("with_trophy", t.get("with_trophy", true)))
 	if d.get("trophy") is Dictionary:
 		t.trophy = Trophy.normalize(d.trophy)
 	elif not t.get("trophy") is Dictionary:
@@ -212,7 +219,8 @@ func _start(t: Dictionary, now: int) -> void:
 	t.current_round = 0
 	_schedule_round(t, 0, now)
 	_notify_all(t, "Turneringen «%s» har startet!", [t.name])
-	announce.call("Turneringen «%s» har startet!", [t.name])
+	if t.ranked:
+		announce.call("Turneringen «%s» har startet!", [t.name])
 
 
 ## Alle-mot-alle med «sirkelmetoden»: alle møter alle én gang.
@@ -361,10 +369,12 @@ func _finish(t: Dictionary, winner: int, now: int) -> void:
 	t.winner = winner
 	t.finished_at = now
 	if winner != 0 and store.users.has(winner):
-		store.users[winner].stats.tournaments_won += 1
-		accounts.award_trophy(winner, Trophy.entry(t.name, t.trophy, int(t.id), Time.get_date_string_from_unix_time(now)))
+		if t.ranked:
+			store.users[winner].stats.tournaments_won += 1
+			announce.call("%s vant turneringen «%s»!", [accounts.username_of(winner), t.name])
+		if t.with_trophy:
+			accounts.award_trophy(winner, Trophy.entry(t.name, t.trophy, int(t.id), Time.get_date_string_from_unix_time(now)))
 		_notify_all(t, "«%s» er ferdig. Vinner: %s!", [t.name, accounts.username_of(winner)])
-		announce.call("%s vant turneringen «%s»!", [accounts.username_of(winner), t.name])
 	else:
 		_notify_all(t, "«%s» er ferdig.", [t.name])
 
@@ -407,7 +417,7 @@ func summary(t: Dictionary) -> Dictionary:
 	return { "id": t.id, "name": t.name, "format": t.format, "status": t.status, "start_time": t.start_time,
 		"players": t.players.size(), "max_players": t.max_players, "options": t.options,
 		"winner": accounts.username_of(t.winner) if int(t.winner) != 0 else "", "trophy": t.trophy,
-		"finished_at": int(t.get("finished_at", 0)) }
+		"finished_at": int(t.get("finished_at", 0)), "ranked": t.ranked, "with_trophy": t.with_trophy }
 
 
 ## Full versjon til turneringssiden, med navn i stedet for id-er.
@@ -423,13 +433,47 @@ func public(t: Dictionary) -> Dictionary:
 	)
 	out.rounds = t.rounds.map(func(r: Array) -> Array:
 		return r.map(func(m: Dictionary) -> Dictionary:
-			return { "id": m.id, "p1": m.p1, "p2": m.p2, "p1_name": _name_or_dash(m.p1), "p2_name": _name_or_dash(m.p2),
+			var pm := { "id": m.id, "p1": m.p1, "p2": m.p2, "p1_name": _name_or_dash(m.p1), "p2_name": _name_or_dash(m.p2),
 				"status": m.status, "start_at": m.start_at, "room": m.room, "winner": m.winner, "reason": m.reason }
+			if m.status == "waiting":
+				# Hvem som har kommet, og når den som mangler taper på walkover
+				var here: Array = presence.call(m.room)
+				pm.here = [m.p1 in here, m.p2 in here]
+				pm.walkover_at = int(m.waiting_since) + int(t.show_up_s)
+			return pm
 		)
 	)
 	if t.format == "round_robin" and t.status in ["running", "finished"]:
 		out.standings = standings(t)
 	return out
+
+
+## Kalenderoppføring (iCalendar) for turneringen. link = turneringssiden.
+## Varigheten anslås ut fra antall runder (utslag) med 15 min per runde, minst én time.
+static func ics(t: Dictionary, link: String) -> String:
+	var start := int(t.start_time)
+	var rounds := 1
+	while (1 << rounds) < maxi(2, int(t.max_players)):
+		rounds += 1
+	var end := start + maxi(3600, rounds * 15 * 60)
+	var stamp := func(unix: int) -> String:
+		return Time.get_datetime_string_from_unix_time(unix).replace("-", "").replace(":", "") + "Z"
+	var esc := func(s: String) -> String:
+		return s.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+	var desc := str(t.get("description", ""))
+	desc = (desc + "\n\n" if desc != "" else "") + link
+	var lines := [
+		"BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Four in Space//Turnering//NO", "CALSCALE:GREGORIAN",
+		"METHOD:PUBLISH", "BEGIN:VEVENT",
+		"UID:turnering-%d@fourinspace" % int(t.id),
+		"DTSTAMP:" + stamp.call(int(t.get("created_at", start))),
+		"DTSTART:" + stamp.call(start), "DTEND:" + stamp.call(end),
+		"SUMMARY:" + esc.call("Turnering: " + str(t.name)),
+		"DESCRIPTION:" + esc.call(desc), "URL:" + link,
+		"BEGIN:VALARM", "TRIGGER:-PT15M", "ACTION:DISPLAY", "DESCRIPTION:" + esc.call(str(t.name)), "END:VALARM",
+		"END:VEVENT", "END:VCALENDAR",
+	]
+	return "\r\n".join(lines) + "\r\n"
 
 
 func _name_or_dash(uid: int) -> String:

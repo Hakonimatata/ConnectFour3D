@@ -45,6 +45,7 @@ func _init(p_rounds: Array, p_you := 0, trophy: Variant = {}) -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_trophy = TrophyView.new(trophy, 96, true)
 	add_child(_trophy)
+	_trophy.visible = trophy is Dictionary and not (trophy as Dictionary).is_empty()   # turnering uten pokal
 	resized.connect(_relayout)
 
 

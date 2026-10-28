@@ -21,6 +21,8 @@ var _preview_names: Label
 var _skin_picker: HFlowContainer
 var _skin_button: Button
 var _leave_button: Button
+var _walkover_end_ms := 0     ## turneringskamp der motstanderen ikke har kommet: når du vinner på walkover
+var _tournament_hint := ""
 
 
 func _init(p_app: ClientRoot, room_state: Dictionary) -> void:
@@ -114,6 +116,30 @@ func _ready() -> void:
 	_show(_room)
 
 
+## Turneringskamp: «Motstanderen har ikke kommet. Du vinner på walkover om 3:12.»
+func _update_walkover() -> void:
+	if _walkover_end_ms == 0:
+		return
+	var players: Array = _room.get("players", [])
+	var both := players.size() >= 2 and players[0] is Dictionary and players[1] is Dictionary
+	if both:
+		_hint_label.text = _tournament_hint
+		return
+	var left := maxi(0, _walkover_end_ms - Time.get_ticks_msec()) / 1000
+	var clock := "%d:%02d" % [left / 60, left % 60]
+	if int(_room.get("you", 0)) == 0:
+		_hint_label.text = _tournament_hint + "
+" + tr("Kommer ikke begge innen %s, avgjøres kampen på walkover.") % clock
+	else:
+		_hint_label.text = _tournament_hint + "
+" + tr("Motstanderen har ikke kommet ennå. Kommer hen ikke innen %s, vinner du på walkover.") % clock
+
+
+func _process(_delta: float) -> void:
+	if _walkover_end_ms != 0 and Engine.get_process_frames() % 15 == 0:
+		_update_walkover()
+
+
 func _on_disconnected() -> void:
 	_chat.add_system("Mistet forbindelsen. Kobler til igjen…")
 
@@ -129,8 +155,16 @@ func _show(room: Dictionary) -> void:
 	_options_button.visible = you == 1 and not is_tournament
 	_ready_button.visible = not is_tournament
 	_invite_button.visible = not is_tournament
+	_walkover_end_ms = 0
 	if is_tournament:
-		_hint_label.text = tr("Turneringskamp i «%s». Kampen starter når begge er her.") % tournament.name
+		_tournament_hint = tr("Turneringskamp i «%s». Kampen starter når begge er her.") % tournament.name
+		if not bool(tournament.get("ranked", true)):
+			_tournament_hint += " " + tr("Uranket: Elo endres ikke.")
+		_hint_label.text = _tournament_hint
+		var left := int(tournament.get("walkover_in", 0))
+		if left > 0:
+			_walkover_end_ms = Time.get_ticks_msec() + left * 1000
+			_update_walkover()
 	var spectator := you == 0
 	_skin_button.visible = not spectator
 	_options_button.visible = _options_button.visible and not spectator

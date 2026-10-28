@@ -208,6 +208,26 @@ static func line_edit(text: String, placeholder := "", max_length := 0) -> LineE
 	return e
 
 
+## Tekstfelt til chat. Feltet beholder fokus etter Enter, så man kan skrive neste melding med en gang
+## (på PC måtte man ellers klikke i feltet for hver melding).
+static func chat_input(placeholder: String) -> LineEdit:
+	var e := line_edit("", placeholder, Protocol.MAX_CHAT)
+	e.select_all_on_focus = false
+	e.clear_button_enabled = false
+	e.keep_editing_on_text_submit = true
+	return e
+
+
+## Etter «Send»-knappen: tilbake i feltet på PC. På telefon lar vi være (tastaturet ville sprette opp).
+static func refocus_chat(e: LineEdit) -> void:
+	if not is_touch_device():
+		e.grab_focus()
+
+
+static func is_touch_device() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
+
+
 static func vbox(sep := 12) -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", sep)

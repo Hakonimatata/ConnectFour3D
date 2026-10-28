@@ -298,11 +298,12 @@ func public_info(u: Dictionary) -> Dictionary:
 
 ## Registrerer et ferdig parti. ids: [_, bruker i sete 1, bruker i sete 2] (0 = gjest).
 ## result: 1 eller 2 = vinner, 0 = uavgjort. analysis fra GameAnalysis.
-## Elo endres bare når begge er innlogget. Gir { 1: { before, after }, 2: ... } for kontoene.
-func record_game(ids: Array, result: int, reason: int, analysis: Dictionary, move_count: int) -> Dictionary:
+## Elo endres bare når begge er innlogget (og ikke i en uranket turnering, ranked = false).
+## Gir { 1: { before, after }, 2: ... } for kontoene.
+func record_game(ids: Array, result: int, reason: int, analysis: Dictionary, move_count: int, ranked := true) -> Dictionary:
 	var changes := {}
 	var users := [{}, store.users.get(int(ids[1]), {}), store.users.get(int(ids[2]), {})]
-	var rated: bool = not users[1].is_empty() and not users[2].is_empty() and int(ids[1]) != int(ids[2])
+	var rated: bool = ranked and not users[1].is_empty() and not users[2].is_empty() and int(ids[1]) != int(ids[2])
 	var new_elo := [0, 0, 0]
 	if rated:
 		var score1 := 0.5 if result == 0 else (1.0 if result == 1 else 0.0)

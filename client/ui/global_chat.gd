@@ -125,9 +125,7 @@ func _ready() -> void:
 	_body.append(_log)
 
 	var row := UI.hbox(6)
-	_input = UI.line_edit("", "Skriv til alle…", Protocol.MAX_CHAT)
-	_input.select_all_on_focus = false
-	_input.clear_button_enabled = false
+	_input = UI.chat_input("Skriv til alle…")
 	_input.text_submitted.connect(func(_t: String) -> void: _send())
 	row.add_child(_input)
 	_send_button = UI.button("Send", _send)
@@ -271,6 +269,7 @@ func _send() -> void:
 		return
 	Net.send({ "t": Protocol.GLOBAL_CHAT, "text": t, "channel": channel })
 	_input.clear()
+	UI.refocus_chat(_input)
 
 
 func _update_state() -> void:

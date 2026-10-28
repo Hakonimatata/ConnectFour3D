@@ -32,6 +32,9 @@ var _time_label: Label
 var _when_label: Label
 var _create_button: Button
 var _advanced: VBoxContainer
+var _ranked := true
+var _with_trophy := true
+var _trophy_row: Control
 
 
 func _ready() -> void:
@@ -81,9 +84,18 @@ func _ready() -> void:
 	v.add_child(UI.section("Maks deltakere"))
 	v.add_child(UI.choice(MAX_PLAYERS.map(func(n: int) -> String: return str(n)), _max, func(i: int) -> void: _max = i))
 
+	# --- Rangert eller uranket. Uranket: ingen Elo, vises ikke i menyen og hedres ikke.
+	v.add_child(UI.toggle_row("Rangert", "Partiene teller på Elo, og turneringen vises i menyen og i hall of fame.", _ranked,
+		func(on: bool) -> void: _ranked = on))
+	v.add_child(UI.toggle_row("Pokal til vinneren", "Vinneren får pokalen med turneringens navn på profilen sin.", _with_trophy,
+		func(on: bool) -> void:
+			_with_trophy = on
+			_trophy_row.visible = on))
+
 	# --- Pokalen vinneren får. En tilfeldig er valgt, og «Ny pokal» trekker en ny.
 	v.add_child(UI.section("Pokal"))
 	var trophy_row := UI.hbox(14)
+	_trophy_row = trophy_row
 	_trophy = Trophy.generate(randi())
 	_trophy_view = TrophyView.new(_trophy, 120)
 	trophy_row.add_child(_trophy_view)
@@ -203,7 +215,7 @@ func _on_create() -> void:
 		"name": _name.text.strip_edges(), "description": _desc.text.strip_edges(), "format": FORMATS[_format],
 		"max_players": MAX_PLAYERS[_max], "start_time": start, "signup_deadline": start,
 		"round_gap_s": GAPS_MIN[_gap] * 60, "show_up_s": SHOW_UP_MIN[_show_up] * 60, "options": options.to_dict(),
-		"trophy": _trophy,
+		"trophy": _trophy, "ranked": _ranked, "with_trophy": _with_trophy,
 	} })
 
 

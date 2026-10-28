@@ -190,6 +190,123 @@ func test_winner_gets_the_trophy_and_list_shows_joined() -> void:
 	check_eq((_last(2, "stats").user.trophies as Array).size(), 1, "pokalen vises i statistikken:")
 
 
+## Uranket uten pokal: ingen Elo, ingen pokal, ingen turneringsseier og ingen kunngjøring.
+func test_unranked_tournament_without_trophy() -> void:
+	var id := _create("knockout", { "ranked": false, "with_trophy": false })
+	var peers := {}
+	for i in 2:
+		var peer := i + 2
+		_user(peer, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = peer
+		_msg(peer, { "t": "tournament_join", "id": id })
+	_msg(2, { "t": "list_tournaments" })
+	var listed: Dictionary = _last(2, "tournament_list").tournaments[0]
+	check_eq(listed.ranked, false, "listen sier at den er uranket:")
+	check_eq(listed.with_trophy, false)
+	_advance(61)
+	var final: Dictionary = _t(id).rounds[0][0]
+	_play_match(final, peers)
+	check_eq(_t(id).status, "finished")
+	var winner: Dictionary = lobby.store.users[final.p1]
+	check_eq(winner.elo, Accounts.START_ELO, "Elo endres ikke:")
+	check_eq(winner.stats.wins, 1, "men seieren telles i statistikken:")
+	check_eq(winner.stats.tournaments_won, 0, "ingen turneringsseier:")
+	check_eq(winner.trophies.size(), 0, "ingen pokal:")
+	var said: Array = lobby.social.history_message().messages.map(func(m: Dictionary) -> String: return str(m.get("text", "")))
+	check(not said.any(func(s: String) -> bool: return s.contains("Høstcup")), "ikke kunngjort i chatten: %s" % str(said))
+
+
+## Pokal uten Elo og omvendt er hvert sitt valg.
+func test_ranked_without_trophy_still_counts() -> void:
+	var id := _create("knockout", { "with_trophy": false })
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var final: Dictionary = _t(id).rounds[0][0]
+	_play_match(final, peers)
+	var winner: Dictionary = lobby.store.users[final.p1]
+	check(winner.elo > Accounts.START_ELO, "Elo teller")
+	check_eq(winner.stats.tournaments_won, 1)
+	check_eq(winner.trophies.size(), 0, "men ingen pokal:")
+
+
+## Turneringssiden viser hvem som har kommet til kampen, og når walkoveren kommer.
+func test_waiting_match_shows_who_is_here_and_walkover_time() -> void:
+	var id := _create()
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var m: Dictionary = _t(id).rounds[0][0]
+	_msg(peers[m.p1], { "t": "join_room", "code": m.room })
+	var room: Dictionary = _last(peers[m.p1], "room_state")
+	check_eq(int(room.tournament.walkover_in), 120, "venterommet viser tiden til walkover:")
+	_msg(2, { "t": "get_tournament", "id": id })
+	var pm: Dictionary = _last(2, "tournament_state").tournament.rounds[0][0]
+	check_eq(pm.here, [true, false], "hvem som er her:")
+	check_eq(int(pm.walkover_at), unix + 120)
+
+
+## Turneringschatten: for dem som har siden oppe eller er i en kamp i turneringen.
+func test_tournament_chat() -> void:
+	var id := _create()
+	_user(2, "Bobo")
+	_user(3, "Cyra")
+	_user(4, "Dino")
+	_msg(2, { "t": "view_tournament", "id": id })
+	_msg(3, { "t": "view_tournament", "id": id })
+	_msg(2, { "t": "tournament_chat", "id": id, "text": "Lykke til alle!" })
+	check_eq(_last(3, "tournament_chat_msg").messages[0].text, "Lykke til alle!", "de som har siden oppe:")
+	check(_last(4, "tournament_chat_msg").is_empty(), "andre får den ikke")
+	_msg(4, { "t": "tournament_chat", "id": id, "text": "" })
+	var history: Dictionary = _last(4, "tournament_chat_msg")
+	check(history.history, "tom tekst gir historikken")
+	check_eq(history.messages[0].from, "Bobo")
+
+
+func test_calendar_file() -> void:
+	var id := _create()
+	var page := lobby.web_page("kalender/%d.ics" % id, "fourinspace.com")
+	check_eq(page.get("type", ""), "text/calendar; charset=utf-8")
+	var body := str(page.get("body", ""))
+	check(body.begins_with("BEGIN:VCALENDAR"), body.substr(0, 40))
+	check(body.contains("SUMMARY:Turnering: Høstcup"), "navnet er med")
+	check(body.contains("https://fourinspace.com/?turnering=%d" % id), "lenken til siden er med")
+	check(body.contains("DTSTART:" + Time.get_datetime_string_from_unix_time(unix + 60).replace("-", "").replace(":", "") + "Z"))
+	check(lobby.web_page("kalender/999.ics", "x").is_empty(), "ukjent turnering")
+	check(lobby.web_page("index.html", "x").is_empty(), "vanlige filer serveres som før")
+
+
+## Nedtelling før hvert parti: trekk avvises og klokken står til den er ferdig.
+func test_countdown_before_every_game() -> void:
+	Lobby.countdown_ms = 3000
+	_user(2, "Bobo")
+	_user(3, "Cyra")
+	_msg(2, { "t": "create_room", "options": { "must_block": false, "no_gift": false, "time_base_s": 60 }, "private": true })
+	var code: String = _last(2, "room_state").code
+	_msg(3, { "t": "join_room", "code": code })
+	_msg(2, { "t": "ready", "ready": true })
+	_msg(3, { "t": "ready", "ready": true })
+	Lobby.countdown_ms = 0
+	var start := _last(2, "game_start")
+	check_eq(int(start.countdown), 3000, "nedtellingen er med i meldingen:")
+	var first := 2 if int(start.you) == int(start.first) else 3
+	_msg(first, { "t": "move", "x": 0, "y": 0, "ply": 0 })
+	check_eq(_last(first, "move_rejected").text, "Vent til nedtellingen er ferdig.")
+	var room = lobby.rooms[code]
+	now += 2000
+	check_eq(room.clock.time_left(room.state.first_player, now), 60_000, "klokken står under nedtellingen:")
+	now += 1500
+	_msg(first, { "t": "move", "x": 0, "y": 0, "ply": 0 })
+	check(not _last(first, "move_made").is_empty(), "etter nedtellingen kan man spille")
+	check_eq(room.clock.time_left(room.state.first_player, now), 59_500, "bare 0,5 s er brukt:")
+
+
 func test_knockout_draw_is_replayed() -> void:
 	var id := _create()
 	for i in 2:

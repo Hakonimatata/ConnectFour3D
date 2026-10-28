@@ -57,6 +57,9 @@ class Room:
 	var replay_at := -1                         ## omspill etter uavgjort (ms)
 	var match_done := false                     ## turneringskampen er avgjort (rommet kan ryddes)
 	var spectators: Array[int] = []             ## spiller-id-er som ser på (bare turneringskamper)
+	var ranked := true                          ## false i uranket turnering: partiene endrer ikke Elo
+	var walkover_at := 0                        ## turneringskamp: når den som ikke har kommet, taper (unix-s)
+	var play_at := 0                            ## partiet starter etter nedtellingen (ms): trekk før det avvises
 
 	func in_game() -> bool:
 		return state != null and not state.is_over()
@@ -86,6 +89,10 @@ var _last_ms := 0
 var _presence_dirty := true
 var _presence_sent_ms := -100_000
 var _tournaments_changed := {}   ## turnering-id -> true: sendes til dem som har siden oppe i neste tick
+var _tournament_chats := {}       ## turnering-id -> de siste meldingene [{ from, elo, text }] (bare i minnet)
+const TOURNAMENT_CHAT_KEEP := 60
+## Nedtelling før hvert parti (ms). Testene setter den til 0, så de kan spille med en gang.
+static var countdown_ms := Protocol.COUNTDOWN_MS
 
 
 func _init() -> void:
@@ -177,6 +184,8 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.READY: _set_ready(p, bool(msg.get("ready", true)), now)
 		Protocol.MOVE: _move(p, msg, now)
 		Protocol.CHAT: _chat(p, str(msg.get("text", "")), now)
+		Protocol.REACT: _react(p, str(msg.get("kind", "")), now)
+		Protocol.TOURNAMENT_CHAT: _tournament_chat(p, int(msg.get("id", 0)), str(msg.get("text", "")), now)
 		Protocol.RESIGN: _resign(p, now)
 		Protocol.REMATCH: _rematch(p, now)
 		_: _error(peer, "unknown", "Ukjent melding: %s", [t])
@@ -345,11 +354,14 @@ func _join_room(p: Player, code: String, now: int) -> void:
 	elif room.seats[1] != 0 and room.seats[2] != 0:
 		_error(p.peer, "room_full", "Rommet er fullt.")
 		return
+	_unwatch(p)
 	_leave_room(p, now)
 	room.seats[seat] = p.id
 	p.room_code = room.code
 	_notice_room(room, "%s ble med.", [p.name], p.id)
 	_broadcast_room_state(room)
+	if room.match_id != "":
+		_tournaments_changed[room.tournament_id] = true   # turneringssiden viser hvem som har kommet
 	if room.match_id != "" and room.seats[1] != 0 and room.seats[2] != 0 and room.state == null:
 		tournaments.on_match_started(room.match_id)
 		_start_game(room, now)
@@ -373,6 +385,7 @@ func _leave_room(p: Player, now: int) -> void:
 		return
 	if room.match_id != "":
 		# Turneringsrom: setene er faste. Rommet lever til turneringen er ferdig med kampen.
+		_tournaments_changed[room.tournament_id] = true
 		_broadcast_room_state(room)
 		return
 	# Den som er igjen blir vert (sete 1).
@@ -422,6 +435,9 @@ func _move(p: Player, msg: Dictionary, now: int) -> void:
 	if seat != s.current_player:
 		_reject(p, "Det er ikke din tur.", [])
 		return
+	if now < room.play_at:
+		_reject(p, "Vent til nedtellingen er ferdig.", [])
+		return
 	if int(msg.get("ply", -1)) != s.history.size():
 		return   # gammel eller duplisert melding
 	var col := Vector2i(int(msg.get("x", -1)), int(msg.get("y", -1)))
@@ -450,7 +466,23 @@ func _chat(p: Player, text: String, now: int) -> void:
 	if room == null or text == "" or now - p.last_chat_ms < CHAT_INTERVAL_MS:
 		return
 	p.last_chat_ms = now
-	_send_room(room, { "t": Protocol.CHAT_MSG, "from": p.name, "seat": maxi(0, room.seat_of(p.id)), "text": text })
+	var msg := { "t": Protocol.CHAT_MSG, "from": p.name, "seat": maxi(0, room.seat_of(p.id)), "text": text }
+	if room.match_id != "" and room.seat_of(p.id) < 1:
+		# Turneringskamp: spillerne skal få være i fred. Tilskuernes tekst går bare til de andre
+		# tilskuerne; spillerne ser bare reaksjoner og antall som ser på.
+		for id in room.spectators:
+			send.call(players[id].peer, msg)
+		return
+	_send_room(room, msg)
+
+
+## En tilskuer reagerer (hjerte, stjerne, flamme, lyn). Alle i rommet ser den fly over skjermen.
+func _react(p: Player, kind: String, now: int) -> void:
+	var room := rooms.get(p.watching) as Room if p.watching != "" else null
+	if room == null or not kind in Protocol.REACTIONS or now - p.last_chat_ms < CHAT_INTERVAL_MS:
+		return
+	p.last_chat_ms = now
+	_send_room(room, { "t": Protocol.REACTION, "kind": kind, "from": p.name })
 
 
 func _resign(p: Player, now: int) -> void:
@@ -481,9 +513,10 @@ func _start_game(room: Room, now: int) -> void:
 	room.number += 1
 	var first := room.options.first_player(room.number, rng)
 	room.state = GameState.new(room.options, first)
+	room.play_at = now + countdown_ms
 	room.clock = ChessClock.new(room.options)
 	if room.clock.enabled:
-		room.clock.start(first, now)
+		room.clock.start(first, room.play_at)
 	room.ready.fill(false)
 	room.rematch.fill(false)
 	for seat in [1, 2]:
@@ -525,8 +558,9 @@ func _start_message(room: Room, seat: int, now: int) -> Dictionary:
 	return {
 		"options": room.options.to_dict(), "first": room.state.first_player, "you": seat,
 		"players": _players_info(room), "clocks": _clocks(room, now), "number": room.number,
-		"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+		"tournament": _tournament_info(room),
 		"spectators": room.spectators.size(), "code": room.code,
+		"countdown": maxi(0, room.play_at - now),
 	}
 
 
@@ -538,7 +572,7 @@ func _game_over(room: Room, now: int) -> void:
 	for m in s.history:
 		moves.append([m.x, m.y])
 	var analysis := GameAnalysis.analyze(room.options, s.first_player, moves)
-	var elo := accounts.record_game(ids, s.winner(), s.end_reason, analysis, s.history.size())
+	var elo := accounts.record_game(ids, s.winner(), s.end_reason, analysis, s.history.size(), room.ranked)
 	_publish_achievements(ids, s, analysis, elo)
 	_presence_dirty = true
 	store.append_game({
@@ -602,14 +636,14 @@ func _broadcast_room_state(room: Room) -> void:
 		send.call(players[id].peer, {
 			"t": Protocol.ROOM_STATE, "code": room.code, "private": room.private, "options": room.options.to_dict(),
 			"description": room.options.describe(), "you": seat, "in_game": room.in_game(), "players": _players_info(room),
-			"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+			"tournament": _tournament_info(room),
 			"spectators": room.spectators.size(),
 		})
 	for id in room.spectators:
 		send.call(players[id].peer, {
 			"t": Protocol.ROOM_STATE, "code": room.code, "private": room.private, "options": room.options.to_dict(),
 			"description": room.options.describe(), "you": 0, "in_game": room.in_game(), "players": _players_info(room),
-			"tournament": { "id": room.tournament_id, "name": room.tournament_name } if room.match_id != "" else null,
+			"tournament": _tournament_info(room),
 			"spectators": room.spectators.size(),
 		})
 
@@ -776,7 +810,52 @@ func _send_tournament(p: Player, id: int) -> void:
 		_error(p.peer, "no_tournament", "Fant ikke turneringen.")
 		return
 	send.call(p.peer, { "t": Protocol.TOURNAMENT_STATE, "tournament": tournaments.public(t),
-		"admin": accounts.is_admin(p.user_id), "you": p.user_id })
+		"admin": accounts.is_admin(p.user_id), "you": p.user_id, "now": clock_s.call() })
+
+
+## Turneringschat: for alle som har turneringssiden oppe, spiller eller ser på en kamp i den.
+## Tom tekst = send bare historikken (når siden eller kampen åpnes).
+func _tournament_chat(p: Player, id: int, text: String, now: int) -> void:
+	if tournaments.get_t(id).is_empty():
+		return
+	var log: Array = _tournament_chats.get(id, [])
+	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
+	if text == "":
+		send.call(p.peer, { "t": Protocol.TOURNAMENT_CHAT_MSG, "id": id, "history": true, "messages": log })
+		return
+	if now - p.last_global_ms < Social.CHAT_INTERVAL_MS:
+		return
+	p.last_global_ms = now
+	var entry := { "from": p.name, "elo": _elo_of(p), "text": text }
+	log.append(entry)
+	if log.size() > TOURNAMENT_CHAT_KEEP:
+		log.pop_front()
+	_tournament_chats[id] = log
+	var msg := { "t": Protocol.TOURNAMENT_CHAT_MSG, "id": id, "history": false, "messages": [entry] }
+	for q: Player in players.values():
+		if q.peer != 0 and _follows_tournament(q, id):
+			send.call(q.peer, msg)
+
+
+## Sider web-serveren lager underveis. kalender/<id>.ics = turneringen som kalenderoppføring
+## («Legg i kalender»). Gir {} for alt annet (da serveres filene som vanlig).
+func web_page(path: String, host: String) -> Dictionary:
+	if not (path.begins_with("kalender/") and path.ends_with(".ics")):
+		return {}
+	var id := path.get_file().get_basename()
+	var t := tournaments.get_t(int(id)) if id.is_valid_int() else {}
+	if t.is_empty() or t.status == "draft":
+		return {}
+	var scheme := "http" if host.begins_with("localhost") or host.begins_with("127.") else "https"
+	var link := "%s://%s/?turnering=%d" % [scheme, host if host != "" else "localhost", int(t.id)]
+	return { "type": "text/calendar; charset=utf-8", "body": Tournaments.ics(t, link) }
+
+
+func _follows_tournament(q: Player, id: int) -> bool:
+	if q.viewing_tournament == id:
+		return true
+	var room: Room = rooms.get(q.watching if q.watching != "" else q.room_code)
+	return room != null and room.match_id != "" and room.tournament_id == id
 
 
 func _tournament_request(p: Player, t: String, msg: Dictionary) -> void:
@@ -809,6 +888,15 @@ func _tournament_request(p: Player, t: String, msg: Dictionary) -> void:
 	_send_tournament(p, id)
 
 
+## Turneringen et rom hører til (null for vanlige rom). walkover_in = sekunder til den som ikke har
+## kommet, taper på walkover (0 når partiet er i gang eller fristen er ute).
+func _tournament_info(room: Room) -> Variant:
+	if room.match_id == "":
+		return null
+	var left := maxi(0, room.walkover_at - int(clock_s.call())) if room.state == null else 0
+	return { "id": room.tournament_id, "name": room.tournament_name, "ranked": room.ranked, "walkover_in": left }
+
+
 ## Callback fra Tournaments: lager et privat, låst rom for en kamp.
 func _open_tournament_room(t: Dictionary, m: Dictionary) -> String:
 	var room := Room.new()
@@ -819,6 +907,8 @@ func _open_tournament_room(t: Dictionary, m: Dictionary) -> String:
 	room.tournament_id = int(t.id)
 	room.tournament_name = str(t.name)
 	room.reserved = [0, int(m.p1), int(m.p2)]
+	room.ranked = bool(t.get("ranked", true))
+	room.walkover_at = int(clock_s.call()) + int(t.get("show_up_s", 300))
 	rooms[room.code] = room
 	return room.code
 
@@ -851,7 +941,8 @@ func _close_room(code: String, key: String, args: Array) -> void:
 			var p: Player = players[id]
 			p.room_code = ""
 			if p.peer != 0:
-				send.call(p.peer, { "t": Protocol.ROOM_CLOSED, "key": key, "args": args, "text": key % args if not args.is_empty() else key })
+				send.call(p.peer, { "t": Protocol.ROOM_CLOSED, "key": key, "args": args, "text": key % args if not args.is_empty() else key,
+					"tournament": room.tournament_id if room.match_id != "" else 0 })
 	_drop_spectators(room, key, args)
 	rooms.erase(code)
 

@@ -398,3 +398,41 @@ Skjermbilder på mobil: profil, innstillinger, vennesøk, oppgaven (åpen og skj
 - **Skins følger kontoen.** Brikke, merke, farge på merket, drakt og seiersanimasjon lagres på kontoen når du lagrer innstillingene, og en enhet får kontoens utseende når du logger inn. En ny konto tar utseendet enheten har valgt. Endrer du utseendet uten nett, vinner enhetens utseende ved neste innlogging.
 - **Feilretting:** hovedmenyen, vennesiden og turneringssiden koblet lambdaer til nettverkssignaler. De ble hengende igjen etter at skjermen var lukket, og ga skriptfeil ved neste innlogging eller tilkobling. Nå er det metoder, og Godot kobler dem fra når skjermen lukkes.
 - **Testet:** 148 automatiske tester, alle grønne. Nye: utseendet følger kontoen (ny konto, annen enhet, endring, endret uten nett, gjest), klienten tar i bruk kontoens utseende og bilde, og bildeopplasting gjennom web-porten. JavaScript-koden til bildevelgeren er syntakssjekket. Den er ikke prøvd på en ekte iPhone.
+
+## Innspill etter første turnering (28.10.2026)
+
+Innspillene fra kanalen «innspill» under og etter FourInSpace Open, pluss tre ønsker fra admin.
+
+| Innspill | Løsning |
+|---|---|
+| «Fjerne del lenke etter/under turnering» | «Del lenke» (og den nye «Legg i kalender») vises bare før turneringen starter. |
+| «Nedtelling før start i turnering» og «countdown på 3 sek per game uansett turnering eller ikke» | Turneringssiden viser en stor nedtelling til start («Starter om 12:34»), og deltakerne ser «Din kamp starter om 1:45» mellom rundene. Hvert parti (online, mot AI og lokalt) starter med 3, 2, 1 og «Spill!» midt på skjermen. Serveren holder klokken og avviser trekk til nedtellingen er ferdig, så ingen taper tid. |
+| «Ikke mega laggy animasjon når spillet tar slutt» | Shaderne til effektene ble kompilert første gang de ble tegnet, altså akkurat når partiet var slutt. Nå tegnes de usynlig når partiet starter. Gnistnettene gjenbrukes i stedet for å lages på nytt for hvert smell. Telefoner og nettbrett bruker halvparten så mange partikler. Sakte film er mildere (0,4 i stedet for 0,25), så det ikke ser ut som hakking. |
+| «Spillere blir kastet inn i gamet når det startet, ikke gå inn manuelt» | Når kampen starter, går spilleren rett inn i rommet, også fra menyen, fra en annen side, fra et parti mot boten eller når hen ser på et annet parti. Er hen midt i et annet parti online, kommer banneret med «Gå til kamp» som før. |
+| «En egen turneringschat ved siden av chat som hører til kampen» | Turneringssiden har en turneringschat. I en turneringskamp har chatten to faner: «Kamp» og «Turnering». Alle som har siden oppe, spiller eller ser på en kamp i turneringen, får meldingene. |
+| «Tydelig før start hva reglene er for timer osv» | Ny seksjon «Regler» på turneringssiden: formatet, hva som skjer ved uavgjort, brett og regler, tiden («3 min hver, pluss 2 s per trekk»), at startspilleren byttes, at man kastes inn, møtefrist og pause, rangert eller ikke, og pokalen. |
+| «Tydeligere at man ikke har opponent … (walkover)» | Venterommet viser «Motstanderen har ikke kommet ennå. Kommer hen ikke innen 3:12, vinner du på walkover», med nedtelling. Turneringssiden viser hvem som mangler og når walkoveren kommer. Etter en walkover kommer spilleren tilbake til turneringssiden med beskjeden øverst. Statusen sier «Du har fri denne runden» ved fri runde og «Motstanderen møtte ikke. Du vant på walkover» ved walkover. |
+| «Turneringstreet bør være på toppen inne i turneringsmenyen» | Treet står rett under navnet. |
+| «De som spiller bør få begrenset chattilgang, … reaction emojis fra seere og antall seere diskret i et hjørne» | I turneringskamper ser ikke spillerne det tilskuerne skriver. Tilskuerne har fire reaksjonsknapper (hjerte, stjerne, flamme, lyn). Reaksjonene flyr opp over skjermen hos alle, også spillerne. Antall som ser på står nede i hjørnet som før. Spillets skrift har ikke emoji, så ikonene tegnes med kode. |
+| «Mulighet for å legge i kalender med lenke når man melder seg på turnering» | «Legg i kalender» på turneringssiden. På nett hentes en kalenderfil fra serveren (`/kalender/<id>.ics`) med navn, tid, lenke til turneringen og en påminnelse 15 min før. Telefonen spør om du vil legge den inn. På PC åpnes Google Kalender med turneringen fylt ut. |
+| «En hall of fame med de som har vunnet tidligere turneringer» | Turneringslisten har en hall of fame: vinnerne av rangerte turneringer, nyeste først, med pokalen. Navnet åpner profilen. |
+| «Flere brett og bakgrunnsstiler, f.eks. nebula/verdensrom eller coffeeshop» | Ny innstilling «Bakgrunn»: Standard, Nebula, Stjernehimmel og Kaffebar. De tegnes i bakgrunns-shaderen, så nedlastingen ikke blir større (Hako9: «kan ikke øke loading tid alt for mye»). Bakgrunnen er bare for deg selv. |
+| (admin) Uranket turnering, med eller uten pokal | To nye brytere i turneringsskjemaet: «Rangert» og «Pokal til vinneren». Uranket: partiene endrer ikke Elo, men seire og tap telles i statistikken. Turneringen vises ikke i hovedmenyen, kunngjøres ikke i chatten, kommer ikke i hall of fame og teller ikke som turneringsseier. Den står i turneringslisten med «Uranket». Uten pokal: vinneren får ingen pokal, og treet har ingen pokal i midten. |
+| (admin) Chatfeltet mistet fokus etter hver melding på PC | Chatfeltene (global chat, kamp, venterom, turnering) beholder fokus etter Enter og etter «Send» på PC, så man kan skrive videre. På telefon lar vi være, ellers ville tastaturet sprette opp igjen. |
+
+**Ikke gjort, bare notert:** app i App Store, reklame, betalte skins, season pass, loot boxes, bedre premie, musikk, flere spillmoduser, prestasjonsside («inventory»), og en egen arena («boksering») for turneringskamper.
+
+**Testet:** 159 automatiske tester, alle grønne. Nye tester:
+- uranket turnering uten pokal (ingen Elo, pokal, turneringsseier eller kunngjøring, men statistikk);
+- rangert uten pokal;
+- hvem som har kommet til kampen, og tiden til walkover;
+- turneringschatten og historikken;
+- kalenderfilen;
+- nedtellingen på serveren (trekk avvises, klokken står) og i klienten (også mot AI);
+- at tilskuerchat ikke når spillerne i en turneringskamp, og at reaksjonene gjør det;
+- at chatfeltet beholder fokus;
+- at menyen og hall of fame bare viser rangerte turneringer;
+- nedtelling, regler og lenker på turneringssiden;
+- bakgrunnene.
+
+Skjermbilder på mobil: turneringssiden, nedtellingen og bakgrunnene. Kalenderfilen og at spillet går raskere på slutten er ikke prøvd på en ekte telefon.

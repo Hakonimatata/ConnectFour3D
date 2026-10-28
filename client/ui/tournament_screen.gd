@@ -12,6 +12,9 @@ var _content: VBoxContainer
 var _status: Label
 var back_to_menu := false   ## åpnet fra menyen: «Tilbake» går dit
 var _deleted := false       ## admin trykket «Slett»: når listen kommer, gå til turneringslisten
+var _clock_offset := 0      ## serverens klokke minus vår (sekunder), så nedtellingene stemmer
+var _ticking: Array = []    ## [etikett, funksjon som gir teksten] som oppdateres hvert sekund
+var _chat: ChatPanel
 
 
 func _init(p_app: ClientRoot, id: int, p_back_to_menu := false) -> void:
@@ -28,9 +31,22 @@ func _ready() -> void:
 	_content.add_child(UI.label("Henter…", "Muted"))
 	_status = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 	v.add_child(_status)
+	# Turneringschatten ligger utenfor innholdet, så den ikke tømmes når siden bygges på nytt
+	v.add_child(UI.section("Turneringschat"))
+	_chat = ChatPanel.new(false, "Skriv til turneringen…")
+	_chat.custom_minimum_size.y = 230
+	_chat.send_requested.connect(func(text: String) -> void:
+		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": text }))
+	v.add_child(_chat)
 	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)
+	var second := Timer.new()
+	second.wait_time = 1.0
+	second.autostart = true
+	second.timeout.connect(_tick)
+	add_child(second)
+	Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": "" })   # det som er skrevet før
 	# Serveren sender endringer med en gang (view_tournament). Timeren er bare en reserve.
 	var timer := Timer.new()
 	timer.wait_time = 15.0
@@ -44,6 +60,27 @@ func _ready() -> void:
 ## gang, og en eldre server som ikke kjenner view_tournament, svarer likevel.
 func _on_connected(_resumed: bool) -> void:
 	_refresh()
+	Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": "" })
+
+
+## Nå i serverens tid (unix-sekunder).
+func now_s() -> int:
+	return int(Time.get_unix_time_from_system()) + _clock_offset
+
+
+func _tick() -> void:
+	for pair in _ticking:
+		if is_instance_valid(pair[0]):
+			(pair[0] as Label).text = (pair[1] as Callable).call()
+
+
+## «12:34» eller «1 t 05 min» til et tidspunkt.
+static func countdown_text(seconds: int) -> String:
+	seconds = maxi(0, seconds)
+	if seconds >= 3600:
+		return I18n.t("%d t %02d min") % [seconds / 3600, (seconds % 3600) / 60]
+	return "%d:%02d" % [seconds / 60, seconds % 60]
+
 
 
 func _refresh() -> void:
@@ -58,12 +95,20 @@ func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.TOURNAMENT_STATE:
 			if int(msg.tournament.id) == tournament_id:
+				if msg.has("now"):
+					_clock_offset = int(msg.now) - int(Time.get_unix_time_from_system())
 				if msg.tournament == _t and bool(msg.get("admin", false)) == _admin and int(msg.get("you", 0)) == _you:
 					return   # ingenting nytt (siden hentes hvert 3. sekund): ikke bygg på nytt
 				_t = msg.tournament
 				_admin = bool(msg.get("admin", false))
 				_you = int(msg.get("you", 0))
 				_rebuild()
+		Protocol.TOURNAMENT_CHAT_MSG:
+			if int(msg.get("id", 0)) == tournament_id:
+				if bool(msg.get("history", false)):
+					_chat.clear_log()
+				for m in msg.get("messages", []):
+					_chat.add_message(str(m.get("from", "")), str(m.get("text", "")), UI.ACCENT_HOVER)
 		Protocol.TOURNAMENT_LIST:
 			# Serveren svarer med listen når admin har slettet turneringen. Andre lister (f.eks. den
 			# hovedmenyen ba om rett før) skal ikke kaste deg ut av siden.
@@ -76,25 +121,56 @@ func _on_message(msg: Dictionary) -> void:
 func _rebuild() -> void:
 	for c in _content.get_children():
 		c.queue_free()
+	_ticking.clear()
 	var t := _t
-	_content.add_child(_plain(str(t.name), "Heading"))
+	var title_row := UI.hbox(10)
+	var title := _plain(str(t.name), "Heading")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title_row.add_child(title)
+	if not bool(t.get("ranked", true)):
+		var tag := UI.label("Uranket", "Muted")
+		tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		title_row.add_child(tag)
+	_content.add_child(title_row)
 	if str(t.description) != "":
 		var d := _plain(str(t.description), "Muted")
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		_content.add_child(d)
-	_content.add_child(_trophy_block(t))
-	var opts := GameOptions.from_dict(t.options)
-	var info := [
-		"%s · %s" % [tr(format_name(t.format)), opts.describe()],
-		tr("Status: %s") % tr(status_name(t.status)),
-		tr("Start: %s") % UI.format_time(int(t.start_time)),
-		tr("Deltakere: %d av %d") % [int(t.players), int(t.max_players)],
-		tr("Møt opp innen %d min, pause mellom rundene %d min.") % [int(t.show_up_s) / 60, int(t.round_gap_s) / 60],
-	]
-	for line in info:
-		var l := _plain(line, "")
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		_content.add_child(l)
+
+	# --- Turneringstreet (utslag) øverst, så man ser hvor turneringen står med en gang
+	var knockout: bool = t.format == "knockout" and not (t.rounds as Array).is_empty()
+	if knockout:
+		var scroll := ScrollContainer.new()
+		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		var bracket := BracketView.new(t.rounds, _you, t.get("trophy", {}) if bool(t.get("with_trophy", true)) else {})
+		bracket.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bracket.watch_requested.connect(func(code: String) -> void: Net.send({ "t": Protocol.WATCH, "code": code }))
+		scroll.add_child(bracket)
+		_content.add_child(scroll)
+	# Pokalen står midt i treet; egen blokk bare uten tre, eller med vinneren når den er ferdig
+	var prize := _trophy_block(t) if not knockout or t.status == "finished" else null
+	if prize != null:
+		_content.add_child(prize)
+
+	# --- Nedtelling til start
+	if t.status in ["draft", "open"] and int(t.start_time) > now_s():
+		var box := PanelContainer.new()
+		box.add_theme_stylebox_override("panel", UI._box(Color("1d2a42"), 12, UI.ACCENT_HOVER, 14, 10))
+		var col := UI.vbox(0)
+		col.add_child(UI.label("Starter om", "Muted", HORIZONTAL_ALIGNMENT_CENTER))
+		var big := _plain("", "Title")
+		big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var start := int(t.start_time)
+		var text := func() -> String: return countdown_text(start - now_s())
+		big.text = text.call()
+		_ticking.append([big, text])
+		col.add_child(big)
+		var when := _plain(UI.format_time(start), "Muted")
+		when.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(when)
+		box.add_child(col)
+		_content.add_child(box)
 
 	# --- Din status som deltaker: neste kamp, at den spilles, eller at du er ute
 	var status := my_status()
@@ -103,14 +179,21 @@ func _rebuild() -> void:
 		s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		s.add_theme_color_override("font_color", BracketView.YOU)
 		_content.add_child(s)
+	var mine_next := _my_scheduled_match()
+	if not mine_next.is_empty():
+		var at := int(mine_next.start_at)
+		var next_text := func() -> String: return tr("Din kamp starter om %s.") % countdown_text(at - now_s())
+		var next := _plain(next_text.call(), "Muted")
+		_ticking.append([next, next_text])
+		_content.add_child(next)
 
-	# --- Din neste kamp
+	# --- Din neste kamp (du kastes inn når den starter, men knappen er her hvis du gikk ut)
 	var mine := _my_waiting_match()
 	if not mine.is_empty():
 		var go := UI.button("Gå til kamp!", func() -> void: app.join_room(str(mine.room)), "PrimaryButton")
 		_content.add_child(go)
 
-	# --- Påmelding
+	# --- Påmelding, kalender og deling (bare før start)
 	var joined := _you in (t.player_list as Array).map(func(p: Dictionary) -> int: return int(p.id))
 	if t.status == "open":
 		if not Net.is_logged_in():
@@ -119,9 +202,31 @@ func _rebuild() -> void:
 			_content.add_child(UI.button("Meld meg av", func() -> void: _send(Protocol.TOURNAMENT_LEAVE)))
 		else:
 			_content.add_child(UI.button("Meld meg på", func() -> void: _send(Protocol.TOURNAMENT_JOIN), "PrimaryButton"))
-	_content.add_child(UI.button("Del lenke til turneringen", func() -> void:
-		_status.text = app.share_link("turnering", str(tournament_id), str(t.name))
-	))
+	if t.status in ["draft", "open"]:
+		var row := HFlowContainer.new()
+		row.add_theme_constant_override("h_separation", 8)
+		row.add_theme_constant_override("v_separation", 8)
+		row.add_child(UI.button("Legg i kalender", _add_to_calendar))
+		row.add_child(UI.button("Del lenke til turneringen", func() -> void:
+			_status.text = app.share_link("turnering", str(tournament_id), str(t.name))
+		))
+		_content.add_child(row)
+
+	# --- Regler: alt man må vite før start
+	_content.add_child(UI.section("Regler"))
+	for line in rules(t):
+		var l := _plain("•  " + line, "")
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(l)
+	var info := [
+		tr("Status: %s") % tr(status_name(t.status)),
+		tr("Start: %s") % UI.format_time(int(t.start_time)),
+		tr("Deltakere: %d av %d") % [int(t.players), int(t.max_players)],
+	]
+	for line in info:
+		var l := _plain(line, "Muted")
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_content.add_child(l)
 
 	# --- Deltakere
 	_content.add_child(UI.section("Deltakere"))
@@ -139,18 +244,6 @@ func _rebuild() -> void:
 				row.username, _points(int(row.points2)), int(row.wins), int(row.draws), int(row.losses)], "")))
 			place += 1
 
-	# --- Turneringstreet (utslag)
-	var knockout: bool = t.format == "knockout" and not (t.rounds as Array).is_empty()
-	if knockout:
-		_content.add_child(UI.section("Turneringstre"))
-		var scroll := ScrollContainer.new()
-		scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-		var bracket := BracketView.new(t.rounds, _you, t.get("trophy", {}))
-		bracket.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bracket.watch_requested.connect(func(code: String) -> void: Net.send({ "t": Protocol.WATCH, "code": code }))
-		scroll.add_child(bracket)
-		_content.add_child(scroll)
-
 	# --- Runder og kamper (i en ferdig utslagsturnering sier treet alt)
 	for r in (t.rounds as Array).size():
 		if knockout and t.status == "finished":
@@ -158,11 +251,15 @@ func _rebuild() -> void:
 		_content.add_child(UI.section(tr("Runde %d") % (r + 1)))
 		for m in t.rounds[r]:
 			var label := _plain(_match_text(m), "Muted" if m.status == "done" else "")
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			if m.status == "waiting" and m.has("walkover_at"):
+				var match_info: Dictionary = m
+				var text := func() -> String: return _match_text(match_info)
+				_ticking.append([label, text])
 			var own_match := _you != 0 and _you in [int(m.p1), int(m.p2)]
 			if m.status == "playing" and str(m.room) != "" and not own_match:
 				var row := UI.hbox(8)
 				label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				row.add_child(label)
 				var code := str(m.room)
 				row.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
@@ -180,26 +277,69 @@ func _rebuild() -> void:
 			row.add_child(UI.button("Publiser", func() -> void: _admin_action("publish"), "PrimaryButton"))
 		if t.status in ["draft", "open"]:
 			row.add_child(UI.button("Start nå", func() -> void: _admin_action("start")))
-			# Bytt pokalen vinneren får (trykk til du liker den; siden oppdateres med en gang)
-			row.add_child(UI.button("Ny pokal", func() -> void:
-				Net.send({ "t": Protocol.TOURNAMENT_UPDATE, "id": tournament_id,
-					"data": { "trophy": Trophy.generate(randi()) } })
-			))
+			if bool(t.get("with_trophy", true)):
+				# Bytt pokalen vinneren får (trykk til du liker den; siden oppdateres med en gang)
+				row.add_child(UI.button("Ny pokal", func() -> void:
+					Net.send({ "t": Protocol.TOURNAMENT_UPDATE, "id": tournament_id,
+						"data": { "trophy": Trophy.generate(randi()) } })
+				))
 		if t.status in ["draft", "open", "running"]:
 			row.add_child(UI.button("Avlys", func() -> void: _admin_action("cancel")))
 		row.add_child(UI.button("Slett", func() -> void: _admin_action("delete")))
 		_content.add_child(row)
 
 
+## Reglene i klartekst: format, brett og tid, møtefrist, uavgjort, Elo og pokal.
+static func rules(t: Dictionary) -> Array:
+	var o := GameOptions.from_dict(t.get("options", {}))
+	var out := []
+	if t.get("format") == "round_robin":
+		out.append(I18n.t("Alle mot alle: alle møter alle én gang. Seier gir 1 poeng, uavgjort ½."))
+	else:
+		out.append(I18n.t("Utslag: taperen er ute, vinneren går videre til neste runde."))
+		out.append(I18n.t("Uavgjort spilles om (inntil 3 ganger). Blir det fortsatt uavgjort, går den med høyest Elo videre."))
+	out.append(I18n.t("Spill: %s") % o.describe())
+	if o.has_clock():
+		out.append(I18n.t("Tid: %d min hver, pluss %d s per trekk. Går tiden ut, taper du.") % [o.time_base_s / 60, o.time_increment_s])
+	out.append(I18n.t("Hvem som starter, byttes for hvert parti."))
+	out.append(I18n.t("Du kastes rett inn når kampen din begynner. Den starter når begge er i rommet."))
+	out.append(I18n.t("Møt opp innen %d min, ellers taper du på walkover. Pause mellom rundene: %d min.") \
+		% [int(t.get("show_up_s", 300)) / 60, int(t.get("round_gap_s", 120)) / 60])
+	if bool(t.get("ranked", true)):
+		out.append(I18n.t("Rangert: partiene teller på Elo."))
+	else:
+		out.append(I18n.t("Uranket: partiene endrer ikke Elo."))
+	if bool(t.get("with_trophy", true)):
+		out.append(I18n.t("Vinneren får pokalen på profilen sin."))
+	return out
+
+
+## «Legg i kalender»: på nett åpnes en kalenderfil fra serveren (telefonen spør om du vil legge
+## den inn). På PC åpnes Google Kalender med turneringen fylt ut.
+func _add_to_calendar() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.open(new URL('kalender/%d.ics', location.href).href, '_blank')" % tournament_id)
+		return
+	var start := int(_t.start_time)
+	var stamp := func(unix: int) -> String:
+		return Time.get_datetime_string_from_unix_time(unix).replace("-", "").replace(":", "") + "Z"
+	var url := "https://calendar.google.com/calendar/render?action=TEMPLATE&text=%s&dates=%s/%s&details=%s" % [
+		("Turnering: " + str(_t.name)).uri_encode(), stamp.call(start), stamp.call(start + 3600),
+		str(_t.get("description", "")).uri_encode()]
+	OS.shell_open(url)
+
+
 ## Ferdig med vinner: en hedersplass med pokalen (som gløder), «Vinner» og navnet i gull.
-## Ellers: pokalen det spilles om.
+## Ellers: pokalen det spilles om. Uten pokal: bare vinneren (eller null før den er ferdig).
 func _trophy_block(t: Dictionary) -> Control:
 	var winner := str(t.get("winner", ""))
+	var with_trophy := bool(t.get("with_trophy", true))
 	if t.status == "finished" and winner != "":
 		var hero := PanelContainer.new()
 		hero.add_theme_stylebox_override("panel", UI._box(Color("2a2617"), 14, Color("b8913a"), 16, 12, 4))
 		var row := UI.hbox(16)
-		row.add_child(TrophyView.new(t.get("trophy", {}), 132, true))
+		if with_trophy:
+			row.add_child(TrophyView.new(t.get("trophy", {}), 132, true))
 		var texts := UI.vbox(2)
 		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -211,7 +351,7 @@ func _trophy_block(t: Dictionary) -> Control:
 		name.clip_text = true
 		name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		texts.add_child(name)
-		var sub := _plain(tr("Vant pokalen «%s»") % t.name, "Muted")
+		var sub := _plain((tr("Vant pokalen «%s»") if with_trophy else tr("Vant «%s»")) % t.name, "Muted")
 		sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		texts.add_child(sub)
 		if int(t.get("finished_at", 0)) > 0:
@@ -219,6 +359,8 @@ func _trophy_block(t: Dictionary) -> Control:
 		row.add_child(texts)
 		hero.add_child(row)
 		return hero
+	if not with_trophy:
+		return null
 	var row := UI.hbox(14)
 	row.add_child(TrophyView.new(t.get("trophy", {}), 84))
 	var l := UI.label("Det spilles om denne pokalen. Vinneren får den med turneringens navn på profilen sin.", "Muted",
@@ -240,7 +382,18 @@ func _match_text(m: Dictionary) -> String:
 				"no_show": return tr("%s · ingen møtte") % names
 				"draw": return tr("%s · uavgjort") % names
 			return tr("%s · %s vant") % [names, winner] if int(m.winner) != 0 else names
-		"waiting": return tr("%s · venter på spillerne") % names
+		"waiting":
+			if not m.has("here"):
+				return tr("%s · venter på spillerne") % names
+			var missing := []
+			if not bool(m.here[0]):
+				missing.append(str(m.p1_name))
+			if not bool(m.here[1]):
+				missing.append(str(m.p2_name))
+			var left := countdown_text(int(m.walkover_at) - now_s())
+			if missing.is_empty():
+				return tr("%s · starter nå") % names
+			return tr("%s · venter på %s (walkover om %s)") % [names, ", ".join(missing), left]
 		"playing": return tr("%s · spilles nå") % names
 		"scheduled": return tr("%s · starter %s") % [names, UI.format_time(int(m.start_at))]
 	return names
@@ -256,14 +409,31 @@ func my_status() -> String:
 		var names := "%s – %s" % [m.p1_name, m.p2_name]
 		match str(m.status):
 			"scheduled": return tr("Din kamp: %s · starter %s") % [names, UI.format_time(int(m.start_at))]
-			"waiting": return tr("Din kamp: %s · nå! Trykk «Gå til kamp».") % names
+			"waiting":
+				var other_here: bool = m.has("here") and bool(m.here[1 if int(m.p1) == _you else 0])
+				if m.has("here") and not other_here:
+					return tr("Din kamp: %s · motstanderen har ikke kommet. Kommer hen ikke, vinner du på walkover.") % names
+				return tr("Din kamp: %s · nå! Trykk «Gå til kamp».") % names
 			"playing": return tr("Din kamp: %s · spilles nå") % names
 			"done":
 				if int(m.winner) == _you:
+					match str(m.reason):
+						"bye": return tr("Du har fri denne runden (ingen motstander) og går videre.")
+						"walkover": return tr("Motstanderen møtte ikke. Du vant på walkover og går videre.")
 					return tr("Du vant kampen! Neste runde starter når de andre kampene er ferdige.")
 	if _t.format == "knockout" and _you in (_t.player_list as Array).map(func(p: Dictionary) -> int: return int(p.id)):
 		return tr("Du er ute av turneringen. Takk for innsatsen!")
 	return ""
+
+
+## Din neste kamp som ikke har startet ennå (for nedtellingen), eller {}.
+func _my_scheduled_match() -> Dictionary:
+	if _you == 0 or _t.is_empty() or _t.status != "running":
+		return {}
+	for m in _t.rounds[int(_t.current_round)]:
+		if m.status == "scheduled" and _you in [int(m.p1), int(m.p2)] and int(m.start_at) > now_s():
+			return m
+	return {}
 
 
 func _my_waiting_match() -> Dictionary:

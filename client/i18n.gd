@@ -634,4 +634,63 @@ const EN := {
 		"You won the match! The next round starts when the other matches are done.",
 	"Du er ute av turneringen. Takk for innsatsen!": "You're out of the tournament. Thanks for playing!",
 	"Ingen pokaler ennå. Vinn en turnering for å få en!": "No trophies yet. Win a tournament to get one!",
+	# Runde 15: tilbakemeldinger etter første turnering
+	"Standard": "Standard",
+	"Nebula": "Nebula",
+	"Stjernehimmel": "Starry sky",
+	"Kaffebar": "Coffee shop",
+	"Bakgrunn": "Background",
+	"Kamp": "Match",
+	"Turnering": "Tournament",
+	"Turneringschat": "Tournament chat",
+	"Skriv til turneringen…": "Write to the tournament…",
+	"Spillerne ser ikke det tilskuerne skriver her, bare reaksjonene.":
+		"The players don't see what spectators write here, only the reactions.",
+	"Gjør deg klar…": "Get ready…",
+	"Spill!": "Play!",
+	"Vent til nedtellingen er ferdig.": "Wait for the countdown to finish.",
+	"Kommer ikke begge innen %s, avgjøres kampen på walkover.":
+		"If both don't show up within %s, the match is decided by walkover.",
+	"Motstanderen har ikke kommet ennå. Kommer hen ikke innen %s, vinner du på walkover.":
+		"Your opponent hasn't arrived yet. If they don't show up within %s, you win by walkover.",
+	"Uranket: Elo endres ikke.": "Unranked: Elo doesn't change.",
+	"Rangert": "Ranked",
+	"Uranket": "Unranked",
+	"Pokal til vinneren": "Trophy for the winner",
+	"Partiene teller på Elo, og turneringen vises i menyen og i hall of fame.":
+		"Games count for Elo, and the tournament is shown in the menu and the hall of fame.",
+	"Vinneren får pokalen med turneringens navn på profilen sin.":
+		"The winner gets the trophy with the tournament's name on their profile.",
+	"%d t %02d min": "%d h %02d min",
+	"Starter om": "Starts in",
+	"Din kamp starter om %s.": "Your match starts in %s.",
+	"Legg i kalender": "Add to calendar",
+	"Alle mot alle: alle møter alle én gang. Seier gir 1 poeng, uavgjort ½.":
+		"Round robin: everyone plays everyone once. A win gives 1 point, a draw ½.",
+	"Utslag: taperen er ute, vinneren går videre til neste runde.":
+		"Knockout: the loser is out, the winner goes on to the next round.",
+	"Uavgjort spilles om (inntil 3 ganger). Blir det fortsatt uavgjort, går den med høyest Elo videre.":
+		"Draws are replayed (up to 3 times). If it's still a draw, the player with the higher Elo goes on.",
+	"Spill: %s": "Game: %s",
+	"Tid: %d min hver, pluss %d s per trekk. Går tiden ut, taper du.":
+		"Time: %d min each, plus %d s per move. If your time runs out, you lose.",
+	"Hvem som starter, byttes for hvert parti.": "Who starts alternates every game.",
+	"Du kastes rett inn når kampen din begynner. Den starter når begge er i rommet.":
+		"You're taken straight in when your match begins. It starts when both are in the room.",
+	"Møt opp innen %d min, ellers taper du på walkover. Pause mellom rundene: %d min.":
+		"Show up within %d min, or you lose by walkover. Break between rounds: %d min.",
+	"Rangert: partiene teller på Elo.": "Ranked: the games count for Elo.",
+	"Uranket: partiene endrer ikke Elo.": "Unranked: the games don't change Elo.",
+	"Vinneren får pokalen på profilen sin.": "The winner gets the trophy on their profile.",
+	"Vant «%s»": "Won «%s»",
+	"%s · starter nå": "%s · starting now",
+	"%s · venter på %s (walkover om %s)": "%s · waiting for %s (walkover in %s)",
+	"Din kamp: %s · motstanderen har ikke kommet. Kommer hen ikke, vinner du på walkover.":
+		"Your match: %s · your opponent hasn't arrived. If they don't come, you win by walkover.",
+	"Du har fri denne runden (ingen motstander) og går videre.":
+		"You have a bye this round (no opponent) and go on.",
+	"Motstanderen møtte ikke. Du vant på walkover og går videre.":
+		"Your opponent didn't show up. You won by walkover and go on.",
+	"Hall of fame": "Hall of fame",
+	"%s · %s": "%s · %s",
 }

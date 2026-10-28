@@ -142,6 +142,14 @@ func _ready() -> void:
 			app.board.set_theme(Settings.board_theme)
 	))
 
+	v.add_child(UI.section("Bakgrunn"))
+	var bg_ids: Array = Skins.BACKGROUNDS.map(func(d: Dictionary) -> String: return d.id)
+	v.add_child(UI.choice(Skins.BACKGROUNDS.map(func(d: Dictionary) -> String: return d.name),
+		maxi(0, bg_ids.find(Settings.background)), func(i: int) -> void:
+			Settings.background = Skins.BACKGROUNDS[i].id
+			app.set_background(Settings.background)
+	))
+
 	# --- Hurtigmeldinger i chatten
 	v.add_child(UI.section("Hurtigmeldinger i chatten"))
 	var presets := Settings.chat_messages()

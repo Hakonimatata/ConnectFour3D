@@ -11,6 +11,12 @@ extends RefCounted
 ##   chaos      en kjempebrikke faller ned og spretter, alle brikkene kastes opp, det regner
 ##              brikker i alle farger, og kameraet rister som aldri før
 ## Alle har kamerarist, kort sakte film og vibrasjon.
+##
+## Ytelse (det hakket på telefon når partiet var slutt): shaderne kompileres første gang noe tegnes,
+## så prewarm() tegner de samme materialene usynlig når partiet starter. Gnistnettene gjenbrukes,
+## og på telefon brukes halvparten så mange partikler.
+
+static var _spark_cache := {}   ## "farge:radius" -> SphereMesh
 
 
 static func play(board: BoardView, camera: CameraRig, line: Array, color: Color, style := "classic") -> void:
@@ -28,7 +34,7 @@ static func play(board: BoardView, camera: CameraRig, line: Array, color: Color,
 
 
 static func _slow_motion(board: Node) -> void:
-	Engine.time_scale = 0.25
+	Engine.time_scale = 0.4
 	var t := board.get_tree().create_tween().set_ignore_time_scale(true)
 	t.tween_interval(0.12)
 	t.tween_property(Engine, "time_scale", 1.0, 0.7).set_trans(Tween.TRANS_SINE)
@@ -101,7 +107,7 @@ static func _confetti(board: BoardView, camera: CameraRig, line: Array, color: C
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.explosiveness = 0.75
-	p.amount = 260
+	p.amount = particles(260)
 	p.lifetime = 3.6
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	p.emission_box_extents = Vector3(width * 0.6, 0.2, width * 0.6)
@@ -281,7 +287,7 @@ static func _glitter(board: BoardView, camera: CameraRig, line: Array, color: Co
 		var p := CPUParticles3D.new()
 		p.one_shot = true
 		p.explosiveness = 0.35
-		p.amount = 140
+		p.amount = particles(140)
 		p.lifetime = 3.2
 		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 		p.emission_box_extents = Vector3(width * 0.65, 0.3, width * 0.65)
@@ -384,7 +390,7 @@ static func _launch_pieces(board: BoardView) -> void:
 ## Små brikker i alle regnbuens farger regner ned over brettet.
 static func _piece_rain(board: BoardView) -> void:
 	var half := board.size * BoardView.SPACING * 0.5 + 1.5
-	for i in 50:
+	for i in particles(50):
 		var m := MeshInstance3D.new()
 		m.mesh = board._piece_mesh
 		m.material_override = _glow_material(Color.from_hsv(randf(), 0.75, 1.0), 1.0)
@@ -403,7 +409,7 @@ static func burst(parent: Node3D, at: Vector3, color: Color, amount: int, speed:
 	var p := CPUParticles3D.new()
 	p.one_shot = true
 	p.explosiveness = 0.95
-	p.amount = amount
+	p.amount = particles(amount)
 	p.lifetime = lifetime
 	p.direction = Vector3.UP
 	p.spread = 180.0
@@ -423,13 +429,54 @@ static func burst(parent: Node3D, at: Vector3, color: Color, amount: int, speed:
 
 
 static func _spark_mesh(color: Color, radius: float) -> SphereMesh:
+	var key := "%s:%.3f" % [color.to_html(), radius]
+	if _spark_cache.has(key):
+		return _spark_cache[key]
+	if _spark_cache.size() > 64:
+		_spark_cache.clear()
 	var mesh := SphereMesh.new()
+	_spark_cache[key] = mesh
 	mesh.radius = radius
 	mesh.height = radius * 2.0
 	mesh.radial_segments = 6
 	mesh.rings = 3
 	mesh.material = _glow_material(color, 2.2)
 	return mesh
+
+
+## Færre partikler på telefon og nettbrett (de har svakere prosessor, og partiklene regnes ut der).
+static func particles(n: int) -> int:
+	return maxi(1, n / 2) if UI.is_touch_device() else n
+
+
+## Tegner effektenes materialer én gang, usynlig under brettet, så shaderne er kompilert før
+## partiet er slutt. Kalles når partiet starter.
+static func prewarm(board: BoardView) -> void:
+	var holder := Node3D.new()
+	board.add_child(holder)
+	holder.position = Vector3(0, -0.6, 0)
+	var spark := CPUParticles3D.new()
+	spark.amount = 1
+	spark.lifetime = 0.2
+	spark.mesh = _spark_mesh(Color.WHITE, 0.09)
+	holder.add_child(spark)
+	spark.emitting = true
+	var solid := MeshInstance3D.new()
+	var tiny := SphereMesh.new()
+	tiny.radius = 0.01
+	tiny.height = 0.02
+	solid.mesh = tiny
+	solid.material_override = _glow_material(Color.WHITE, 2.0)
+	holder.add_child(solid)
+	var clear := MeshInstance3D.new()
+	clear.mesh = tiny
+	var see_through := _glow_material(Color.WHITE, 2.0)
+	see_through.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	clear.material_override = see_through
+	holder.add_child(clear)
+	var t := holder.create_tween()
+	t.tween_interval(0.5)
+	t.tween_callback(holder.queue_free)
 
 
 static func _glow_material(color: Color, boost: float) -> StandardMaterial3D:

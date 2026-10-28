@@ -481,8 +481,10 @@ static func latest_champion(list: Array) -> Dictionary:
 	return done[0]
 
 
+## Bare rangerte turneringer vises og hedres her (uranket finnes bare i turneringslisten).
 ## Viser turneringer som pågår eller er åpne for påmelding (pågående først), og siste vinner.
 func show_tournaments(list: Array) -> void:
+	list = list.filter(func(t: Dictionary) -> bool: return bool(t.get("ranked", true)))
 	if list == _last_list and _tour_list.get_child_count() > 0:
 		return   # listen hentes hvert 20. sekund: ikke bygg alt på nytt når ingenting er endret
 	_last_list = list.duplicate(true)

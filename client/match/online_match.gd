@@ -3,9 +3,14 @@ extends MatchController
 ## Parti via serveren. Serveren bestemmer: et trekk vises først når serveren
 ## har godkjent det (move_made). Lokalt sjekker vi trekket først for rask tilbakemelding.
 
+## En tilskuer reagerte (se Protocol.REACTIONS).
+signal reaction_received(kind: String)
+## Meldinger i turneringschatten. history = hele loggen (erstatter det som vises).
+signal tournament_chat_received(messages: Array, history: bool)
+
 var _seat := 0
 var _start_msg: Dictionary
-var tournament: Dictionary = {}     ## { id, name } hvis dette er en turneringskamp
+var tournament: Dictionary = {}     ## { id, name, ranked } hvis dette er en turneringskamp
 var last_elo: Dictionary = {}       ## Elo før/etter for mitt sete etter partiet (tom = ikke rangert)
 var spectators := 0                 ## antall tilskuere (bare turneringskamper)
 var room_code := ""
@@ -86,6 +91,16 @@ func send_chat(text: String) -> void:
 	Net.send({ "t": Protocol.CHAT, "text": text })
 
 
+func send_reaction(kind: String) -> void:
+	Net.send({ "t": Protocol.REACT, "kind": kind })
+
+
+## Tom tekst = be om historikken.
+func send_tournament_chat(text: String) -> void:
+	if not tournament.is_empty():
+		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": int(tournament.id), "text": text })
+
+
 func leave() -> void:
 	if keep_room:
 		return
@@ -111,8 +126,9 @@ func _apply_start(msg: Dictionary) -> void:
 	clock = ChessClock.new(options)
 	var clocks: Array = msg.get("clocks", [0, 0])
 	var running := int(msg.get("running", state.current_player))
+	play_at_ms = Time.get_ticks_msec() + int(msg.get("countdown", 0))
 	if clock.enabled:
-		clock.sync(int(clocks[0]), int(clocks[1]), running, Time.get_ticks_msec())
+		clock.sync(int(clocks[0]), int(clocks[1]), running, maxi(play_at_ms, Time.get_ticks_msec()))
 	_waiting_for_server = false
 	started.emit()
 	if bool(msg.get("over", false)):
@@ -163,6 +179,11 @@ func _on_message(msg: Dictionary) -> void:
 			_finish_from(msg)
 		Protocol.CHAT_MSG:
 			chat_received.emit(str(msg.get("from", "")), str(msg.get("text", "")))
+		Protocol.REACTION:
+			reaction_received.emit(str(msg.get("kind", "")))
+		Protocol.TOURNAMENT_CHAT_MSG:
+			if not tournament.is_empty() and int(msg.get("id", 0)) == int(tournament.id):
+				tournament_chat_received.emit(msg.get("messages", []), bool(msg.get("history", false)))
 		Protocol.ROOM_STATE:
 			spectators = int(msg.get("spectators", spectators))
 			if state != null:

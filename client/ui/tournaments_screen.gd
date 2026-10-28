@@ -1,6 +1,6 @@
 class_name TournamentsScreen
 extends Screen
-## Liste over turneringer. Admin kan lage nye.
+## Liste over turneringer og hall of fame (vinnerne av rangerte turneringer). Admin kan lage nye.
 
 var _list_box: VBoxContainer
 var _new_button: Button
@@ -54,6 +54,8 @@ func _on_message(msg: Dictionary) -> void:
 			int(t.players), int(t.max_players), UI.format_time(int(t.start_time))]
 		if str(t.get("winner", "")) != "":
 			line2 += " · " + tr("Vinner: %s") % str(t.winner)
+		if not bool(t.get("ranked", true)):
+			line2 += " · " + tr("Uranket")
 		b.text = "%s\n%s" % [t.name, line2]
 		var id := int(t.id)
 		b.pressed.connect(func() -> void:
@@ -61,6 +63,34 @@ func _on_message(msg: Dictionary) -> void:
 			app.show_tournament(id)
 		)
 		_list_box.add_child(b)
+	_add_hall_of_fame(list)
+
+
+## Hall of fame: vinnerne av rangerte turneringer, nyeste først, med pokalen de vant.
+func _add_hall_of_fame(list: Array) -> void:
+	var champs := list.filter(func(t: Dictionary) -> bool:
+		return t.status == "finished" and str(t.get("winner", "")) != "" and bool(t.get("ranked", true)))
+	if champs.is_empty():
+		return
+	champs.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return int(a.get("finished_at", a.start_time)) > int(b.get("finished_at", b.start_time)))
+	_list_box.add_child(UI.section("Hall of fame"))
+	for t in champs:
+		var row := UI.hbox(12)
+		if bool(t.get("with_trophy", true)):
+			row.add_child(TrophyView.new(t.get("trophy", {}), 52))
+		var texts := UI.vbox(0)
+		texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		var name := UI.name_button(str(t.winner), func() -> void: app.show_profile(str(t.winner)))
+		name.add_theme_color_override("font_color", BracketView.GOLD)
+		texts.add_child(name)
+		var when := int(t.get("finished_at", 0)) if int(t.get("finished_at", 0)) > 0 else int(t.start_time)
+		var sub := UI.label("%s · %s" % [t.name, UI.format_day(when)], "Muted")
+		sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		texts.add_child(sub)
+		row.add_child(texts)
+		_list_box.add_child(row)
 
 
 func _on_back() -> void:

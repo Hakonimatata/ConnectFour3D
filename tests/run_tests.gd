@@ -40,6 +40,9 @@ func _run() -> void:
 		filter = args[0]
 
 	Settings.persist = false   # testene skal aldri overskrive spillerens innstillinger
+	# Ingen nedtelling før partiene, så testene kan spille med en gang (testene av nedtellingen slår den på)
+	Lobby.countdown_ms = 0
+	MatchController.countdown_ms = 0
 	var errors := ErrorCounter.new()
 	OS.add_logger(errors)
 
