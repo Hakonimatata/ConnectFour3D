@@ -80,7 +80,9 @@ func _initialize() -> void:
 		var c := _client(NAMES[i % NAMES.size()] + ("" if i < NAMES.size() else str(i)))
 		var level: BotProfile.Level = BotProfile.Level.EASY if all_easy \
 			else [BotProfile.Level.EASY, BotProfile.Level.MEDIUM, BotProfile.Level.HARD][i % 3]
-		c.bot = Bot.new(BotProfile.create(level))
+		# Den gamle vanskelige boten (uten søk): søket tenker i 0,7 s per trekk og ville holdt igjen de
+		# andre botene i samme prosess, og det er serveren som skal måles
+		c.bot = Bot.new(BotProfile.legacy_hard() if level == BotProfile.Level.HARD else BotProfile.create(level))
 		bots.append(c)
 	_log("Kobler %d boter og en admin til %s" % [player_count, url])
 

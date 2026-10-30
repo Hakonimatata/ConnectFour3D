@@ -54,6 +54,7 @@ const USER_SEARCH := "user_search"   ## { query }  (finn spillere på navn)
 # Runde 15: tilbakemeldinger etter første turnering
 const REACT := "react"               ## { kind }  (tilskuer reagerer: en av REACTIONS)
 const TOURNAMENT_CHAT := "tournament_chat" ## { id, text }  (tom tekst = send historikken)
+const TOURNAMENT_READY := "tournament_ready" ## { id }  (klar for neste kamp: er begge klare, starter den uten å vente ut pausen)
 
 # Server -> klient
 const WELCOME := "welcome"           ## { player_id, token, resumed, user?, avatar?, look? }  (innlogget: kontoens profilbilde og utseende)
@@ -63,7 +64,7 @@ const GAME_START := "game_start"     ## { options, first, you, players, clocks, 
 const GAME_SYNC := "game_sync"       ## som game_start + { moves, running, over, result, reason, line }
 const MOVE_MADE := "move_made"       ## { x, y, player, ply, clocks, running }
 const MOVE_REJECTED := "move_rejected" ## { text, hints }
-const GAME_OVER := "game_over"       ## { result, reason, winner, line, elo? { "1": {before, after}, ... } }
+const GAME_OVER := "game_over"       ## { result, reason, winner, line, elo? { "1": {before, after}, ... }, xp? { "1": { gained, xp, level, level_before, unlocked }, ... } }
 const CHAT_MSG := "chat"             ## { from, seat, text }
 const NOTICE := "notice"             ## { text }  (statusmeldinger)
 const ERROR := "error"               ## { code, text }
@@ -71,7 +72,7 @@ const PONG := "pong"
 const SESSION := "session"           ## { token, user, avatar, look }  (innlogget. Kontoens profilbilde ("" = ingen) og utseende { skin, decal, win_fx, decal_color, away })
 const AUTH_ERROR := "auth_error"     ## { key, text }
 const LOGGED_OUT := "logged_out"
-const STATS := "stats"               ## { user }  (user har også avatar)
+const STATS := "stats"               ## { user }  (user har også avatar, og xp, level og unlocks fra runde 17. Sendes også av seg selv når XP-en endres)
 const LEADERBOARD := "leaderboard"   ## { elo: [...], wins: [...], forced: [...] }
 const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin }
 const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
@@ -83,7 +84,7 @@ const GLOBAL_MSG := "global_msg"     ## { kind: "chat" | "event" | "announcement
 const GLOBAL_HISTORY := "global_history" ## { messages: [...], channels: [...] }  (sendes etter hello)
 const SPECTATORS := "spectators"     ## { count }  (til alle i rommet)
 const PUZZLE := "puzzle"             ## { puzzle, solved, count, solvers: [{ username, attempts, elo }] }
-const PUZZLE_RESULT := "puzzle_result" ## { ok, rank, first } eller { ok: false, text }
+const PUZZLE_RESULT := "puzzle_result" ## { ok, rank, first, xp?, streak? } eller { ok: false, text }
 const GAME_LIST := "game_list"       ## { username, games: [{ id, time, players, result, reason, moves, tournament }] }
 const GAME_RECORD := "game_record"   ## { game }  (hele partiet, til reprise)
 const ADMIN_RESULT := "admin_result" ## { action, ok, key, args, text, banned: [{ username, reason }] }
@@ -94,7 +95,7 @@ const REACTION := "reaction"         ## { kind, from }  (til alle i rommet)
 const TOURNAMENT_CHAT_MSG := "tournament_chat_msg" ## { id, history, messages: [{ from, elo, text }] }  (history = hele loggen)
 
 ## Reaksjoner tilskuere kan sende (tegnes som ikoner, se ReactionView)
-const REACTIONS := ["heart", "star", "fire", "bolt"]
+const REACTIONS := ["heart", "fire", "laugh", "wow"]
 
 
 static func encode(msg: Dictionary) -> String:

@@ -32,6 +32,8 @@ func _ready() -> void:
 	if mode == "ai":
 		v.add_child(UI.section("Vanskelighetsgrad"))
 		v.add_child(UI.choice(BotProfile.level_names(), Settings.ai_level, func(i: int) -> void: Settings.ai_level = i))
+		v.add_child(UI.toggle_row("Trening", "Se hvem som leder, få vist beste trekk med forklaring, og angre trekk. Uten klokke.",
+			Settings.training, func(on: bool) -> void: Settings.training = on))
 
 	add_option_fields(v, options)
 
@@ -121,7 +123,7 @@ func _on_start() -> void:
 	Settings.save()
 	match mode:
 		"ai":
-			app.start_match(OfflineMatch.new(options, BotProfile.create(Settings.ai_level)))
+			app.start_match(OfflineMatch.new(options, BotProfile.create(Settings.ai_level), Settings.training))
 		"local":
 			app.start_match(OfflineMatch.new(options))
 		"online":

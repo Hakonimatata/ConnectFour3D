@@ -12,6 +12,7 @@ enum Style { SMOOTH, METAL, LAVA, GALAXY, HOLO, NEON, MARBLE, CARBON, STRIPES, A
 const DEFAULT_P1 := "ocean"
 const DEFAULT_P2 := "ember"
 const SIMILAR := 0.35            ## Fargeavstand som regnes som «for lik»
+const SIMILAR_LOOK := 0.15       ## Det samme for hele brikken (Oklab, snitt av hoved-, detalj- og UI-farge)
 
 ## a = hovedfarge (nederst), b = detaljfarge (øverst), ui = farge i menyer, ringer og effekter
 static var ALL: Array[Dictionary] = [
@@ -47,6 +48,9 @@ static var ALL: Array[Dictionary] = [
 	_skin("code", "Kode", Style.CODE, ["020a04", "3cff6a", "3cff6a"], ["0a0204", "ff3c5a", "ff3c5a"]),
 	_skin("toxic", "Giftig", Style.TOXIC, ["7cff1a", "e6ff5a", "9cff2a"], ["b04cff", "ff7af0", "c060ff"]),
 	_skin("blackhole", "Sort hull", Style.BLACK_HOLE, ["ff8a1f", "fff0c0", "ff9a3a"], ["4f7bff", "d6e4ff", "6f8fff"]),
+	# Runde 17: låses bare opp av prestasjoner (se core/progression.gd)
+	_skin("champion", "Gullmester", Style.KINTSUGI, ["120d05", "ffd76a", "f2c14e"], ["f6f1e4", "2a4fd0", "3f6ae0"]),
+	_skin("dawn", "Morgengry", Style.AURORA, ["2a0f2e", "ff9a5c", "ff8a6a"], ["0b1d3a", "5ce1f0", "4fd8e8"]),
 ]
 
 ## Merker på toppen av brikken (indeksen brukes i shaderen). Noen låses opp av Elo (EloTiers.DECAL_TIERS).
@@ -198,23 +202,50 @@ static func color_of(id: String) -> Color:
 
 
 ## Gjør to looks lette å skille. Hver spiller velger selv drakt (hjemme eller borte). Bare når
-## begge har samme skin og drakt, eller fargene er for like, bytter spiller 2 til den andre drakten.
-## Er den fortsatt for lik, byttes spiller 2 til en annen skin.
+## begge har samme skin og drakt, eller brikkene er ganske like (too_similar), bytter spiller 2 til den
+## andre drakten. Er den fortsatt for lik, byttes spiller 2 til en annen skin.
 static func resolve_pair(l1: Dictionary, l2: Dictionary) -> Array[Dictionary]:
 	var a := l1.duplicate()
 	var b := l2.duplicate()
 	a.away = bool(a.get("away", false))
 	b.away = bool(b.get("away", false))
-	if (a.skin == b.skin and a.away == b.away) or _distance(ui_color(a), ui_color(b)) < SIMILAR:
+	if (a.skin == b.skin and a.away == b.away) or too_similar(a, b):
 		b.away = not b.away
-	if _distance(ui_color(a), ui_color(b)) < SIMILAR:
+	if too_similar(a, b):
 		for candidate in [DEFAULT_P2, DEFAULT_P1, "lime", "violet"]:
 			b.skin = candidate
 			b.away = false
-			if _distance(ui_color(a), ui_color(b)) >= SIMILAR:
+			if not too_similar(a, b):
 				break
 	var out: Array[Dictionary] = [a, b]
 	return out
+
+
+## Er brikkene så like at de kan forveksles? Ser på hele brikken (hoved-, detalj- og UI-fargen) i
+## Oklab, der avstand følger hvordan øyet ser forskjell. Før så vi bare på UI-fargen i RGB, og
+## f.eks. Glør mot Kobber eller Is mot Opal ble ikke byttet.
+static func too_similar(l1: Dictionary, l2: Dictionary) -> bool:
+	var x := variant(l1)
+	var y := variant(l2)
+	if _distance(x.ui, y.ui) < SIMILAR:
+		return true
+	var d := 0.0
+	for k in ["a", "b", "ui"]:
+		d += _oklab(x[k]).distance_to(_oklab(y[k]))
+	return d / 3.0 < SIMILAR_LOOK
+
+
+static func _oklab(c: Color) -> Vector3:
+	var lin := func(v: float) -> float: return v / 12.92 if v <= 0.04045 else pow((v + 0.055) / 1.055, 2.4)
+	var r: float = lin.call(c.r)
+	var g: float = lin.call(c.g)
+	var b: float = lin.call(c.b)
+	var l := pow(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b, 1.0 / 3.0)
+	var m := pow(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b, 1.0 / 3.0)
+	var s := pow(0.0883024619 * r + 0.2817104540 * g + 0.6299787999 * b, 1.0 / 3.0)
+	return Vector3(0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+		1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+		0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)
 
 
 static func _distance(x: Color, y: Color) -> float:

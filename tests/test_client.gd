@@ -185,10 +185,13 @@ func test_touch_drag_scrolls_settings_without_pressing_buttons() -> void:
 	var old_skin := Settings.skin_id
 	var target: Button = null
 	for b in screen.find_children("*", "Button", true, false):
-		if (b as Button).icon != null and (b as Button).text == "Lava":
+		if (b as Button).icon != null and (b as Button).text == "Lime":
 			target = b
 	check(target != null, "fant skin-knappen")
 	check_eq(target.mouse_filter, Control.MOUSE_FILTER_PASS, "knapper i scroll slipper fingeren videre:")
+	scroll.ensure_control_visible(target)   # nivået (runde 17) står over skinsene
+	await _frames(2)
+	var scroll_before := scroll.scroll_vertical
 	var vp := get_window_viewport()
 	var to_window := vp.get_final_transform()   # UI-skalaen: fra lerretet til vindusposisjoner
 	var start := to_window * target.get_global_rect().get_center()
@@ -198,7 +201,7 @@ func test_touch_drag_scrolls_settings_without_pressing_buttons() -> void:
 		await _frames(1)
 	_touch(vp, start + Vector2(0, -160), false)
 	await _frames(2)
-	check(scroll.scroll_vertical >= 100, "innholdet fulgte fingeren (scroll = %d)" % scroll.scroll_vertical)
+	check(scroll.scroll_vertical - scroll_before >= 100, "innholdet fulgte fingeren (scroll = %d)" % scroll.scroll_vertical)
 	check_eq(Settings.skin_id, old_skin, "skin ble ikke valgt av et drag:")
 	Settings.skin_id = old_skin
 	app.get_window().size = old_size
@@ -251,6 +254,8 @@ func test_settings_preview_board_theme_and_fx() -> void:
 	await _frames(2)
 	var screen := _screen() as SettingsScreen
 	var old_elo := Settings.last_elo
+	var old_progress := Settings.last_progress
+	Settings.last_progress = { "xp": Progression.xp_for_level(30) }   # alt låst opp (runde 17)
 	Settings.last_elo = 1500   # «Lyn» krever platina
 	check_eq(app.board._pieces.size(), SettingsScreen.DEMO_LINE.size() + SettingsScreen.DEMO_P2.size(), "demo-stillingen vises:")
 	Settings.skin_id = "glass"
@@ -275,6 +280,7 @@ func test_settings_preview_board_theme_and_fx() -> void:
 	Settings.board_theme = old[3]
 	Settings.win_fx_id = old[4]
 	Settings.last_elo = old_elo
+	Settings.last_progress = old_progress
 	app.show_menu()
 	check(await wait_until(func() -> bool: return Engine.time_scale == 1.0, 2.0), "sakte film skal ikke henge igjen")
 
@@ -321,30 +327,42 @@ func test_puzzle_screen_can_be_solved() -> void:
 	app.show_puzzle()
 	await _frames(2)
 	var ps := _screen() as PuzzleScreen
-	var p := Puzzle.generate("2026-10-21")
-	ps.load_puzzle(p)
-	var sol := Puzzle.solution(p)
-	for i in range(0, sol.size(), 2):
-		ps.play(sol[i])
+	# Alle typene dagens oppgave kan ha (runde 17): løsningen løser den, og et feil trekk gir «Prøv igjen»
+	for kind in Puzzle.KINDS:
+		var day := _day_of_kind(kind)
+		var p := Puzzle.generate(day)
+		check_eq(str(p.get("kind", "forced")), kind, day)
+		ps.load_puzzle(p)
+		var sol := Puzzle.solution(p)
+		for i in range(0, sol.size(), 1 if kind == "defend" else 2):
+			ps.play(sol[i])
+			await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
+		check(ps._solved, "%s: oppgaven er løst" % kind)
+		check_eq(Settings.puzzle_day, day)
+		ps._retry()
+		check(not ps._solved and ps._attempts == 2, "nytt forsøk")
+		# Et trekk som ikke er løsningen (tvungen seier: som ikke truer noe), slipper motstanderen unna
+		var s := Puzzle.start_state(p)
+		for col in s.legal_moves():
+			if col != sol[0] and (kind != "forced" or not Puzzle._creates_threat(s, col, s.current_player)):
+				ps.play(col)
+				break
 		await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
-	check(ps._solved, "oppgaven er løst")
-	check_eq(Settings.puzzle_day, "2026-10-21")
-	ps._retry()
-	check(not ps._solved and ps._attempts == 2, "nytt forsøk")
+		check(ps._retry_button.visible, "%s: feil trekk gir «Prøv igjen»" % kind)
 	# Oppgavebanken: «Vanskelig» laster en oppgave med fem trekk
 	ps.set_mode(3)
 	check_eq(int(ps._puzzle.depth), 5)
 	check(ps._progress.text.contains("15"), "fremdriften vises")
 	ps.set_mode(0)
-	# Et trekk som ikke truer noe, slipper motstanderen unna
-	var s := Puzzle.start_state(p)
-	for col in s.legal_moves():
-		if not Puzzle._creates_threat(s, col, s.current_player):
-			ps.play(col)
-			break
-	await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
-	check(ps._retry_button.visible, "feil trekk gir «Prøv igjen»")
 	Engine.time_scale = 1.0
+
+
+## Første dag fra 21.10.2026 med denne typen dagens oppgave.
+static func _day_of_kind(kind: String) -> String:
+	var unix := int(Time.get_unix_time_from_datetime_string("2026-10-21T12:00:00"))
+	while Puzzle.kind_for(Time.get_date_string_from_unix_time(unix)) != kind:
+		unix += 86400
+	return Time.get_date_string_from_unix_time(unix)
 
 
 func test_global_chat_keeps_history_when_menu_is_rebuilt() -> void:
@@ -799,11 +817,11 @@ func test_online_lobby_room_and_game() -> void:
 		return (_screen() as RoomScreen)._preview_names.text.ends_with("Bo")
 	), "venterommet viser ikke motstanderen")
 	var old_skin := Settings.skin_id
-	(_screen() as RoomScreen)._pick_skin("copper")
+	(_screen() as RoomScreen)._pick_skin("oak")   # en åpen skin (gjester har ikke låst opp mer, runde 17)
 	check(await wait_until(func() -> bool:
 		poll_b.call()
 		var ps: Array = (_screen() as RoomScreen)._room.get("players", [])
-		return ps.size() > 0 and ps[0] is Dictionary and ps[0].skin == "copper"
+		return ps.size() > 0 and ps[0] is Dictionary and ps[0].skin == "oak"
 	), "skin-bytte i venterommet kom ikke fram")
 	Settings.skin_id = old_skin
 	Settings.save()
@@ -1041,8 +1059,9 @@ func test_chat_field_keeps_focus_after_sending() -> void:
 	chat.queue_free()
 
 
-## Menyen viser bare rangerte turneringer. Uranket finnes i turneringslisten, men ikke i hall of fame.
-func test_menu_and_hall_of_fame_only_show_ranked() -> void:
+## Urankede turneringer vises i menyen med påmelding, men bare rangerte vinnere hedres
+## (siste vinner i menyen og hall of fame).
+func test_menu_and_hall_of_fame_only_honor_ranked() -> void:
 	var menu := _screen() as MainMenu
 	var unranked := { "id": 1, "name": "Treningscup", "format": "knockout", "status": "open", "start_time": 2_000_000_000,
 		"players": 1, "max_players": 8, "options": {}, "ranked": false }
@@ -1050,7 +1069,7 @@ func test_menu_and_hall_of_fame_only_show_ranked() -> void:
 		"players": 2, "max_players": 8, "options": {}, "winner": "Ada", "finished_at": 2000, "ranked": false }
 	menu.show_tournaments([unranked, champ])
 	await _frames(1)
-	check(not menu._tour_box.visible, "uranket turnering vises ikke i menyen")
+	check(menu._tour_box.visible, "uranket turnering vises i menyen med påmelding")
 	check(not menu._champion.visible, "uranket vinner hedres ikke i menyen")
 	app.show_tournaments()
 	await _frames(2)
@@ -1060,7 +1079,9 @@ func test_menu_and_hall_of_fame_only_show_ranked() -> void:
 	list._on_message({ "t": Protocol.TOURNAMENT_LIST, "tournaments": [unranked, champ, ranked_champ], "admin": false })
 	await _frames(1)
 	var texts := list.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
-	check(texts.any(func(s: String) -> bool: return s.contains("Treningscup")), "uranket står i listen")
+	var labels := list.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(labels.has("Treningscup"), "uranket står i listen")
+	check(labels.any(func(s: String) -> bool: return s.contains(tr("Uranket"))), "merket «Uranket»")
 	check(texts.has("Bob"), "rangert vinner i hall of fame: %s" % str(texts))
 	check(not texts.has("Ada"), "uranket vinner ikke i hall of fame")
 
@@ -1104,3 +1125,153 @@ func test_backgrounds_can_be_chosen() -> void:
 		await _frames(1)
 		check_eq(int(app._background.get_shader_parameter("style")), int(b.style))
 	app.set_background("standard")
+
+
+## Turneringschatten er en fane i den globale chatten (samme komponent overalt).
+func test_global_chat_tournament_tab() -> void:
+	var chat := GlobalChat.new()
+	root.add_child(chat)
+	await _frames(1)
+	check(not chat._tour_tab.visible, "ingen fane uten turnering")
+	chat.set_tournament(5, "Cup")
+	check(chat._tour_tab.visible, "fanen vises")
+	chat._on_message({ "t": Protocol.TOURNAMENT_CHAT_MSG, "id": 5, "history": false,
+		"messages": [{ "from": "Ada", "elo": 1100, "text": "Lykke til!" }] })
+	check(chat._tour_tab.text.ends_with("•"), "prikk på fanen: %s" % chat._tour_tab.text)
+	check(not chat._log.get_parsed_text().contains("Lykke til!"), "ikke i Generelt")
+	chat.set_channel(GlobalChat.TOUR)
+	check(chat._log.get_parsed_text().contains("Lykke til!"), "i turneringsfanen")
+	chat._on_message({ "t": Protocol.TOURNAMENT_CHAT_MSG, "id": 6, "history": false,
+		"messages": [{ "from": "Bob", "text": "Feil turnering" }] })
+	check(not chat._log.get_parsed_text().contains("Feil turnering"), "andre turneringer ignoreres")
+	chat.set_tournament(0, "")
+	check(not chat._tour_tab.visible and chat.channel == "generelt", "fanen forsvinner")
+	chat.queue_free()
+	# Bare turneringsfanen (turneringssiden og i kamp)
+	var only := GlobalChat.new()
+	only.tournament_only = true
+	root.add_child(only)
+	await _frames(1)
+	only.set_tournament(5, "Cup")
+	check_eq(only.channel, GlobalChat.TOUR)
+	check(not only._tab_row.visible and not only._top.visible, "ingen faner eller topplinje")
+	only.queue_free()
+
+
+## Etter en turneringskamp går spilleren tilbake til turneringen, ikke til hovedmenyen.
+func test_tournament_player_returns_to_tournament_after_game() -> void:
+	MatchController.countdown_ms = 0
+	var start := { "options": { "must_block": false, "no_gift": false }, "first": 1, "you": 1,
+		"players": [{ "seat": 1, "name": "Ada", "skin": "ocean" }, { "seat": 2, "name": "Bob", "skin": "ember" }],
+		"clocks": [0, 0], "number": 1, "tournament": { "id": 7, "name": "Cup", "ranked": true }, "code": "ABCDE" }
+	var m := OnlineMatch.new(start)
+	app.start_match(m)
+	await _frames(2)
+	var gs := _screen() as GameScreen
+	m._on_message({ "t": Protocol.GAME_OVER, "result": 2, "reason": GameState.EndReason.RESIGN, "winner": 2,
+		"line": [], "clocks": [0, 0] })
+	await _frames(1)
+	check_eq(gs._result_leave.text, tr("Tilbake til turneringen"))
+	check(gs._analysis_label.visible, "AI-analysen vises under resultatet")
+	gs._leave()
+	await _frames(2)
+	check(_screen() is TournamentScreen, "tilbake på turneringssiden")
+	check_eq((_screen() as TournamentScreen).tournament_id, 7)
+
+
+## Antall runder og omtrentlig varighet (vises i skjemaet og i reglene).
+func test_tournament_rounds_and_duration_estimate() -> void:
+	check_eq(TournamentScreen.round_count("round_robin", 16, 0), 15)
+	check_eq(TournamentScreen.round_count("round_robin", 16, 5), 5)
+	check_eq(TournamentScreen.round_count("round_robin", 7, 0), 7, "oddetall: alle har fri én runde")
+	check_eq(TournamentScreen.round_count("knockout", 16, 0), 4)
+	var o := GameOptions.from_dict({ "time_base_s": 180, "time_increment_s": 2 })
+	var all := TournamentScreen.estimate_minutes(15, o, 120)
+	check(all > 90 and all < 150, "16 spillere alle mot alle med 3+2: ca. 2 timer (%d min)" % all)
+	check(TournamentScreen.estimate_minutes(5, o, 120) < 45, "5 runder er under 45 min")
+	check_eq(TournamentScreen.duration_text(45), I18n.t("%d min") % 45)
+	app.show_tournament_edit()
+	await _frames(2)
+	var edit := _screen() as TournamentEditScreen
+	check(not edit._rounds_box.visible, "antall runder vises bare for alle mot alle")
+	edit._format = 1
+	edit._rounds = 2
+	edit._update_estimate()
+	check(edit._rounds_box.visible)
+	check(edit._estimate.text.contains("(5 "), edit._estimate.text)
+
+
+## Mot Vanskelig: boten tenker litt hvert bilde, så spillet ikke fryser mens den tenker.
+func test_hard_bot_thinks_without_freezing_the_game() -> void:
+	var profile := BotProfile.create(BotProfile.Level.HARD)
+	profile.search_ms = 300
+	profile.think_time_s = 0.0
+	var m := OfflineMatch.new(GameOptions.new(), profile)
+	app.start_match(m)
+	await _frames(2)
+	m.submit_move(Vector2i(1, 1))
+	check(await wait_until(func() -> bool: return m.state.history.size() == 2), "åpningstrekket kommer med en gang")
+	var mine: Vector2i = m.state.legal_moves()[0]
+	m.submit_move(mine)
+	check_eq(m.state.history.size(), 3)
+	var longest := 0
+	var frames := 0
+	while m.state.history.size() < 4 and frames < 600:
+		var t := Time.get_ticks_usec()
+		await tree.process_frame
+		longest = maxi(longest, Time.get_ticks_usec() - t)
+		frames += 1
+	check_eq(m.state.history.size(), 4, "boten svarte")
+	check(frames > 5, "tenkte over flere bilder (%d)" % frames)
+	check(longest < 100_000, "ingen bilder hang (lengste %d ms)" % (longest / 1000))
+
+
+## Runde 17: trening mot AI. Stillingsmåleren vises, trekket ditt blir vurdert før boten svarer,
+## «Vis beste trekk» viser den grønne markøren, og «Angre» tar bort ditt trekk og botens svar.
+func test_training_reviews_moves_and_can_undo() -> void:
+	var profile := BotProfile.create(BotProfile.Level.MEDIUM)
+	profile.think_time_s = 0.0
+	var o := GameOptions.new()
+	o.time_base_s = 180
+	o.starter = "p1"
+	var m := OfflineMatch.new(o, profile, true)
+	check(m.training)
+	check_eq(m.options.time_base_s, 0, "trening er uten klokke")
+	app.start_match(m)
+	await _frames(2)
+	var screen := _screen() as GameScreen
+	check(screen._eval_bar.visible, "stillingsmåleren vises")
+	check(await wait_until(func() -> bool: return not screen._live.get_eval(m.state).is_empty()), "startstillingen vurderes")
+	m.submit_move(Vector2i(1, 1))
+	check(await wait_until(func() -> bool: return m.state.history.size() == 2), "boten svarer etter vurderingen")
+	check(screen._coach_label.text.begins_with(tr("Ditt trekk: %s") % ""), "trekket ditt ble vurdert: " + screen._coach_label.text)
+	screen._hint_button.pressed.emit()
+	check(await wait_until(func() -> bool: return screen._coach_label.text.begins_with(tr("Beste trekk (grønn): %s") % "")),
+		"beste trekk vises: " + screen._coach_label.text)
+	check(app.board._hints_root.get_child_count() > 0, "med markør")
+	check(m.undo(), "kan angre")
+	check_eq(m.state.history.size(), 0, "både ditt trekk og botens svar er borte")
+	check_eq(app.board._pieces.size(), 0, "brettet er tegnet på nytt")
+	check(not m.undo(), "ingenting mer å angre")
+	app.show_menu()
+	await _frames(2)
+
+
+## Runde 17: tilskuere (f.eks. i en turneringskamp) ser stillingsmåleren, spillerne ser den ikke.
+func test_spectators_see_who_is_ahead() -> void:
+	var players := [{ "seat": 1, "name": "Ada", "skin": "ocean" }, { "seat": 2, "name": "Bobo", "skin": "ember" }]
+	var watch := OnlineMatch.new({ "t": Protocol.GAME_SYNC, "options": {}, "first": 1, "you": 0, "players": players,
+		"moves": [[1, 1], [2, 2], [1, 2]], "clocks": [0, 0], "number": 1, "tournament": { "id": 3, "name": "Cup" } })
+	app.start_match(watch)
+	await _frames(2)
+	var screen := _screen() as GameScreen
+	check(screen._eval_bar.visible, "tilskueren ser stillingsmåleren")
+	check(await wait_until(func() -> bool: return not screen._live.get_eval(watch.state).is_empty()), "stillingen vurderes")
+	check(screen._eval_bar._known, "med en verdi")
+	var play := OnlineMatch.new({ "t": Protocol.GAME_START, "options": {}, "first": 1, "you": 1, "players": players,
+		"clocks": [0, 0], "number": 1 })
+	app.start_match(play)
+	await _frames(2)
+	check(not (_screen() as GameScreen)._eval_bar.visible, "spillerne ser den ikke")
+	app.show_menu()
+	await _frames(2)

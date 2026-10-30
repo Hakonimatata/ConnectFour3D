@@ -14,7 +14,8 @@ var back_to_menu := false   ## åpnet fra menyen: «Tilbake» går dit
 var _deleted := false       ## admin trykket «Slett»: når listen kommer, gå til turneringslisten
 var _clock_offset := 0      ## serverens klokke minus vår (sekunder), så nedtellingene stemmer
 var _ticking: Array = []    ## [etikett, funksjon som gir teksten] som oppdateres hvert sekund
-var _chat: ChatPanel
+var _chat: GlobalChat
+var _wanted_game := 0       ## partiet som er bedt om (reprise av en kamp, f.eks. finalen)
 
 
 func _init(p_app: ClientRoot, id: int, p_back_to_menu := false) -> void:
@@ -33,12 +34,14 @@ func _ready() -> void:
 	v.add_child(_status)
 	# Turneringschatten ligger utenfor innholdet, så den ikke tømmes når siden bygges på nytt
 	v.add_child(UI.section("Turneringschat"))
-	_chat = ChatPanel.new(false, "Skriv til turneringen…")
+	_chat = GlobalChat.new()
+	_chat.tournament_only = true
 	_chat.custom_minimum_size.y = 230
-	_chat.send_requested.connect(func(text: String) -> void:
-		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": text }))
+	_chat.profile_requested.connect(func(name: String) -> void: app.show_profile(name, back_to_menu))
 	v.add_child(_chat)
+	_chat.set_tournament(tournament_id, "")
 	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
+	Net.ensure_connected()
 	Net.message.connect(_on_message)
 	Net.connected.connect(_on_connected)
 	var second := Timer.new()
@@ -46,7 +49,6 @@ func _ready() -> void:
 	second.autostart = true
 	second.timeout.connect(_tick)
 	add_child(second)
-	Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": "" })   # det som er skrevet før
 	# Serveren sender endringer med en gang (view_tournament). Timeren er bare en reserve.
 	var timer := Timer.new()
 	timer.wait_time = 15.0
@@ -60,7 +62,6 @@ func _ready() -> void:
 ## gang, og en eldre server som ikke kjenner view_tournament, svarer likevel.
 func _on_connected(_resumed: bool) -> void:
 	_refresh()
-	Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": "" })
 
 
 ## Nå i serverens tid (unix-sekunder).
@@ -103,19 +104,27 @@ func _on_message(msg: Dictionary) -> void:
 				_admin = bool(msg.get("admin", false))
 				_you = int(msg.get("you", 0))
 				_rebuild()
-		Protocol.TOURNAMENT_CHAT_MSG:
-			if int(msg.get("id", 0)) == tournament_id:
-				if bool(msg.get("history", false)):
-					_chat.clear_log()
-				for m in msg.get("messages", []):
-					_chat.add_message(str(m.get("from", "")), str(m.get("text", "")), UI.ACCENT_HOVER)
 		Protocol.TOURNAMENT_LIST:
 			# Serveren svarer med listen når admin har slettet turneringen. Andre lister (f.eks. den
 			# hovedmenyen ba om rett før) skal ikke kaste deg ut av siden.
 			if _deleted:
 				app.show_tournaments()
+		Protocol.GAME_RECORD:
+			if _wanted_game != 0 and int(msg.game.get("id", 0)) == _wanted_game:
+				_wanted_game = 0
+				app.show_replay(msg.game, app.show_tournament.bind(tournament_id, back_to_menu))
 		Protocol.ERROR:
+			_wanted_game = 0
 			_status.text = I18n.server_text(msg)
+
+
+## Reprise av et parti i turneringen (finalen eller en annen kamp).
+func open_game(id: int) -> void:
+	if id <= 0:
+		return
+	_wanted_game = id
+	_status.text = tr("Henter partiet…")
+	Net.send({ "t": Protocol.GET_GAME, "id": id })
 
 
 func _rebuild() -> void:
@@ -146,6 +155,7 @@ func _rebuild() -> void:
 		var bracket := BracketView.new(t.rounds, _you, t.get("trophy", {}) if bool(t.get("with_trophy", true)) else {})
 		bracket.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bracket.watch_requested.connect(func(code: String) -> void: Net.send({ "t": Protocol.WATCH, "code": code }))
+		bracket.replay_requested.connect(open_game)
 		scroll.add_child(bracket)
 		_content.add_child(scroll)
 	# Pokalen står midt i treet; egen blokk bare uten tre, eller med vinneren når den er ferdig
@@ -186,6 +196,18 @@ func _rebuild() -> void:
 		var next := _plain(next_text.call(), "Muted")
 		_ticking.append([next, next_text])
 		_content.add_child(next)
+		# Klar? Trykker begge, starter kampen med en gang i stedet for å vente ut pausen
+		var me_first := int(mine_next.p1) == _you
+		var ready: Array = mine_next.get("ready", [false, false])
+		var i_am_ready := bool(ready[0 if me_first else 1])
+		var other_ready := bool(ready[1 if me_first else 0])
+		if i_am_ready:
+			var wait := UI.button("Venter på at motstanderen trykker «Klar»…", func() -> void: pass)
+			wait.disabled = true
+			_content.add_child(wait)
+		else:
+			_content.add_child(UI.button("Motstanderen er klar – start nå!" if other_ready else "Klar – start uten å vente",
+				func() -> void: _send(Protocol.TOURNAMENT_READY), "PrimaryButton"))
 
 	# --- Din neste kamp (du kastes inn når den starter, men knappen er her hvis du gikk ut)
 	var mine := _my_waiting_match()
@@ -257,12 +279,20 @@ func _rebuild() -> void:
 				var text := func() -> String: return _match_text(match_info)
 				_ticking.append([label, text])
 			var own_match := _you != 0 and _you in [int(m.p1), int(m.p2)]
+			var games: Array = m.get("games", [])
 			if m.status == "playing" and str(m.room) != "" and not own_match:
 				var row := UI.hbox(8)
 				label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				row.add_child(label)
 				var code := str(m.room)
 				row.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
+				_content.add_child(row)
+			elif m.status == "done" and not games.is_empty():
+				var row := UI.hbox(8)
+				label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(label)
+				var game_id := int(games[-1])
+				row.add_child(UI.button("Reprise", func() -> void: open_game(game_id)))
 				_content.add_child(row)
 			else:
 				_content.add_child(label)
@@ -275,6 +305,8 @@ func _rebuild() -> void:
 		row.add_theme_constant_override("v_separation", 8)
 		if t.status == "draft":
 			row.add_child(UI.button("Publiser", func() -> void: _admin_action("publish"), "PrimaryButton"))
+		if t.status != "cancelled":
+			row.add_child(UI.button("Endre", func() -> void: app.show_tournament_edit(_t)))
 		if t.status in ["draft", "open"]:
 			row.add_child(UI.button("Start nå", func() -> void: _admin_action("start")))
 			if bool(t.get("with_trophy", true)):
@@ -287,13 +319,26 @@ func _rebuild() -> void:
 			row.add_child(UI.button("Avlys", func() -> void: _admin_action("cancel")))
 		row.add_child(UI.button("Slett", func() -> void: _admin_action("delete")))
 		_content.add_child(row)
+		# Alle mot alle: admin kan endre antall runder helt til turneringen starter
+		if t.format == "round_robin" and t.status in ["draft", "open"]:
+			_content.add_child(UI.label("Antall runder", "Muted"))
+			var limits: Array = TournamentEditScreen.ROUND_LIMITS
+			var current := maxi(0, limits.find(int(t.get("max_rounds", 0))))
+			_content.add_child(UI.choice(limits.map(func(n: int) -> String: return tr("Alle") if n == 0 else str(n)), current,
+				func(i: int) -> void:
+					Net.send({ "t": Protocol.TOURNAMENT_UPDATE, "id": tournament_id, "data": { "max_rounds": limits[i] } })
+			))
 
 
 ## Reglene i klartekst: format, brett og tid, møtefrist, uavgjort, Elo og pokal.
 static func rules(t: Dictionary) -> Array:
 	var o := GameOptions.from_dict(t.get("options", {}))
 	var out := []
-	if t.get("format") == "round_robin":
+	var limit := int(t.get("max_rounds", 0))
+	if t.get("format") == "round_robin" and limit > 0:
+		out.append(I18n.t("Alle mot alle, men høyst %d runder: hver spiller spiller %d partier (én færre ved fri runde). Seier gir 1 poeng, uavgjort ½.") \
+			% [limit, limit])
+	elif t.get("format") == "round_robin":
 		out.append(I18n.t("Alle mot alle: alle møter alle én gang. Seier gir 1 poeng, uavgjort ½."))
 	else:
 		out.append(I18n.t("Utslag: taperen er ute, vinneren går videre til neste runde."))
@@ -301,6 +346,10 @@ static func rules(t: Dictionary) -> Array:
 	out.append(I18n.t("Spill: %s") % o.describe())
 	if o.has_clock():
 		out.append(I18n.t("Tid: %d min hver, pluss %d s per trekk. Går tiden ut, taper du.") % [o.time_base_s / 60, o.time_increment_s])
+	var players := maxi(int(t.get("players", 0)), 2)
+	var n := round_count(str(t.get("format", "")), players, limit)
+	out.append(I18n.t("Varighet: ca. %s (%d runder med %d spillere).") % [
+		duration_text(estimate_minutes(n, o, int(t.get("round_gap_s", 120)))), n, players])
 	out.append(I18n.t("Hvem som starter, byttes for hvert parti."))
 	out.append(I18n.t("Du kastes rett inn når kampen din begynner. Den starter når begge er i rommet."))
 	out.append(I18n.t("Møt opp innen %d min, ellers taper du på walkover. Pause mellom rundene: %d min.") \
@@ -311,7 +360,40 @@ static func rules(t: Dictionary) -> Array:
 		out.append(I18n.t("Uranket: partiene endrer ikke Elo."))
 	if bool(t.get("with_trophy", true)):
 		out.append(I18n.t("Vinneren får pokalen på profilen sin."))
+	var prize := str(t.get("prize", ""))
+	if prize != "":
+		out.append(I18n.t("Premie: vinneren låser opp «%s» (ellers %s).") % [Progression.item_name(prize),
+			Progression.requirement_text(prize).to_lower()])
+	if bool(t.get("ranked", true)):
+		out.append(I18n.t("XP etter plassering: vinneren 150, finalisten 75, semifinalistene 40, alle andre som spilte 20."))
 	return out
+
+
+## Antall runder: utslag log2(spillere), alle mot alle spillere − 1 (eller spillere ved oddetall),
+## men høyst max_rounds når admin har begrenset det.
+static func round_count(format: String, players: int, max_rounds: int) -> int:
+	players = maxi(players, 2)
+	if format == "round_robin":
+		var all := players - 1 if players % 2 == 0 else players
+		return mini(all, max_rounds) if max_rounds > 0 else all
+	var n := 0
+	while (1 << n) < players:
+		n += 1
+	return n
+
+
+## Omtrent hvor lang tid turneringen tar: en runde er ferdig når det tregeste partiet er ferdig. Med
+## klokke regnes 70 % av all tiden begge har (rundt 50 trekk), uten klokke 5 min, pluss pausen.
+static func estimate_minutes(rounds: int, o: GameOptions, gap_s: int) -> int:
+	var game_s := int((o.time_base_s * 2 + o.time_increment_s * 50) * 0.7) if o.has_clock() else 300
+	return int(ceil(rounds * (game_s + 3 + gap_s) / 60.0))
+
+
+## «45 min» eller «1 t 50 min».
+static func duration_text(minutes: int) -> String:
+	if minutes < 60:
+		return I18n.t("%d min") % minutes
+	return I18n.t("%d t %02d min") % [minutes / 60, minutes % 60]
 
 
 ## «Legg i kalender»: på nett åpnes en kalenderfil fra serveren (telefonen spør om du vil legge
@@ -356,6 +438,11 @@ func _trophy_block(t: Dictionary) -> Control:
 		texts.add_child(sub)
 		if int(t.get("finished_at", 0)) > 0:
 			texts.add_child(_plain(UI.format_time(int(t.finished_at)), "Muted"))
+		var final_id := int(t.get("final_game", 0))
+		if final_id > 0:
+			var watch := UI.button("Se finalen", func() -> void: open_game(final_id), "PrimaryButton")
+			watch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			texts.add_child(watch)
 		row.add_child(texts)
 		hero.add_child(row)
 		return hero

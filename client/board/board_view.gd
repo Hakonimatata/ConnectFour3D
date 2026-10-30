@@ -15,6 +15,7 @@ signal column_tapped(col: Vector2i, from_touch: bool)
 signal column_hovered(col: Vector2i)   ## (-1, -1) = ingen
 
 const NO_COLUMN := Vector2i(-1, -1)
+const BETTER := Color("5ce67a")  ## markøren for et bedre trekk (analysen og treningen)
 const SPACING := 1.0          ## Avstand mellom kolonner
 const LAYER := 0.52           ## Høyde per brikke
 const PIECE_SCALE := 4.0      ## piece.obj er 0,17 bred, 0,126 høy
@@ -301,18 +302,25 @@ func _set_marker_alpha(a: float) -> void:
 ## Viser pulserende hvite plasser (f.eks. der man må blokkere).
 func show_hints(positions: Array) -> void:
 	clear_hints()
+	add_hints(positions)
+
+
+## Legger til pulserende plasser uten å fjerne de andre. Grønn (BETTER) = et bedre trekk i analysen
+## og treningen, så den ikke forveksles med de hvite plassene som må blokkeres.
+func add_hints(positions: Array, color := Color(1, 1, 1)) -> void:
+	var strong := 0.4 if color == Color(1, 1, 1) else 0.6
 	for p in positions:
 		var h := MeshInstance3D.new()
 		h.mesh = _piece_mesh
 		h.scale = Vector3.ONE * PIECE_SCALE
 		h.position = grid_to_world(p)
 		h.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var m := _transparent(Color(1, 1, 1, 0.4))
+		var m := _transparent(Color(color, strong))
 		h.material_override = m
 		_hints_root.add_child(h)
 		var t := h.create_tween().set_loops()
-		t.tween_property(m, "albedo_color:a", 0.08, 0.5)
-		t.tween_property(m, "albedo_color:a", 0.4, 0.5)
+		t.tween_property(m, "albedo_color:a", strong * 0.2, 0.5)
+		t.tween_property(m, "albedo_color:a", strong, 0.5)
 
 
 func clear_hints() -> void:

@@ -97,6 +97,8 @@ func _show_stats(u: Variant) -> void:
 	head_text.add_child(tier_label)
 	head.add_child(head_text)
 	_stats_box.add_child(head)
+	if u.has("xp"):
+		_stats_box.add_child(LevelView.new(Progression.progress_of(u)))   # nivå og XP (runde 17)
 	_actions = UI.hbox(8)
 	_stats_box.add_child(_actions)
 	_update_actions()
@@ -112,6 +114,7 @@ func _show_stats(u: Variant) -> void:
 		["Lengste tvungne seier", tr("%d trekk") % int(s.best_forced_win) if int(s.best_forced_win) > 0 else "—"],
 		["Seire på tid / ga opp / walkover", "%d / %d / %d" % [int(s.wins_time), int(s.wins_resign), int(s.wins_walkover)]],
 		["Turneringer vunnet", str(int(s.tournaments_won))],
+		["Dagens oppgave på rad (nå / beste)", "%d / %d" % [int(s.puzzle_streak), int(s.best_puzzle_streak)]],
 	]
 	for r in rows:
 		var row := UI.hbox(10)

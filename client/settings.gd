@@ -22,6 +22,7 @@ var chat_presets: Array[String] = []   ## Egne hurtigmeldinger. Tom = standardme
 var language := "auto"
 var session_token := ""       ## Husket innlogging (nøkkel fra serveren)
 var last_elo := -1            ## Siste kjente Elo (låser opp merker også uten nett). -1 = aldri innlogget
+var last_progress := {}       ## Siste kjente XP og opplåste ting (Progression.progress_of). {} = aldri innlogget
 var puzzle_day := ""          ## Datoen for sist løste «Dagens oppgave"
 var look_pending := false     ## Utseendet er endret uten nett: kontoen får det ved neste innlogging
 var avatar := ""              ## Profilbilde (base64-JPEG fra AvatarData), "" = ingen
@@ -31,6 +32,7 @@ var vibration := true
 var server_url := ""          ## Tom = standard (se resolved_server_url)
 var last_options: Dictionary = {}
 var ai_level := 1
+var training := false            ## mot AI: treningsmodus (beste trekk, vurdering av trekkene, angre)
 
 
 func _ready() -> void:
@@ -48,6 +50,8 @@ func _ready() -> void:
 		language = str(cfg.get_value("app", "language", language))
 		session_token = str(cfg.get_value("account", "session", ""))
 		last_elo = int(cfg.get_value("account", "last_elo", -1))
+		var progress = cfg.get_value("account", "progress", {})
+		last_progress = progress if progress is Dictionary else {}
 		last_username = str(cfg.get_value("account", "last_username", ""))
 		solved_puzzles.assign(cfg.get_value("game", "solved_puzzles", []))
 		puzzle_day = str(cfg.get_value("game", "puzzle_day", ""))
@@ -62,6 +66,7 @@ func _ready() -> void:
 		server_url = str(cfg.get_value("app", "server_url", ""))
 		last_options = cfg.get_value("game", "options", {})
 		ai_level = int(cfg.get_value("game", "ai_level", ai_level))
+		training = bool(cfg.get_value("game", "training", training))
 	# Runde 10: bare kontoer har eget navn. Gjester får «Gjest» og et tall.
 	if not player_name.begins_with("Gjest "):
 		player_name = "Gjest %d" % (randi() % 9000 + 1000)
@@ -95,10 +100,18 @@ func set_chat_messages(msgs: Array[String]) -> void:
 			chat_presets.append(m.substr(0, 40))
 
 
-## Spillerens eget utseende (skin, merke, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen».
+## Spillerens eget utseende (skin, merke, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen»,
+## og skins og seiersanimasjoner du ikke har låst opp (nivå, runde 17), blir standard.
 func look() -> Dictionary:
 	var decal := decal_id if EloTiers.decal_unlocked(decal_id, known_elo()) else "none"
-	return Skins.look(skin_id, decal, win_fx_id, kit_away, decal_color_id)
+	return Progression.allowed_look(Skins.look(skin_id, decal, win_fx_id, kit_away, decal_color_id), progress())
+
+
+## XP og det som er låst opp: fra serveren når du er innlogget, ellers det sist kjente ({} for gjester).
+func progress() -> Dictionary:
+	if Net.is_logged_in() and Net.user.has("xp"):
+		return Progression.progress_of(Net.user)
+	return last_progress
 
 
 ## Navnet som vises: brukernavnet hvis du har konto, ellers gjestenavnet.
@@ -133,6 +146,7 @@ func save() -> void:
 	cfg.set_value("app", "version", VERSION)
 	cfg.set_value("account", "session", session_token)
 	cfg.set_value("account", "last_elo", last_elo)
+	cfg.set_value("account", "progress", last_progress)
 	cfg.set_value("account", "last_username", last_username)
 	cfg.set_value("game", "solved_puzzles", solved_puzzles)
 	cfg.set_value("game", "puzzle_day", puzzle_day)
@@ -143,6 +157,7 @@ func save() -> void:
 	cfg.set_value("app", "server_url", server_url)
 	cfg.set_value("game", "options", last_options)
 	cfg.set_value("game", "ai_level", ai_level)
+	cfg.set_value("game", "training", training)
 	cfg.save(PATH)
 	changed.emit()
 

@@ -1,8 +1,8 @@
 # Fire på rad i 3D
 
-Fire på rad på et 3D-brett (4×4×4 eller 5×5×5), laget i Godot 4.7. Spillet kan spilles mot AI (tre vanskelighetsgrader), med to spillere på samme enhet eller online mot venner. Det fungerer på PC og mobil (nettleser).
+Fire på rad på et 3D-brett (4×4×4 eller 5×5×5), laget i Godot 4.7. Spillet kan spilles mot AI (fire vanskelighetsgrader: Lett, Middels, Vanskelig og Ekspert, og en treningsmodus som viser beste trekk, vurderer hvert trekk og lar deg angre), med to spillere på samme enhet eller online mot venner. Det fungerer på PC og mobil (nettleser).
 
-Hvert parti starter med en nedtelling (3, 2, 1). Under *Innstillinger* velger du brikke, drakt, merke, seiersanimasjon, brett og bakgrunn (Standard, Nebula, Stjernehimmel eller Kaffebar).
+Hvert parti starter med en nedtelling (3, 2, 1). Etter partiet vurderer AI-en trekkene: treffsikkerhet for begge spillerne under resultatet, og i «Se partiet igjen» får hvert trekk en vurdering og et tips, med markøren der brikken heller burde lagt. Under *Innstillinger* velger du brikke, drakt, merke, seiersanimasjon, brett og bakgrunn (Standard, Nebula, Stjernehimmel eller Kaffebar).
 
 Alt er skrevet i GDScript i ett Godot-prosjekt. Klienten, AI-en og serveren bruker **samme regelmotor** (`core/`).
 
@@ -113,7 +113,9 @@ Online kan man spille som gjest, eller logge inn for å få statistikk, Elo-rati
 
 Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Nivåene låser også opp merker på brikken (krone, flamme, laurbær m.fl.). Serveren sjekker at du har låst dem opp.
 
-På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier å finne hver dag, med toppliste) og en **global chat** med hvor mange som er online. Bak menyen spilles de tre siste partiene på serveren av, ett om gangen. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
+**XP og nivåer** (runde 17): kontoer får XP for partier mot andre kontoer (mer for å slå sterkere spillere; minst 10 trekk, høyst 3 partier mot samme motstander per dag og 400 XP per dag fra partier), for dagens oppgave (mer for hver dag på rad) og for plassering i rangerte turneringer. Partier mot boten gir ikke XP. Nivåene låser opp skins og seiersanimasjoner. Noen låses bare opp ved å vinne en rangert turnering eller løse dagens oppgave 7 dager på rad, og admin kan sette en premie på en turnering. Reglene står i `core/progression.gd`, og serveren sjekker at andre bare ser det du har låst opp.
+
+På forsiden vises aktive turneringer, **Dagens oppgave** (med toppliste; typen bytter dag for dag mellom «Tving frem seier», «Vinn på N trekk» med stille trekk og «Finn beste trekk») og en **global chat** med hvor mange som er online. Bak menyen spilles de tre siste partiene på serveren av, ett om gangen. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
 
 **Hvor ligger dataene?** Serveren lagrer alt som lesbare JSON-filer i én mappe:
 - Kjører serveren fra prosjektet (`scripts\web.cmd`, `scripts\online.cmd` eller `godot … -- --server`), ligger de i `data/` i prosjektmappen. Mappen er i `.gitignore`.
@@ -147,7 +149,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (en ny tvungen seier �
 
 **Ugyldig JSON:** lagrer du `users.json` med en skrivefeil, beholder serveren brukerne den har i minnet og skriver en advarsel. Rett feilen og lagre på nytt.
 
-**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Treet har pokalen i midten (på smale skjermer går det fra venstre mot høyre med pokalen over finalen), og kamper som spilles nå kan trykkes på for å se på. Siden oppdateres med en gang noe skjer. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen. Admin kan bytte pokal på turneringssiden («Ny pokal») før turneringen starter. En turnering kan være uranket («Rangert» av): da endres ikke Elo, og den vises ikke i hovedmenyen, kunngjøres ikke og kommer ikke i hall of fame. «Pokal til vinneren» kan også slås av. Turneringssiden har nedtelling til start, regler i klartekst, «Legg i kalender» (kalenderfil fra `/kalender/<id>.ics`) og en turneringschat. Når kampen starter, kastes spillerne rett inn i rommet, og venterommet teller ned til walkover. I turneringskamper ser ikke spillerne det tilskuerne skriver, bare reaksjonene deres. Turneringslisten har en hall of fame med vinnerne av rangerte turneringer.
+**Turneringer:** admin lager dem i spillet under *Spill online → Turneringer → Ny turnering*. Velg navn, dag og klokkeslett med pilene (eller 18:00–21:00 med ett trykk), format, antall deltakere og pokalen vinneren får («Ny pokal» trekker en ny). Beskrivelse, regler, klokke, pauser og møtefrist ligger under «Flere valg». Den neste turneringen med åpen påmelding reklameres i hovedmenyen med «Meld meg på». Når en kamp starter, får begge varselet «Gå til kamp». Den som ikke møter innen fristen, taper på walkover. Deltakerne ser sin egen kamp øverst på turneringssiden og er markert i turneringstreet. Treet har pokalen i midten (på smale skjermer går det fra venstre mot høyre med pokalen over finalen), og kamper som spilles nå kan trykkes på for å se på. Siden oppdateres med en gang noe skjer. Vinneren får pokalen på profilen sin, og den siste vinneren vises i hovedmenyen. Admin kan bytte pokal på turneringssiden («Ny pokal») før turneringen starter. En turnering kan være uranket («Rangert» av): da endres ikke Elo, og den vises ikke i hovedmenyen, kunngjøres ikke og kommer ikke i hall of fame. «Pokal til vinneren» kan også slås av. Turneringssiden har nedtelling til start, regler i klartekst, «Legg i kalender» (kalenderfil fra `/kalender/<id>.ics`) og en turneringschat. Når kampen starter, kastes spillerne rett inn i rommet, og venterommet teller ned til walkover. I turneringskamper ser ikke spillerne det tilskuerne skriver, bare reaksjonene deres. Turneringslisten har en hall of fame med vinnerne av rangerte turneringer. Urankede turneringer vises også i hovedmenyen med påmelding, og den du er påmeldt står øverst med nedtelling. I pausen mellom rundene kan begge trykke «Klar» for å starte neste kamp med en gang. Den globale chatten får en «Turnering»-fane når du er påmeldt eller en turnering pågår.
 
 **Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Søk etter spillere (treff mens du skriver) og trykk «Legg til». Den andre får en forespørsel og godtar. Trykk på et navn (i chatten, «hvem er online», topplisten, søket eller vennelisten) for å se profilen, med «Legg til venn» rett der. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
 
@@ -209,13 +211,32 @@ godot --headless --path . --script res://tools/stress_tournament.gd -- --url ws:
 ```
 32 boter registrerer seg, melder seg på og spiller en hel utslagsturnering. Følg med på `http://localhost:9000/?turnering=1`. Til slutt skrives svartider og antall partier. `--level easy` gir raske boter, så svartiden måler serveren og ikke botene. Se også `--signup`, `--delay` og `--report`.
 
+**Boter mot boter** (måler AI-en: seiersprosent som starter og ikke, og tenketid per trekk):
+```
+godot --headless --path . -s res://tools/ai_arena.gd -- 4 20 vanskelig gammel
+godot --headless --path . -s res://tools/ai_arena.gd -- 4 12 dybde:4,parity_w=0 dybde:4
+godot --headless --path . -s res://tools/ai_arena.gd -- 5 8 ekspert vanskelig free
+```
+Argumentene: brettstørrelse, partier per farge, bot A og bot B (lett, middels, gammel = Vanskelig før runde 16, vanskelig, ekspert, `søk:<ms>` eller `dybde:<n>`, med vekter etter komma), og `free` for å slå av «må blokkere» og «ikke gi bort seier». Hver bot starter halvparten av partiene.
+
+**AI-analysen** (treffsikkerheten etter partiet) måles med `tools/review_check.gd`: botene spiller, og analysen skal gi den sterke boten høy treffsikkerhet og den svake lav:
+```
+godot --headless --path . -s res://tools/review_check.gd -- 4 4 ekspert lett
+```
+
+**Oppgavebanken til dagens oppgave** («Vinn på N trekk» og «Finn beste trekk», `ai/daily_bank.gd`) lages på forhånd, fordi de krever tunge søk. Det tar rundt en time for 30 av hver:
+```
+godot --headless --path . -s res://tools/make_daily_bank.gd -- 30
+```
+
 **Tester** kjøres lokalt (se «Kom i gang»). Det er ingen automatisk CI på GitHub (fjernet etter runde 12, så det ikke kommer e-post ved hver push).
 
 ## Mappestruktur
 
 ```
-core/      Regelmotoren: GameOptions, GameState, Lines, ChessClock (ren logikk)
-ai/        Bot og BotProfile (vanskelighetsgrader)
+core/      Regelmotoren: GameOptions, GameState, Lines, ChessClock (ren logikk), EloTiers og Progression (XP og opplåsing)
+ai/        Bot og BotProfile (vanskelighetsgrader), SearchBot (søket til Vanskelig og Ekspert), MoveReview (AI-analysen),
+           LiveEval (stillingsmåleren og treningen), Puzzle og oppgavebankene
 net/       Protokoll (meldingstyper) og nettverksklienten (autoload «Net»)
 server/    ServerMain (WebSocket) og Lobby (spillere, rom, partier, chat)
 client/    Alt det visuelle: brett, kamera, skjermer, effekter, innstillinger

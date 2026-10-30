@@ -436,3 +436,193 @@ Innspillene fra kanalen «innspill» under og etter FourInSpace Open, pluss tre 
 - bakgrunnene.
 
 Skjermbilder på mobil: turneringssiden, nedtellingen og bakgrunnene. Kalenderfilen og at spillet går raskere på slutten er ikke prøvd på en ekte telefon.
+
+## Runde 15 – AI-analyse av partiene, og flere innspill fra turneringskvelden (29.10.2026)
+
+**AI-analyse (fra Description.md, runde 15):** etter hvert parti vurderer den vanskelige boten hvert trekk. Den regner ut verdien av alle lovlige trekk, med samme evaluering som når den spiller, og sammenligner med trekket som ble spilt (`ai/move_review.gd`).
+- **Under resultatet:** «Treffsikkerhet (AI): Du 87 % · Bob 72 % (2 feil)». Begge spillerne får en vurdering. Mens analysen pågår, står «Analyserer partiet… 40 %».
+- **I «Se partiet igjen»:** hvert trekk får en vurdering (beste trekk, bra, unøyaktig, feil eller tabbe) i sin egen farge, og et kort tips. Markøren på brettet viser hvor brikken heller burde lagt. Eksempler på tips: «Du kunne vunnet med en gang der markøren står», «Motstanderen hadde tre på rad. Du måtte blokkere der markøren står», «Herfra kunne du tvunget frem seier…» og «Trekket lar motstanderen tvinge frem seier». Partier fra profilen («Siste partier») analyseres på samme måte.
+- **Hva som teller som tabbe:** å ikke vinne eller ikke blokkere når det står tre på rad. Å bomme på en tvungen seier, eller gi motstanderen en, er «feil». Det skjer ofte, og ellers ville nesten alt blitt rødt. Trekk der det bare fantes ett lovlig trekk, teller ikke.
+- **Ytelse:** analysen regnes ut litt etter litt, høyst 8 ms per bilde, ett motsvar om gangen, så skjermen ikke fryser. Tvangssøket er grunnere enn når boten spiller (dybde 4 på 4×4×4, 2 på 5×5×5). Målt på flere partier gir det samme vurdering. Et helt parti tar 1–2 s på 4×4×4 og ca. 7 s på 5×5×5 på PC. På mobil tar det lenger tid, men det skjer mens resultatet vises.
+
+**Innspill fra kanalen:**
+
+| Innspill | Løsning |
+|---|---|
+| «Påmelding på turnering bør være synlig fra hjemskjerm uansett» og «Turneringer som er unranked burde få påmelding i hovedmeny» | Urankede turneringer vises nå i menyen med «Meld meg på» og merket «Uranket». Bare rangerte vinnere hedres (siste vinner i menyen og hall of fame). |
+| «Tydeligere i hjem-menyen at man er påmeldt, gjerne med timer» | Er du påmeldt, kommer den turneringen øverst med «Du er påmeldt!» og en nedtelling i grønt («Starter om 25:00 · 5/8»). En pågående turnering du er med i, står med «Pågår nå · du er med». |
+| «Gjør chatten lik i turnering og general, bare med egen tab for turnering» | Den globale chatten får fanen «Turnering» når du er påmeldt eller en turnering pågår. Turneringssiden og turneringsfanen i kamp bruker samme chat (med Elo-merker, navnefarger og navn som kan trykkes på). Påmeldte får meldingene uten å ha siden oppe, og alle får dem mens turneringen pågår. |
+| «Automatisk bortefarger dersom de er ganske like» | Før ble bare nesten like farger oppdaget (RGB-avstand på én farge). Nå sammenlignes hele brikken (hoved-, detalj- og UI-farge) i Oklab, der avstand følger hvordan øyet ser forskjell. F.eks. Glør mot Kobber, Is mot Opal, Eik mot Kobber og Lime mot Giftig gir nå bortedrakt. Testen sjekker alle par av skins. |
+| «Bør kunne trykke ready og skippe ventingen» | I pausen mellom rundene har turneringssiden «Klar – start uten å vente». Når begge i kampen har trykket, starter den med en gang. Den andre får et banner: «Bob er klar for neste kamp …» med «Se». |
+| «Bedre reaction emojis, ut med stearinlyset» | Nye reaksjoner tegnet med kode: hjerte (med glans), flamme med tre tunger, lattermildt fjes med gledestårer, og overrasket fjes. |
+| «Etter et game i turnering fikk jeg ikke valg om å gå tilbake til turneringsoversikt» | Spillere i en turneringskamp får «Tilbake til turneringen» (i resultatet og i menyen), og forbindelsen holdes åpen. |
+| «Trenger ikke den meldingen som sier at man har blitt satt inn i et game» | Banneret er borte når du kastes inn i kampen. Det kommer bare hvis du er midt i et annet parti online, med «Gå til kamp». |
+| «Få inn spillet på Steam» | Ikke gjort, bare notert. |
+
+**Feil funnet underveis:** reprisen sa «X blokkerte.» etter et tvunget trekk, også når X ikke blokkerte. Nå står det bare når trekket faktisk blokkerte.
+
+**Testet:** 167 automatiske tester, alle grønne. Nye tester:
+- analysen (bommet på blokkering og seier, beste trekk, trinnene, små steg);
+- «Klar» i pausen;
+- turneringschatten til påmeldte og til alle mens den pågår;
+- turneringsfanen i den globale chatten;
+- tilbake til turneringen etter en kamp;
+- like skins.
+
+Skjermbilder på mobil: menyen med påmelding og turneringsfanen, reaksjonene, og reprisen med tips. Analysen er ikke tidsmålt i nettleser på telefon.
+
+## Runde 16 – Hvordan AI-en kan bli bedre (særlig på 5×5×5)
+
+Dette er bare forslag; ingen kode er endret. Nytt verktøy: `tools/ai_arena.gd` lar boter spille mot hverandre og måler seiersprosent og tenketid. Det kan brukes til å sjekke at en ny AI faktisk er bedre.
+
+**Målt (PC, med standardreglene):**
+
+| Oppsett | Resultat | Trekk per parti | Tenketid snitt / maks |
+|---|---|---|---|
+| 4×4×4 Vanskelig mot Vanskelig (20 partier) | starter 9, den andre 11 | 56 | 17 ms / 177 ms |
+| 4×4×4 Vanskelig mot Middels (40) | Vanskelig vant 40–0 | 30–33 | 15–24 ms / 568 ms |
+| 5×5×5 Vanskelig mot Vanskelig (8) | starter 6, den andre 2 | 30 | 149 ms / **2,1 s** |
+| 5×5×5 Vanskelig mot Middels (16) | Vanskelig vant 16–0 | 23–25 | 78–118 ms / 1,6 s |
+
+**Hvorfor den er svak på 5×5×5:**
+1. Boten søker ikke, den ser bare ett trekk og motstanderens svar. Bare tvangssøket (trusler på rad) går dypere. På 5×5×5 er det 25 kolonner og 3× så mange vinnerlinjer, og partiene avgjøres raskt (30 trekk mot 56 på 4×4×4).
+2. Evalueringen er lokal og ujustert. Den teller linjer gjennom cellen brikken lander i (vekt 1 på nesten alt). Den ser ikke på hele brettet: hvor mange levende trusler hver har, trusler over hverandre, eller paritet (hvem som «eier» trusler på oddetalls- og partallshøyder når brikkene faller ned).
+3. Motsvaret ignorerer reglene. Motstanderens svar velges fra alle åpne kolonner, ikke fra `legal_moves()`. Med «må blokkere» og «ikke gi bort seier» på (standard) feilvurderer den altså hva motstanderen faktisk kan gjøre.
+4. Den tenker på hovedtråden. Mot boten frøs spillet i opptil 2,1 s på PC på 5×5×5, og sannsynligvis flere sekunder i nettleser på mobil.
+5. Vanskelig er helt forutsigbar. Samme stilling gir alltid samme trekk, så en spiller kan lære en fast vinnervei.
+
+**Forslag, i rekkefølge:**
+1. **Tenk uten å fryse (lite, stor gevinst):** del søket opp over flere bilder med en tidsgrense (f.eks. 300 ms på mobil, 1 s på PC). Det samme ble gjort med analysen i runde 15. Tråder virker på PC, men ikke i web-eksporten uten trådstøtte.
+2. **Ekte søk:** negamax med alfa-beta, iterativ fordypning (søk dypere til tiden er ute) og transposisjonstabell (Zobrist-hash som oppdateres i `place`/`unplace`). Trekkrekkefølge: vinn, blokker, trusler, forrige beste trekk, midten. Tvangssøket brukes som forlengelse når det står trusler. Søket bruker `legal_moves()`, så reglene blir med.
+3. **Global evaluering med paritet:** `counts` har allerede antall brikker per linje. Gi poeng for linjer der bare én farge har brikker (f.eks. 1/5/30 for 1/2/3 brikker), mye for trusler som kan spilles nå, og ekstra for trusler over hverandre og trusler på «riktig» høyde (oddetall for den som starter). Dette er det viktigste for 5×5×5.
+4. **Juster vektene med selvspill:** la `tools/ai_arena.gd` spille ny mot gammel bot (f.eks. 200 partier, begge som starter). Ta bare i bruk en endring som vinner minst 55 %. Vektene kan finjusteres automatisk (endre én vekt, spill, behold om det ble bedre).
+5. **Åpningsbok:** de første 4–6 trekkene ferdig regnet ut for begge størrelser (som oppgavebanken). Det sparer tid og gir sterkere åpninger.
+6. **Nivåer etter tid og dybde, ikke bare av/på:** Lett = dybde 1 med mye tilfeldighet, Middels = dybde 2–3, Vanskelig = full tid, og gjerne et nytt «Ekspert». Litt tilfeldighet blant like gode trekk gjør Vanskelig mindre forutsigbar.
+7. **Raskere kode:** unngå `filter`/lambdaer og nye Array-er i det innerste søket, og bruk `PackedInt32Array` og hele tall. Senere kan søket flyttes til C++ (GDExtension) hvis det trengs. C# fungerer ikke i web-eksporten.
+
+**Spilldesign:** 5×5×5 med fire på rad avgjøres fort, og den som starter vinner oftest (6–2 mellom to like boter). Fem på rad på 5×5×5 kan vurderes som et valg, og bør sjekkes med arenaen.
+
+## Runde 16 (forts.) – Ny, mye sterkere bot, og flere ting fra admin (28.10.2026)
+
+**Ny søkemotor** (`ai/search_bot.gd`) for Vanskelig og nytt nivå Ekspert. Lett og Middels er som før. Søket bruker:
+- alfa-beta med iterativ fordypning, så det søker dypere til tiden er ute (Vanskelig 1 s, Ekspert 2,5 s);
+- transposisjonstabell (Zobrist-hash), PVS, drapstrekk og historikk for trekkrekkefølgen, og grunnere søk av sene trekk (LMR);
+- reglene («må blokkere» og «ikke gi bort seier») akkurat som `GameState.legal_moves()`;
+- tvungne trekk som ikke teller som dybde, og et taktisk søk etter egne trusler nederst i søket;
+- en vurdering av hele brettet: åpne linjer, trusler som ikke kan spilles ennå, laveste trussel i kolonnen, trusler over hverandre og høyden truslene står på;
+- egne tabeller som oppdateres for hvert trekk, én fast tabell for trekklistene, og evaluering bare av kolonner med trusler.
+
+**Tenker uten å fryse:** boten tenker 12 ms per bilde i spillet. Før kunne spillet fryse i over 2 s på 5×5×5.
+
+**Viktigste funn:** bare partallsdybder (2, 4, 6 …) brukes til å velge trekket. Med oddetallsdybde har motstanderen tur nederst i søket, og da overses våre egne trusselrekker. Målt med fast dybde mot den gamle boten: dybde 2 vant 96 %, dybde 4 75 %, men dybde 3 bare 19–34 %. Å sjekke motstanderens trusselrekker overalt hjalp på fast dybde, men kostet så mye tid at boten ble svakere (25 %), så den sjekken er av.
+
+**Målt mot den gamle Vanskelig** (`tools/ai_arena.gd`, begge som starter):
+
+| Oppsett | Resultat |
+|---|---|
+| 4×4×4, ny Vanskelig (0,7 s) | 12–0 |
+| 4×4×4, 250 ms | 15–1 (94 %) |
+| 4×4×4, 100 ms (omtrent en treg mobil) | 78 % |
+| 4×4×4 uten regler, 300 ms | 92 % |
+| 5×5×5, 300 ms | 8–0, ofte på under 12 trekk |
+
+**Om 5×5×5:** med fire på rad er tre på rad nederst med åpne ender allerede en dobbel trussel, akkurat som i gomoku. Boten ser det og vinner fort. Mennesker må blokkere åpne toere tidlig.
+
+**Turneringslisten på mobil:** hver turnering var én knapp med lang tekst, så kortet ble bredere enn skjermen. Nå er det rader der navnet kortes av og infoen brytes over flere linjer.
+
+**Antall runder i alle mot alle:** admin velger «Alle», 3, 5 eller 7 runder i skjemaet, og kan endre det på turneringssiden helt til start. Skjemaet viser hvor lenge turneringen tar, f.eks. «Varighet med 16 spillere: ca. 1 t 52 min (15 runder)». Reglene på turneringssiden sier antall runder og omtrentlig varighet.
+
+**Testet:** 174 automatiske tester, alle grønne. Nye tester:
+- søkets tabeller stemmer med regelmotoren på begge brettstørrelser;
+- søket slår den gamle boten;
+- tenkingen deles i små biter, og spillet fryser ikke mot Vanskelig;
+- søket vinner på 5×5×5;
+- alle nivåer spiller bare lovlige trekk;
+- alle mot alle med begrenset antall runder;
+- varighetsanslaget.
+
+Stresstesten av turneringer bruker den gamle Vanskelig, så den måler serveren og ikke tenketiden. Boten er ikke tidsmålt i nettleser på mobil, men den tenker i små biter der også.
+
+## Runde 17 – Bedre analyse, stillingsmåler, trening, XP og nye oppgaver (29.10.2026)
+
+**AI-analysen bruker den sterke boten.** Før så analysen bare ett trekk fram (den gamle boten), og Ekspert-boten fikk rundt 78 % på sine egne partier. Nå vurderes hver stilling én gang av søket fra runde 16 (dybde 4, høyst 0,5 s per stilling), slik sjakkprogrammer gjør det:
+- verdien gjøres om til vinnersjanse, og et trekk koster det vinnersjansen falt (samme kurve som Lichess bruker for treffsikkerhet);
+- når en spiller ender i tvunget tap som søket først så senere, får spillerens siste frie trekk skylden (ellers slapp tabben unna fordi resten var tvungne blokkeringer);
+- tipsene sier hva det bedre trekket gjør: to trusler, en trussel som må blokkeres, tre på rad som ikke kan blokkeres ennå, eller å stoppe motstanderens tre på rad.
+
+Målt med `tools/review_check.gd` (botene spiller, analysen gir karakterer):
+
+| Parti | Treffsikkerhet |
+|---|---|
+| Ekspert mot Lett | Ekspert 94–99 %, Lett 64–69 % |
+| Vanskelig mot Middels | Vanskelig 95–98 %, Middels 76–89 % |
+| Ekspert mot Ekspert | 85–92 % (lange partier der én må gjøre den avgjørende feilen) |
+
+Analysen tar rundt 0,2 s per trekk på PC.
+
+**Feilen med markøren «oppå» brikken:** markøren for det bedre trekket og plassene motstanderen måtte blokkere var begge hvite. Etter et trekk som lagde tre på rad, sto blokkeringsplassen ofte rett over brikken, og teksten sa «bedre der markøren står». Nå er det bedre trekket en grønn markør, og teksten sier «den grønne markøren». Det bedre trekket er alltid i en annen kolonne (testet).
+
+**Stillingsmåler («sjakkpila»):** en stolpe i spillernes farger som viser hvem som leder, med vinnersjansen («62 %») eller «Seier om 3». Den vises
+- i reprisen, for hvert trekk;
+- for tilskuere, også i turneringskamper (søker litt hvert bilde);
+- i treningen.
+
+Spillerne i et vanlig parti ser den ikke, siden det ville vært juks.
+
+**Trening mot AI** (bryter i oppsettet):
+- uten klokke;
+- «Vis beste trekk» med grønn markør og forklaring;
+- hvert av trekkene dine blir vurdert («Ditt trekk: Unøyaktig. Bedre: den grønne markøren …»). Boten venter til vurderingen er ferdig, og litt til hvis trekket kunne vært bedre, så du rekker å se markøren;
+- «Angre» tar bort ditt trekk og botens svar, også etter at partiet er slutt.
+
+**Reprise av finalen:** partiene lagres nå på turneringskampene. Eldre turneringer finner dem i partiloggen ved oppstart. En ferdig utslagsturnering har knappen «Se finalen» hos vinneren. Ferdige kamper har ▶ i treet og «Reprise» i rundelisten.
+
+**Admin kan endre turneringen** («Endre» på turneringssiden, samme skjema som «Ny turnering»):
+- før start kan alt endres;
+- mens den pågår: navn, beskrivelse, pause mellom rundene, møtefrist, pokal og premie;
+- etter at den er ferdig: navn og beskrivelse.
+
+**XP, nivåer og opplåsing** (`core/progression.gd`, sjekket på serveren):
+- **Partier mot en annen konto:** seier 20–50 XP (mer mot sterkere motstander), uavgjort 15, tap 8.
+  - Partiet må ha minst 10 trekk.
+  - Høyst 3 partier mot samme motstander per dag gir XP, og høyst 400 XP per dag fra partier, så to kontoer ikke kan «farme» hverandre.
+- **Dagens oppgave:** 25 XP, pluss 5 for hver dag på rad (høyst +50). 7 dager på rad låser opp skinnet «Morgengry».
+- **Rangert turnering:** vinneren 150, finalisten 75, semifinalistene 40, alle andre som spilte 20. Første turneringsseier låser opp «Gullmester».
+  - Admin kan sette en premie: en skin eller animasjon som ellers krever nivå. Vinneren får den.
+- **Partier mot boten gir ikke XP.** De spilles uten server, så de kan ikke sjekkes, og å slå Lett-boten skal ikke gi noe uansett.
+- **Nivåer:** 100 XP til nivå 2, og 50 mer for hvert nivå. Nivå 10 kommer ved 2 700 XP og nivå 20 ved 10 450.
+- **Hva som er låst:**
+  - 8 skins og 2 seiersanimasjoner er åpne for alle.
+  - De andre låses opp fra nivå 2 til nivå 30 (Sort hull).
+  - Nye nivåer på 5, 10, 15 … kunngjøres i chatten.
+- **Eksisterende kontoer:** de får XP ut fra statistikken sin, og beholder skinnet og animasjonen de bruker.
+- **Hvor det vises:** XP står i resultatet etter partiet, etter dagens oppgave og på profilen. Låste ting er dempet i innstillingene, med kravet («Nivå 10»).
+
+**Dagens oppgave i tre typer, dag for dag:**
+- «Tving frem seier», som før;
+- «Vinn på N trekk»: stille trekk er lov, det finnes ingen seier med bare trusler, og løsningen er entydig. De med vinnerlinje på kryss og tvers gjennom flere høyder kommer først;
+- «Finn beste trekk»: motstanderen truer med tvungen seier, og bare ett trekk redder deg. Bommer du, vises motstanderens første trekk i seieren.
+
+De to nye typene krever eksakt søk med stille trekk og er for tunge for serveren. Derfor lages de på forhånd (`tools/make_daily_bank.gd`, `ai/daily_bank.gd`), og serveren sjekker bare løsningen. Søkeboten har fått en eksakt modus (ingen forlengelser eller reduksjoner) til dette.
+
+Banken har 30 «Vinn på N trekk» (16 på 3 trekk, 14 på 4 trekk) og 30 «Finn beste trekk». Med tre typer på rundgang varer den i 90 dager før noe gjentas. Alle 60 er sjekket: løsningen godtas, «Vinn på N» har ingen seier med bare trusler, og svaret i «Finn beste trekk» holder. Å lage dem tok rundt 50 minutter.
+
+**Testet:** 189 automatiske tester, alle grønne. Nye tester:
+- analysen gir den sterke boten høy og den svake lav treffsikkerhet, og det bedre trekket er alltid i en annen kolonne;
+- treningen: vurdering, beste trekk og angre;
+- tilskuere ser stillingsmåleren, spillerne ikke;
+- reprise av finalen, også for gamle turneringer;
+- endring av en turnering før og under;
+- XP: grenser, oppgaverekke, turneringsplassering og premie;
+- låste skins vises ikke for andre;
+- alle tre typer dagens oppgave i skjermen;
+- oppgavene i banken.
+
+**Utsatt, eller bør diskuteres:**
+- **Partier mot boten gir ikke XP.** De spilles uten server og kan ikke sjekkes, så en endret klient kunne gitt seg selv XP. Skal sterke boter gi noe, bør det være en engangs prestasjon («slå Ekspert»), og vi må godta at den kan jukses til.
+- **Gjester og spill uten konto** får bare de 8 åpne skinsene og 2 animasjonene. Før hadde alle alt. Det er poenget med opplåsing, men det merkes for dem som bare spiller mot boten.
+- **Brett og bakgrunner er ikke låst**, bare skins og seiersanimasjoner, som innspillet nevnte.
+- **Eksklusive premier:** to nye skins (turneringsseier og 7 dager på rad). Nye seiersanimasjoner som bare kan vinnes, krever egen effektkode og design.
+- **Stillingsmåleren for spillerne selv i et parti** er ikke med, siden det ville vært juks. En spiller kan i teorien se på sitt eget parti som tilskuer fra en annen enhet.
+- **Oppgavebanken er endelig.** Kjør `tools/make_daily_bank.gd` på nytt for flere. Å lage dem på serveren i bakgrunnen (litt hvert sekund) går, men er mer arbeid.
+- **Treningen og analysen er ikke tidsmålt i nettleser på mobil.** Analysen har tak på 0,5 s per stilling, og i nettleseren blir den grunnere, ikke tregere.

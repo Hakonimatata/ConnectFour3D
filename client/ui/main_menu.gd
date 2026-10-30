@@ -32,6 +32,7 @@ var _tour_box: VBoxContainer
 var _tour_list: VBoxContainer
 var _badge: TextureRect
 var _chat: GlobalChat
+var _ticking: Array = []    ## [etikett, funksjon] for nedtellinger på turneringskortene (hvert sekund)
 var _who_name: Label
 var _account_button: Button
 var _admin_button: Button               ## bare for admin
@@ -147,6 +148,14 @@ func _ready() -> void:
 	tour_timer.autostart = true
 	tour_timer.timeout.connect(_ask_tournaments)
 	add_child(tour_timer)
+	var second := Timer.new()
+	second.wait_time = 1.0
+	second.autostart = true
+	second.timeout.connect(func() -> void:
+		for tick in _ticking:
+			if is_instance_valid(tick[0]):
+				(tick[0] as Label).text = (tick[1] as Callable).call())
+	add_child(second)
 	if Net.status == Net.Status.OFFLINE:
 		Net.connect_to_server("", false)
 	else:
@@ -410,7 +419,7 @@ func _update_badge() -> void:
 ## «Venner», med hvor mange som er online og en prikk ved nye forespørsler.
 ## Profilbildet (og fargen fra skinnet) ved navnet. Oppdateres når kontoens profil kommer ved innlogging.
 func _on_profile_synced() -> void:
-	_avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
+	_avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.look().skin))
 
 
 func _update_friends_button() -> void:
@@ -481,14 +490,16 @@ static func latest_champion(list: Array) -> Dictionary:
 	return done[0]
 
 
-## Bare rangerte turneringer vises og hedres her (uranket finnes bare i turneringslisten).
 ## Viser turneringer som pågår eller er åpne for påmelding (pågående først), og siste vinner.
+## Urankede vises også (med påmelding), men bare rangerte hedres som «siste turneringsvinner».
+## Chatten får en turneringsfane for turneringen du er påmeldt (eller som pågår).
 func show_tournaments(list: Array) -> void:
-	list = list.filter(func(t: Dictionary) -> bool: return bool(t.get("ranked", true)))
 	if list == _last_list and _tour_list.get_child_count() > 0:
 		return   # listen hentes hvert 20. sekund: ikke bygg alt på nytt når ingenting er endret
 	_last_list = list.duplicate(true)
-	var champ := latest_champion(list)
+	var chat_t := chat_tournament(list)
+	_chat.set_tournament(int(chat_t.get("id", 0)), str(chat_t.get("name", "")))
+	var champ := latest_champion(list.filter(func(t: Dictionary) -> bool: return bool(t.get("ranked", true))))
 	_champion.visible = not champ.is_empty()
 	if not champ.is_empty():
 		_champion_id = int(champ.id)
@@ -500,6 +511,7 @@ func show_tournaments(list: Array) -> void:
 	for c in _tour_list.get_children():
 		_tour_list.remove_child(c)
 		c.queue_free()
+	_ticking.clear()
 	var active := list.filter(func(t: Dictionary) -> bool: return t.get("status") in ["running", "open"])
 	active.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return TournamentScreen.status_order(a.status) < TournamentScreen.status_order(b.status) \
@@ -522,11 +534,31 @@ func show_tournaments(list: Array) -> void:
 
 
 ## Den neste turneringen som er åpen for påmelding (starter først), eller {}.
+## Turneringen chatten får en fane for: den du er med i som pågår, så den du er påmeldt, så en
+## som pågår. {} = ingen.
+static func chat_tournament(list: Array) -> Dictionary:
+	var score := func(t: Dictionary) -> int:
+		var joined := bool(t.get("joined", false))
+		match str(t.get("status", "")):
+			"running": return 3 if joined else 1
+			"open": return 2 if joined else 0
+		return -1
+	var best := {}
+	for t in list:
+		if score.call(t) > 0 and (best.is_empty() or score.call(t) > score.call(best)):
+			best = t
+	return best
+
+
 static func next_signup(list: Array) -> Dictionary:
 	var open := list.filter(func(t: Dictionary) -> bool: return t.get("status") == "open")
 	if open.is_empty():
 		return {}
-	open.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.start_time) < int(b.start_time))
+	# Den du er påmeldt kommer først (så du ser nedtellingen), ellers den som starter først
+	open.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		if bool(a.get("joined", false)) != bool(b.get("joined", false)):
+			return bool(a.get("joined", false))
+		return int(a.start_time) < int(b.start_time))
 	return open[0]
 
 
@@ -551,7 +583,7 @@ func _promo_card(t: Dictionary) -> PanelContainer:
 	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var kicker := UI.label("Turnering – meld deg på!", "Muted")
+	var kicker := UI.label("Du er påmeldt!" if bool(t.get("joined", false)) else "Turnering – meld deg på!", "Muted")
 	kicker.add_theme_color_override("font_color", Color("a9c1f2"))
 	texts.add_child(kicker)
 	var name := UI.label(str(t.name))
@@ -560,8 +592,18 @@ func _promo_card(t: Dictionary) -> PanelContainer:
 	name.clip_text = true
 	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	texts.add_child(name)
-	var when := "%s · %d/%d" % [UI.format_when(int(t.start_time)), int(t.players), int(t.max_players)]
-	var sub := UI.label(when, "Muted")
+	var start := int(t.start_time)
+	var joined_now := bool(t.get("joined", false))
+	var when_text := func() -> String:
+		var left := start - int(Time.get_unix_time_from_system())
+		var count := "%d/%d" % [int(t.players), int(t.max_players)]
+		if joined_now and left > 0:
+			return tr("Starter om %s") % TournamentScreen.countdown_text(left) + " · " + count
+		return "%s · %s" % [UI.format_when(start), count]
+	var sub := UI.label(when_text.call(), "Muted")
+	_ticking.append([sub, when_text])
+	if joined_now:
+		sub.add_theme_color_override("font_color", UI.SUCCESS)
 	sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	sub.clip_text = true
 	sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -603,6 +645,10 @@ func _tournament_button(t: Dictionary) -> Button:
 	b.custom_minimum_size.y = 58
 	b.icon = _dot_icon(UI.SUCCESS if running else UI.ACCENT)
 	var when := tr("Pågår nå") if running else tr("Påmelding åpen") + " · " + tr("starter %s") % UI.format_time(int(t.start_time))
+	if bool(t.get("joined", false)):
+		when = (tr("Pågår nå · du er med") if running else tr("Påmeldt") + " · " + tr("starter %s") % UI.format_time(int(t.start_time)))
+	if not bool(t.get("ranked", true)):
+		when += " · " + tr("Uranket")
 	b.text = "%s\n%s · %d/%d" % [t.name, when, int(t.players), int(t.max_players)]
 	var id := int(t.id)
 	b.pressed.connect(func() -> void:

@@ -163,7 +163,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.FRIEND: _friend(p, msg)
 		Protocol.USER_SEARCH: _search(p, str(msg.get("query", "")))
 		Protocol.TOURNAMENT_JOIN, Protocol.TOURNAMENT_LEAVE, Protocol.TOURNAMENT_CREATE, \
-		Protocol.TOURNAMENT_UPDATE, Protocol.TOURNAMENT_ACTION:
+		Protocol.TOURNAMENT_UPDATE, Protocol.TOURNAMENT_ACTION, Protocol.TOURNAMENT_READY:
 			_tournament_request(p, t, msg)
 		Protocol.LIST_ROOMS: _list_rooms(p)
 		Protocol.CREATE_ROOM: _create_room(p, msg, now)
@@ -573,21 +573,28 @@ func _game_over(room: Room, now: int) -> void:
 		moves.append([m.x, m.y])
 	var analysis := GameAnalysis.analyze(room.options, s.first_player, moves)
 	var elo := accounts.record_game(ids, s.winner(), s.end_reason, analysis, s.history.size(), room.ranked)
+	var xp := accounts.award_game_xp(ids, s.winner(), s.history.size(), elo, clock_s.call())
+	_publish_level_ups(ids, xp)
 	_publish_achievements(ids, s, analysis, elo)
 	_presence_dirty = true
-	store.append_game({
+	var game_id := store.append_game({
 		"time": Time.get_datetime_string_from_unix_time(clock_s.call(), true), "options": room.options.to_dict(),
 		"players": [_seat_record(room, 1), _seat_record(room, 2)], "first": s.first_player, "moves": moves,
 		"result": s.result, "reason": s.end_reason, "analysis": { "1": analysis[1], "2": analysis[2] },
 		"elo": elo, "tournament": room.match_id,
 	})
+	if room.match_id != "":
+		tournaments.add_game(room.match_id, game_id)   # reprisen av kampen (f.eks. finalen) på turneringssiden
 	_broadcast_all(last_game_message())   # hovedmenyen hos alle viser det siste partiet
 	var elo_json := {}
+	var xp_json := {}
+	for seat in xp:
+		xp_json[str(seat)] = xp[seat]
 	for seat in elo:
 		elo_json[str(seat)] = elo[seat]
 	_send_room(room, { "t": Protocol.GAME_OVER, "result": s.result, "reason": s.end_reason, "winner": s.winner(),
 		"line": Protocol.positions_to_json(s.winning_line), "clocks": _clocks(room, now), "elo": elo_json,
-		"analysis": { "1": analysis[1], "2": analysis[2] } })
+		"analysis": { "1": analysis[1], "2": analysis[2] }, "xp": xp_json })
 	if room.match_id != "":
 		var draw := s.result == GameState.Result.DRAW
 		var winner_uid: int = 0 if draw else ids[s.winner()]
@@ -621,7 +628,8 @@ func _players_info(room: Room) -> Array:
 			continue
 		var p: Player = players[id]
 		var user: Dictionary = store.users.get(p.user_id, {}) if p.user_id != 0 else {}
-		out.append({ "seat": seat, "name": p.name, "skin": p.skin, "decal": _decal_for(p), "win_fx": p.win_fx,
+		var look := _allowed_look(p)
+		out.append({ "seat": seat, "name": p.name, "skin": look.skin, "decal": _decal_for(p), "win_fx": look.win_fx,
 			"decal_color": p.decal_color, "away": p.away, "avatar": p.avatar,
 			"ready": room.ready[seat], "connected": p.peer != 0, "account": p.user_id != 0,
 			"elo": user.get("elo") if not user.is_empty() else null })
@@ -785,7 +793,7 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 	if id == 0 or not players.has(id):
 		return {}
 	var p: Player = players[id]
-	return { "name": p.name, "user": p.user_id, "skin": p.skin, "decal": _decal_for(p), "decal_color": p.decal_color,
+	return { "name": p.name, "user": p.user_id, "skin": _allowed_look(p).skin, "decal": _decal_for(p), "decal_color": p.decal_color,
 		"away": p.away,
 		"elo": _elo_of(p) }
 
@@ -832,8 +840,9 @@ func _tournament_chat(p: Player, id: int, text: String, now: int) -> void:
 		log.pop_front()
 	_tournament_chats[id] = log
 	var msg := { "t": Protocol.TOURNAMENT_CHAT_MSG, "id": id, "history": false, "messages": [entry] }
+	var t := tournaments.get_t(id)
 	for q: Player in players.values():
-		if q.peer != 0 and _follows_tournament(q, id):
+		if q.peer != 0 and _follows_tournament(q, t):
 			send.call(q.peer, msg)
 
 
@@ -851,8 +860,11 @@ func web_page(path: String, host: String) -> Dictionary:
 	return { "type": "text/calendar; charset=utf-8", "body": Tournaments.ics(t, link) }
 
 
-func _follows_tournament(q: Player, id: int) -> bool:
-	if q.viewing_tournament == id:
+## Får turneringschatten: alle når turneringen pågår (menyen har en turneringsfane), ellers de påmeldte,
+## de som har siden oppe, og de som spiller eller ser på en kamp i den.
+func _follows_tournament(q: Player, t: Dictionary) -> bool:
+	var id := int(t.id)
+	if t.status == "running" or q.viewing_tournament == id or (q.user_id != 0 and q.user_id in t.players):
 		return true
 	var room: Room = rooms.get(q.watching if q.watching != "" else q.room_code)
 	return room != null and room.match_id != "" and room.tournament_id == id
@@ -868,6 +880,7 @@ func _tournament_request(p: Player, t: String, msg: Dictionary) -> void:
 	match t:
 		Protocol.TOURNAMENT_JOIN: err = tournaments.join(id, p.user_id, now)
 		Protocol.TOURNAMENT_LEAVE: err = tournaments.leave(id, p.user_id)
+		Protocol.TOURNAMENT_READY: err = tournaments.ready(id, p.user_id, now)
 		_:
 			if not accounts.is_admin(p.user_id):
 				_error(p.peer, "admin_only", "Bare admin kan gjøre dette.")
@@ -1280,6 +1293,32 @@ func _decal_for(p: Player) -> String:
 	return p.decal if EloTiers.decal_unlocked(p.decal, _elo_of(p)) else "none"
 
 
+## Skin og seiersanimasjon andre ser: det spilleren har låst opp (runde 17). En gjest, eller en
+## endret klient, får standard i stedet for det som er låst.
+func _allowed_look(p: Player) -> Dictionary:
+	var progress := Progression.progress_of(store.users.get(p.user_id, {})) if p.user_id != 0 else {}
+	return Progression.allowed_look({ "skin": p.skin, "win_fx": p.win_fx }, progress)
+
+
+## Nytt nivå etter et parti: de runde nivåene (Progression.LEVEL_EVENTS) kunngjøres i den globale chatten,
+## og spilleren får den nye progresjonen (STATS), så det som er låst opp, kan brukes med en gang.
+func _publish_level_ups(ids: Array, xp: Dictionary) -> void:
+	for seat in xp:
+		var uid: int = ids[seat]
+		var r: Dictionary = xp[seat]
+		for level in range(int(r.level_before) + 1, int(r.level) + 1):
+			if level in Progression.LEVEL_EVENTS:
+				social.event("%s nådde nivå %d!", [accounts.username_of(uid), level], clock_s.call())
+		_push_progress(uid)
+
+
+## Sender brukerens oppdaterte konto (XP, nivå, opplåst) til alle enhetene hen er innlogget på.
+func _push_progress(uid: int) -> void:
+	var u: Dictionary = store.users.get(uid, {})
+	if not u.is_empty():
+		_notify_user(uid, { "t": Protocol.STATS, "user": accounts.public_info(u) })
+
+
 func _elo_of(p: Player) -> int:
 	return int(store.users.get(p.user_id, {}).get("elo", -1)) if p.user_id != 0 else -1
 
@@ -1293,7 +1332,10 @@ func _puzzle_solve(p: Player, msg: Dictionary) -> void:
 	if res.has("error"):
 		send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": false, "text": res.error, "key": res.error })
 		return
-	send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": true, "rank": res.rank, "first": res.first })
+	send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": true, "rank": res.rank, "first": res.first,
+		"xp": res.get("xp", {}), "streak": res.get("streak", 0) })
+	if res.has("xp"):
+		_push_progress(p.user_id)
 	if res.first:
 		social.event("%s løste dagens oppgave (nr. %d i dag).", [p.name, int(res.rank)], clock_s.call())
 	send.call(p.peer, puzzles.info_message(p.user_id, clock_s.call()))

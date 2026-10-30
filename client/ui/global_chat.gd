@@ -6,11 +6,15 @@ extends PanelContainer
 ## Kanalene «Generelt», «Velkommen» og «Innspill» (tilbakemeldinger) velges med faner. En prikk på fanen betyr
 ## nye meldinger der. Kunngjøringer vises i alle kanalene.
 ## På mobil er den kompakt: én linje med siste melding og en knapp som åpner hele chatten.
+## Er du påmeldt en turnering (eller den pågår), får chatten fanen «Turnering» (set_tournament).
+## Med tournament_only = true vises bare turneringsfanen; slik brukes den på turneringssiden og i kamp,
+## så turneringschatten ser lik ut overalt.
 
 signal toggled(open: bool)
 signal profile_requested(username: String)   ## trykket på et navn (innloggede spillere)
 
 const CHANNELS := ["generelt", "velkommen", "tilbakemelding"]
+const TOUR := "turnering"   ## turneringsfanen (meldingene kommer som tournament_chat_msg, ikke global_msg)
 const CHANNEL_NAMES := ["Generelt", "Velkommen", "Innspill"]
 const PLACEHOLDERS := ["Skriv til alle…", "Si hei!", "Ønsker, feil eller ros…"]
 const INTROS := ["",
@@ -23,6 +27,11 @@ var _unread := {}            ## kanal -> true
 var _messages: Array = []    ## alle meldingene vi har (alle kanaler)
 var _log_links: Array[String] = []   ## navnene det kan trykkes på i chatten ([url=l<indeks>])
 var _who_links: Array[String] = []   ## og i «hvem er online» ([url=w<indeks>])
+var tournament_id := 0       ## turneringen i turneringsfanen (0 = ingen fane)
+var tournament_only := false ## bare turneringsfanen (turneringssiden og i kamp)
+var _tour_tab: Button
+var _top: Control
+var _tab_row: Control
 
 var compact := false:
 	set(v):
@@ -51,6 +60,7 @@ func _ready() -> void:
 	var v := UI.vbox(6)
 	add_child(v)
 	var top := UI.hbox(8)
+	_top = top
 	_dot = UI.dot(UI.SUCCESS, 10)
 	_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(_dot)
@@ -108,6 +118,23 @@ func _ready() -> void:
 		)
 		tabs.add_child(b)
 		_tabs.append(b)
+	_tour_tab = Button.new()
+	_tour_tab.toggle_mode = true
+	_tour_tab.button_group = group
+	_tour_tab.theme_type_variation = "ChoiceButton"
+	_tour_tab.add_theme_font_size_override("font_size", 14)
+	_tour_tab.custom_minimum_size.y = 32
+	_tour_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tour_tab.clip_text = true
+	_tour_tab.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_tour_tab.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_tour_tab.visible = false
+	_tour_tab.pressed.connect(func() -> void:
+		Sfx.play("click")
+		set_channel(TOUR)
+	)
+	tabs.add_child(_tour_tab)
+	_tab_row = tabs
 	v.add_child(tabs)
 	_body.append(tabs)
 
@@ -151,18 +178,39 @@ func _ready() -> void:
 
 ## Bytter kanal: loggen viser bare den kanalen (og kunngjøringene).
 func set_channel(c: String) -> void:
-	channel = c if c in CHANNELS else CHANNELS[0]
+	channel = c if c in CHANNELS or (c == TOUR and tournament_id != 0) else CHANNELS[0]
 	_unread.erase(channel)
 	for i in _tabs.size():
 		_tabs[i].button_pressed = CHANNELS[i] == channel
-	_input.placeholder_text = tr(PLACEHOLDERS[CHANNELS.find(channel)])
+	_tour_tab.button_pressed = channel == TOUR
+	_input.placeholder_text = tr("Skriv til turneringen…") if channel == TOUR \
+		else tr(PLACEHOLDERS[CHANNELS.find(channel)])
 	_rebuild()
+
+
+## Turneringsfanen: id 0 fjerner den. Henter det som er skrevet før.
+func set_tournament(id: int, name: String) -> void:
+	if id == tournament_id:
+		return
+	tournament_id = id
+	_messages = _messages.filter(func(m: Dictionary) -> bool: return _channel_of(m) != TOUR)
+	_unread.erase(TOUR)
+	_tour_tab.visible = id != 0 and not tournament_only
+	_tour_tab.tooltip_text = name
+	if id != 0:
+		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": id, "text": "" })
+	if channel == TOUR and id == 0:
+		set_channel(CHANNELS[0])
+	elif tournament_only and id != 0:
+		set_channel(TOUR)
+	else:
+		_rebuild()
 
 
 func _rebuild() -> void:
 	_log.clear()
 	_log_links.clear()
-	var intro: String = INTROS[CHANNELS.find(channel)]
+	var intro: String = INTROS[CHANNELS.find(channel)] if channel in CHANNELS else ""
 	if intro != "":
 		_log.append_text("[color=#%s][i]%s[/i][/color]\n" % [UI.MUTED.to_html(false), _escape(tr(intro))])
 	for m in _messages:
@@ -174,6 +222,7 @@ func _rebuild() -> void:
 func _update_tabs() -> void:
 	for i in _tabs.size():
 		_tabs[i].text = tr(CHANNEL_NAMES[i]) + ("  •" if _unread.has(CHANNELS[i]) else "")
+	_tour_tab.text = tr("Turnering") + ("  •" if _unread.has(TOUR) else "")
 
 
 static func _channel_of(m: Dictionary) -> String:
@@ -182,6 +231,8 @@ static func _channel_of(m: Dictionary) -> String:
 
 func _on_connected(_resumed: bool) -> void:
 	_update_state()
+	if tournament_id != 0:
+		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": "" })   # kan ha gått glipp av noe
 
 
 func _process(_delta: float) -> void:
@@ -192,13 +243,30 @@ func _process(_delta: float) -> void:
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.GLOBAL_HISTORY:
+			var tour := _messages.filter(func(m: Dictionary) -> bool: return _channel_of(m) == TOUR)
 			_messages = (msg.get("messages", []) as Array).filter(func(m: Variant) -> bool: return m is Dictionary)
+			_messages.append_array(tour)
 			_unread.clear()
 			_rebuild()
 			if not _messages.is_empty():
 				_preview.text = _plain(_messages[-1])
 		Protocol.GLOBAL_MSG:
 			_append(msg)
+		Protocol.TOURNAMENT_CHAT_MSG:
+			if tournament_id != 0 and int(msg.get("id", 0)) == tournament_id:
+				var entries: Array = (msg.get("messages", []) as Array).map(func(m: Dictionary) -> Dictionary:
+					var e := m.duplicate()
+					e.kind = "chat"
+					e.channel = TOUR
+					return e)
+				if bool(msg.get("history", false)):
+					_messages = _messages.filter(func(m: Dictionary) -> bool: return _channel_of(m) != TOUR)
+					_messages.append_array(entries)
+					if channel == TOUR:
+						_rebuild()
+				else:
+					for e in entries:
+						_append(e)
 		Protocol.PRESENCE:
 			_online = int(msg.get("online", 0))
 			_playing = int(msg.get("playing", 0))
@@ -213,6 +281,15 @@ func add_entry(m: Dictionary) -> void:
 
 func _apply_compact() -> void:
 	if _toggle == null:
+		return
+	if tournament_only:
+		# Bare turneringschatten: ingen topplinje, «hvem er online» eller faner
+		for c in _body:
+			c.visible = true
+		_top.visible = false
+		_who.visible = false
+		_preview.visible = false
+		_tab_row.visible = false
 		return
 	var show_all := not compact or open
 	for c in _body:
@@ -233,7 +310,7 @@ func _append(m: Dictionary) -> void:
 	var c := _channel_of(m)
 	if c in [channel, "*"]:
 		_render(m)
-	elif c in CHANNELS:
+	elif c in CHANNELS or c == TOUR:
 		_unread[c] = true
 		_update_tabs()
 
@@ -267,7 +344,10 @@ func _send() -> void:
 	var t := _input.text.strip_edges()
 	if t == "" or not Net.is_online():
 		return
-	Net.send({ "t": Protocol.GLOBAL_CHAT, "text": t, "channel": channel })
+	if channel == TOUR:
+		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": tournament_id, "text": t })
+	else:
+		Net.send({ "t": Protocol.GLOBAL_CHAT, "text": t, "channel": channel })
 	_input.clear()
 	UI.refocus_chat(_input)
 

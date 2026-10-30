@@ -3,7 +3,7 @@ extends TestCase
 
 ## Filer med tekst som vises for spilleren
 const SOURCES := ["res://client", "res://core/game_options.gd", "res://core/game_state.gd",
-	"res://ai/bot_profile.gd", "res://net/net_client.gd", "res://server/lobby.gd", "res://server/accounts.gd",
+	"res://ai/bot_profile.gd", "res://ai/move_review.gd", "res://net/net_client.gd", "res://server/lobby.gd", "res://server/accounts.gd",
 	"res://server/tournaments.gd", "res://server/puzzles.gd"]
 
 ## Mønstre som fanger tekst som vises i UI-et

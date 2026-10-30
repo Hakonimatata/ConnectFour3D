@@ -3,6 +3,10 @@ extends PanelContainer
 ## Avspiller for et ferdig parti på brettet: hopp, fram og tilbake, spill av, og en tidslinje
 ## der tvungne trekk er markert. På brettet vises plassen motstanderen må blokkere.
 ## Brukes av resultatskjermen («Se partiet igjen») og av ReplayScreen (partier fra profilen).
+## Under står AI-ens vurdering av trekket (MoveReview): bra, unøyaktig, feil eller tabbe, med et kort
+## tips, og den grønne markøren viser hvor brikken heller burde lagt. De hvite plassene er det
+## motstanderen må blokkere (før var begge hvite, og det så ut som det bedre trekket sto oppå brikken).
+## Stillingsmåleren øverst viser hvem som leder etter trekket.
 
 signal closed
 
@@ -23,6 +27,11 @@ var _count: Label
 var _info: Label
 var _play_button: Button
 var _show_close := true
+var review: MoveReview          ## settes av resultatskjermen (allerede i gang), ellers lages den her
+var _review_label: Label
+var _eval_bar: EvalBar
+var _threat_hints: Array = []   ## plassene motstanderen må blokkere etter trekket som vises
+var _seen_evals := -1           ## så mange stillinger var vurdert sist teksten ble oppdatert
 static var _icons: Dictionary = {}
 
 
@@ -52,6 +61,14 @@ func _ready() -> void:
 	_info.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	top.add_child(_info)
 	v.add_child(top)
+	_eval_bar = EvalBar.new()
+	_eval_bar.colors = colors
+	v.add_child(_eval_bar)
+	_review_label = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_review_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(_review_label)
+	if review == null:
+		review = MoveReview.new(options, first_player, moves)
 
 	_timeline = ReplayTimeline.new()
 	_timeline.entries = entries
@@ -86,6 +103,14 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if review != null and not review.done():
+		var until := Time.get_ticks_usec() + 8000
+		while not review.done() and Time.get_ticks_usec() < until:
+			review.step()
+		# Venter på trekket som vises: oppdater fremdriften, eller vis vurderingen. Når analysen er
+		# ferdig, kan et tidligere trekk ha fått skylden for et tap (MoveReview._blame_hidden_losses).
+		if review.evals.size() != _seen_evals and (_seen_evals <= ply or review.done()):
+			_show_review()
 	if not _playing:
 		return
 	_timer -= delta
@@ -114,24 +139,59 @@ func seek(n: int, animate := false) -> void:
 	_count.text = tr("Trekk %d av %d") % [n, entries.size()]
 	_info.text = ""
 	_info.remove_theme_color_override("font_color")
-	if n == 0:
+	_threat_hints = []
+	if n > 0:
+		var e: Dictionary = entries[n - 1]
+		var me := int(e.player)
+		var opp := GameState.opponent(me)
+		if e.won:
+			_info.text = tr("%s fikk fire på rad!") % names[me]
+			_info.add_theme_color_override("font_color", ReplayTimeline.WIN)
+		elif e.double:
+			_info.text = tr("Dobbel trussel! %s kan ikke blokkere begge.") % names[opp]
+			_info.add_theme_color_override("font_color", ReplayTimeline.DOUBLE)
+			_threat_hints = e.threats
+		elif e.forced:
+			_info.text = tr("Tvunget trekk: %s må blokkere.") % names[opp]
+			_info.add_theme_color_override("font_color", ReplayTimeline.FORCED)
+			_threat_hints = e.threats
+		elif n >= 2 and entries[n - 2].forced and e.pos in entries[n - 2].threats:   # bare hvis trekket faktisk blokkerte
+			_info.text = tr("%s blokkerte.") % names[me]
+	_show_review()
+
+
+## AI-ens vurdering av trekk nummer ply (det siste som er lagt), stillingsmåleren og markørene: hvite
+## plasser motstanderen må blokkere, og grønn der brikken heller burde lagt.
+func _show_review() -> void:
+	if _review_label == null:
 		return
-	var e: Dictionary = entries[n - 1]
-	var me := int(e.player)
-	var opp := GameState.opponent(me)
-	if e.won:
-		_info.text = tr("%s fikk fire på rad!") % names[me]
-		_info.add_theme_color_override("font_color", ReplayTimeline.WIN)
-	elif e.double:
-		_info.text = tr("Dobbel trussel! %s kan ikke blokkere begge.") % names[opp]
-		_info.add_theme_color_override("font_color", ReplayTimeline.DOUBLE)
-		board.show_hints(e.threats)
-	elif e.forced:
-		_info.text = tr("Tvunget trekk: %s må blokkere.") % names[opp]
-		_info.add_theme_color_override("font_color", ReplayTimeline.FORCED)
-		board.show_hints(e.threats)
-	elif n >= 2 and entries[n - 2].forced:
-		_info.text = tr("%s blokkerte.") % names[me]
+	_seen_evals = review.evals.size() if review else 0
+	board.clear_hints()
+	board.add_hints(_threat_hints)
+	if review != null and review.evals.size() > ply:
+		var text: Array = review.eval_text(ply)
+		_eval_bar.set_eval(review.evals[ply], str(text[0]), int(text[1]))
+	else:
+		_eval_bar.set_unknown()
+	_review_label.remove_theme_color_override("font_color")
+	if ply == 0:
+		_review_label.text = ""
+		return
+	if review == null or review.results.size() < ply:
+		_review_label.text = tr("AI-en vurderer trekkene… %d %%") % roundi((review.progress() if review else 0.0) * 100.0)
+		return
+	var r: Dictionary = review.results[ply - 1]
+	_review_label.text = "%s: %s" % [names[int(r.player)], MoveReview.describe(r)]
+	_review_label.add_theme_color_override("font_color", GRADE_COLORS.get(str(r.grade), UI.MUTED))
+	var better: Vector3i = r.better
+	if better.x >= 0:
+		board.add_hints([better], BoardView.BETTER)
+
+
+const GRADE_COLORS := {
+	"best": Color("7ddc8a"), "good": Color("b8e0a0"), "inaccuracy": Color("ffd76a"),
+	"mistake": Color("ffa04a"), "blunder": Color("ff6b6b"),
+}
 
 
 func _toggle_play() -> void:

@@ -74,6 +74,16 @@ func _ready() -> void:
 	_picker.picked.connect(_on_avatar_picked)
 	add_child(_picker)
 
+	# --- Nivå og XP (runde 17): det som låser opp skins og seiersanimasjoner
+	v.add_child(UI.section("Nivå"))
+	var progress := Settings.progress()
+	v.add_child(LevelView.new(progress))
+	v.add_child(UI.label("Få XP ved å spille online mot andre, løse dagens oppgave (mer for hver dag på rad) og spille turneringer. Partier mot boten gir ikke XP.",
+		"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+	if Settings.last_username == "" and not Net.is_logged_in():
+		v.add_child(UI.label("Lag en konto under «Spill online» for å samle XP og låse opp flere skins og animasjoner.",
+			"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+
 	# --- Brikke
 	v.add_child(UI.section("Brikke"))
 	v.add_child(UI.label("Brettet viser drakten din mot den andre drakten. Har motstanderen samme skin og drakt, bytter gjesten til den andre.",
@@ -82,7 +92,7 @@ func _ready() -> void:
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
 	var group := ButtonGroup.new()
-	for skin in Skins.ALL:
+	for skin in Progression.sorted_skins(progress):
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
@@ -96,8 +106,9 @@ func _ready() -> void:
 		b.clip_text = true
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		b.tooltip_text = skin.name
-		b.button_pressed = skin.id == Settings.skin_id
+		b.button_pressed = skin.id == Settings.look().skin
 		var id: String = skin.id
+		_lock_if_needed(b, "skin:" + id, progress)
 		b.pressed.connect(func() -> void:
 			Sfx.play("click")
 			Settings.skin_id = id
@@ -126,12 +137,25 @@ func _ready() -> void:
 	))
 
 	v.add_child(UI.section("Seiersanimasjon"))
-	var fx_ids: Array = Skins.WIN_FX.map(func(d: Dictionary) -> String: return d.id)
-	v.add_child(UI.choice(Skins.WIN_FX.map(func(d: Dictionary) -> String: return d.name),
-		maxi(0, fx_ids.find(Settings.win_fx_id)), func(i: int) -> void:
-			Settings.win_fx_id = Skins.WIN_FX[i].id
+	var fx_flow := HFlowContainer.new()
+	fx_flow.add_theme_constant_override("h_separation", 6)
+	fx_flow.add_theme_constant_override("v_separation", 6)
+	var fx_group := ButtonGroup.new()
+	for fx in Skins.WIN_FX:
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_group = fx_group
+		b.theme_type_variation = "ChoiceButton"
+		b.text = fx.name
+		var fx_id: String = fx.id
+		b.button_pressed = fx_id == Settings.look().win_fx
+		_lock_if_needed(b, "fx:" + fx_id, progress)
+		b.pressed.connect(func() -> void:
+			Settings.win_fx_id = fx_id
 			play_fx_preview()
-	))
+		)
+		fx_flow.add_child(b)
+	v.add_child(fx_flow)
 	v.add_child(UI.button("Vis seiersanimasjonen", play_fx_preview))
 
 	v.add_child(UI.section("Brett"))
@@ -176,6 +200,18 @@ func _ready() -> void:
 
 	column.add_child(UI.button("Lagre", _on_back, "PrimaryButton"))   # fast nederst, alltid synlig
 	_refresh_avatar()
+
+
+## Låst skin eller seiersanimasjon (runde 17): kan ikke velges, er dempet, og viser hva som trengs
+## («Nivå 10», «Vinn en rangert turnering») i stedet for navnet.
+func _lock_if_needed(b: Button, item: String, progress: Dictionary) -> void:
+	if Progression.is_unlocked(item, progress):
+		return
+	b.disabled = true
+	b.tooltip_text = "%s · %s" % [tr(b.text), Progression.requirement_text(item)]
+	b.text = Progression.requirement_short(item)
+	b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	b.modulate.a = 0.55
 
 
 ## Merkene som knapper. Låste merker er grået ut og viser nivået som trengs.
@@ -260,7 +296,7 @@ func play_fx_preview() -> void:
 	var gen := _fx_generation
 	_place_demo()
 	app.board.highlight(DEMO_LINE)
-	WinFx.play(app.board, app.camera, DEMO_LINE, Skins.ui_color(Settings.look()), Settings.win_fx_id)
+	WinFx.play(app.board, app.camera, DEMO_LINE, Skins.ui_color(Settings.look()), Settings.look().win_fx)
 	await get_tree().create_timer(3.0, true, false, true).timeout
 	if is_inside_tree() and gen == _fx_generation:
 		_place_demo()
@@ -269,7 +305,7 @@ func play_fx_preview() -> void:
 func _refresh_avatar() -> void:
 	if _avatar_view == null:
 		return
-	_avatar_view.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.skin_id))
+	_avatar_view.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.look().skin))
 	_remove_avatar.disabled = Settings.avatar == ""
 
 

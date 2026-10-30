@@ -220,7 +220,30 @@
 - Forbedre analyse av spill: Bruk AI til å vurdere spillet ved å se hvor man legger i forhold til hva Ai verdsetter trekket. Dette kan gi en score for hvor bra man har spilt (rating på runden og på motstander). gi også kort tips per trekk dersom man brude lagt et annet sted feks. 
 
 
-## Senere
+## Runde 16
+
+- Forslag til å lage en bedre AI? Vil få den til å fungere bedre i 5x5x5 også. Den vi har nå er ikke designet for det. Gi forslag og tips på hvordan den kan gjøres bedre. 
+
+## Runde 17
+
+- beste bot bør brukes i analyse av spill. Nå sier den at spillet av boten selv (ekspert) har 78 % treffsikkerhet osv.
+
+- "sjakkpil" som indikerer hvem som leder. I analyse og under turnering.
+
+- Bug: bot i analyse sier at et annet trekk er bedre enn der jeg la, men det er oppå der jeg nettopp la som ikke gir mening.
+
+- Mulighet for å gå inn i siste turnering å se replay av finalen.
+
+- Finn en god løsning på premier på turneringer. Feks låste skins osv. Hva med å låse de opp? Noen kan være unike for turnering wins?Få inn progression. Mange av skinsene / animasjonene må unlockes! Lag en realistisk xp system som låser opp dette. Pass på at det ikke abuses helt. Feks lang streak på dagens må rewardes, men å slå en lett bot bør ikke rewardes i det hele tatt. et slags progression system
+
+- Mulig å endre på turneringsinnstillingene for admin.
+
+- Training mode mens man spiller mot ai. Vis beste trekk med begrunnelse feks. Kan også undo move.
+
+- Mer "spennende" dagnes utfordringer. Må ikke være kun tvungede trekk, men kan være "garantert seier på x antall trekk". Bare det er umulig å forsvare. Gjerne også hvor ting går litt på kryss og tvers. Dagens kan kan også være finn beste trekk.
 
 
-- progression. Mange av skinsene må unlockes! Lag en realistisk xp system som låser opp dette. Pass på at det ikke abuses helt.
+
+## Senere (ikke gjennomtenkt nok)
+
+- 

@@ -481,6 +481,14 @@ const EN := {
 	"Noen merker låses opp av Elo-nivået ditt. Merket viser hvilket nivå som trengs.": "Some decals are unlocked by your Elo rank. The badge shows which rank is needed.",
 	# Runde 10
 	"Ekspert": "Expert",
+	"Alle": "All",
+	"Antall runder": "Number of rounds",
+	"Hver spiller spiller så mange partier (én færre ved fri runde). Flest poeng vinner.":
+		"Each player plays this many games (one fewer with a bye). Most points wins.",
+	"Varighet med %d spillere: ca. %s (%d runder).": "Duration with %d players: about %s (%d rounds).",
+	"Alle mot alle, men høyst %d runder: hver spiller spiller %d partier (én færre ved fri runde). Seier gir 1 poeng, uavgjort ½.":
+		"Round robin, but at most %d rounds: each player plays %d games (one fewer with a bye). A win gives 1 point, a draw ½.",
+	"Varighet: ca. %s (%d runder med %d spillere).": "Duration: about %s (%d rounds with %d players).",
 	"Dagens": "Today's",
 	"Oppgaver": "Puzzles",
 	"Neste oppgave": "Next puzzle",
@@ -580,7 +588,6 @@ const EN := {
 	"Påmeldingen er åpen til start: %s (%s).": "Sign-up is open until the start: %s (%s).",
 	"Turnering – meld deg på!": "Tournament – sign up!",
 	"%d/%d påmeldt": "%d/%d signed up",
-	"Påmeldt": "Signed up",
 	# Runde 14: venner og kanaler
 	"Se": "View",
 	"Venner": "Friends",
@@ -693,4 +700,125 @@ const EN := {
 		"Your opponent didn't show up. You won by walkover and go on.",
 	"Hall of fame": "Hall of fame",
 	"%s · %s": "%s · %s",
+	# Runde 15 (forts.): AI-analyse og flere innspill
+	"Analyserer partiet… %d %%": "Analyzing the game… %d %%",
+	"Du": "You",
+	"%s %d %%": "%s %d %%",
+	"(%d feil)": "(%d errors)",
+	"Treffsikkerhet (AI): %s": "Accuracy (AI): %s",
+	"«Se partiet igjen» viser tips for hvert trekk.": "«Watch the game again» shows tips for every move.",
+	"AI-en vurderer trekkene… %d %%": "The AI is reviewing the moves… %d %%",
+	"Eneste lovlige trekk.": "The only legal move.",
+	"Beste trekk.": "Best move.",
+	"Bra trekk.": "Good move.",
+	"Unøyaktig.": "Inaccuracy.",
+	"Feil.": "Mistake.",
+	"Tabbe!": "Blunder!",
+	"Du er påmeldt!": "You're signed up!",
+	"Påmeldt": "Signed up",
+	"Starter om %s": "Starts in %s",
+	"Pågår nå · du er med": "Running now · you're in",
+	"Venter på at motstanderen trykker «Klar»…": "Waiting for your opponent to press «Ready»…",
+	"Motstanderen er klar – start nå!": "Your opponent is ready – start now!",
+	"Klar – start uten å vente": "Ready – start without waiting",
+	"Turneringen pågår ikke.": "The tournament isn't running.",
+	"Du har ingen kamp som venter.": "You have no upcoming match.",
+	"%s er klar for neste kamp. Trykk «Klar» på turneringssiden for å starte med en gang.":
+		"%s is ready for the next match. Press «Ready» on the tournament page to start right away.",
+	# Runde 17: analysen med søkeboten, stillingsmåleren og trening
+	"Du kunne vunnet med en gang der den grønne markøren står.": "You could have won right away where the green marker is.",
+	"Motstanderen hadde tre på rad. Du måtte blokkere der den grønne markøren står.":
+		"Your opponent had three in a row. You had to block where the green marker is.",
+	"Herfra kunne du tvunget frem seier på %d trekk. Første trekk: den grønne markøren.":
+		"From here you could have forced a win in %d moves. First move: the green marker.",
+	"Trekket lar motstanderen tvinge frem seier på %d trekk. Bedre: den grønne markøren.":
+		"This move lets your opponent force a win in %d moves. Better: the green marker.",
+	"Bedre: den grønne markøren gir to trusler samtidig.": "Better: the green marker makes two threats at once.",
+	"Bedre: den grønne markøren lager en trussel motstanderen må blokkere.":
+		"Better: the green marker makes a threat your opponent must block.",
+	"Bedre: den grønne markøren gir tre på rad som motstanderen ikke kan blokkere ennå.":
+		"Better: the green marker makes three in a row your opponent can't block yet.",
+	"Bedre: den grønne markøren stopper motstanderen fra å få tre på rad.":
+		"Better: the green marker stops your opponent from getting three in a row.",
+	"Den grønne markøren viser en bedre plass.": "The green marker shows a better spot.",
+	"Seier om %d": "Win in %d",
+	"Vunnet": "Won",
+	"Du kan vinne med en gang!": "You can win right away!",
+	"Blokker: motstanderen har tre på rad.": "Block: your opponent has three in a row.",
+	"Herfra kan du tvinge frem seier på %d trekk.": "From here you can force a win in %d moves.",
+	"Motstanderen kan tvinge frem seier uansett. Dette trekket holder lengst.":
+		"Your opponent can force a win anyway. This move holds out the longest.",
+	"Gir to trusler samtidig. Motstanderen kan bare blokkere én.": "Makes two threats at once. Your opponent can only block one.",
+	"Lager en trussel motstanderen må blokkere.": "Makes a threat your opponent must block.",
+	"Gir tre på rad som motstanderen ikke kan blokkere ennå.": "Makes three in a row your opponent can't block yet.",
+	"Stopper motstanderen fra å få tre på rad.": "Stops your opponent from getting three in a row.",
+	"Gir flest muligheter videre (åpne linjer og trusler).": "Gives the most chances later (open lines and threats).",
+	"Trening": "Training",
+	"Se hvem som leder, få vist beste trekk med forklaring, og angre trekk. Uten klokke.":
+		"See who's ahead, get the best move with an explanation, and undo moves. No clock.",
+	"Trening: «Vis beste trekk» gir et tips, og «Angre» lar deg prøve igjen.":
+		"Training: «Show best move» gives a tip, and «Undo» lets you try again.",
+	"Vis beste trekk": "Show best move",
+	"Angre": "Undo",
+	"Angre siste trekk": "Undo last move",
+	"Ingenting å angre.": "Nothing to undo.",
+	"Angret. Prøv et annet trekk!": "Undone. Try another move!",
+	"Ditt trekk: %s": "Your move: %s",
+	"Vurderer trekket ditt…": "Reviewing your move…",
+	"Du la før AI-en var ferdig med stillingen, så trekket ble ikke vurdert.":
+		"You moved before the AI had finished with the position, so the move wasn't reviewed.",
+	"AI-en tenker…": "The AI is thinking…",
+	"Beste trekk (grønn): %s": "Best move (green): %s",
+	# Runde 17: XP og opplåsing
+	"Nivå": "Level",
+	"Nivå %d": "Level %d",
+	"%d / %d XP": "%d / %d XP",
+	"+%d XP · Nivå %d": "+%d XP · Level %d",
+	"Ingen XP for dette partiet (for kort, eller mange mot samme motstander i dag).":
+		"No XP for this game (too short, or many games against the same opponent today).",
+	"Nytt nivå: %d!": "New level: %d!",
+	"Låst opp: %s": "Unlocked: %s",
+	"%d dager på rad!": "%d days in a row!",
+	"Få XP ved å spille online mot andre, løse dagens oppgave (mer for hver dag på rad) og spille turneringer. Partier mot boten gir ikke XP.":
+		"Earn XP by playing online against others, solving the daily puzzle (more for every day in a row) and playing tournaments. Games against the bot give no XP.",
+	"Lag en konto under «Spill online» for å samle XP og låse opp flere skins og animasjoner.":
+		"Create an account under «Play online» to earn XP and unlock more skins and animations.",
+	"Vinn en rangert turnering": "Win a ranked tournament",
+	"Løs dagens oppgave 7 dager på rad": "Solve the daily puzzle 7 days in a row",
+	"7 på rad": "7 in a row",
+	"Gullmester": "Champion",
+	"Morgengry": "Dawn",
+	"Dagens oppgave på rad (nå / beste)": "Daily puzzle streak (now / best)",
+	"%s nådde nivå %d!": "%s reached level %d!",
+	"Du fikk %d XP for «%s».": "You got %d XP for «%s».",
+	"Du fikk %d XP for «%s». Låst opp: %s!": "You got %d XP for «%s». Unlocked: %s!",
+	"Premie": "Prize",
+	"Vinneren låser opp premien med en gang, uansett nivå.": "The winner unlocks the prize right away, whatever their level.",
+	"Premie: vinneren låser opp «%s» (ellers %s).": "Prize: the winner unlocks «%s» (otherwise %s).",
+	"XP etter plassering: vinneren 150, finalisten 75, semifinalistene 40, alle andre som spilte 20.":
+		"XP by placing: the winner 150, the finalist 75, the semifinalists 40, everyone else who played 20.",
+	# Runde 17: endre turneringer og se finalen
+	"Endre": "Edit",
+	"Endre turnering": "Edit tournament",
+	"Turneringen har startet. Format, deltakere, tid og regler ligger fast.":
+		"The tournament has started. Format, players, time and rules are fixed.",
+	"Turneringen er avlyst.": "The tournament is cancelled.",
+	"Se finalen": "Watch the final",
+	"Reprise": "Replay",
+	"Henter partiet…": "Loading the game…",
+	# Runde 17: nye typer dagens oppgave
+	"Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan.":
+		"Win in %d moves! Threats alone won't do it here: you need a quiet move. Your opponent defends as well as it can.",
+	"Tips: let etter et trekk som forbereder to trusler samtidig, gjerne på kryss og tvers gjennom flere høyder.":
+		"Tip: look for a move that prepares two threats at once, maybe criss-crossing through several levels.",
+	"Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg.":
+		"Find the best move! Your opponent threatens to force a win, and only one move saves you.",
+	"Tips: se etter plassen motstanderen trenger for å lage to trusler samtidig, og ta den først.":
+		"Tip: look for the spot your opponent needs to make two threats at once, and take it first.",
+	"Ikke det trekket – nå slipper motstanderen unna. Prøv igjen!": "Not that move – now your opponent gets away. Try again!",
+	"Da kan motstanderen tvinge frem seier, og slik begynner den. Prøv igjen!":
+		"Then your opponent can force a win, and this is how it starts. Try again!",
+	"Ikke det trekket. Prøv igjen!": "Not that move. Try again!",
+	"Riktig! Det var det eneste trekket som redder deg. Løst på %d forsøk.":
+		"Correct! That was the only move that saves you. Solved in %d tries.",
 }

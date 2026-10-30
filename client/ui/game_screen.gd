@@ -24,14 +24,29 @@ var _replay: ReplayPlayer
 var _resign_button: Button
 var _leave_button: Button
 var _change_button: Button
+var _result_leave: Button            ## «Til hovedmenyen» / «Tilbake til turneringen» i resultatet
+var _review: MoveReview               ## AI-analysen av partiet (regnes ut litt etter litt etter partiet)
+var _analysis_label: Label
 var _chat_tabs: HBoxContainer        ## «Kamp» / «Turnering» (bare i turneringskamper)
-var _tchat: ChatPanel                 ## turneringschatten
+var _tchat: GlobalChat                ## turneringschatten (samme som i menyen og på turneringssiden)
 var _tab := 0                         ## 0 = kampen, 1 = turneringen
 var _match_tab: Button
 var _tour_tab: Button
 var _reactions: HBoxContainer         ## reaksjonsknappene (tilskuere)
 var _countdown: Label                  ## 3, 2, 1 før partiet
 var _countdown_shown := -1
+# Runde 17: stillingsmåleren (tilskuere og trening) og treneren (trening mot AI)
+const LIVE_SLICE_USEC := 5000          ## så lenge stillingsmåleren søker per bilde
+const BETTER_PAUSE_MS := 1800          ## treningen: så lenge boten venter når trekket ditt kunne vært bedre
+var _eval_bar: EvalBar
+var _live: LiveEval                    ## null når måleren ikke vises
+var _coach: PanelContainer             ## treningspanelet over bunnlinjen
+var _coach_label: Label
+var _hint_button: Button
+var _undo_result: Button               ## «Angre siste trekk» i resultatet (trening)
+var _hint_wanted := false              ## «Vis beste trekk» ble trykket før stillingen var vurdert
+var _bot_hold_until := 0               ## boten legger tidligst nå (treningen, se BETTER_PAUSE_MS)
+var _feedback_for := -1                ## antall trekk da vurderingen av trekket ditt sist ble vist
 
 
 func _init(p_app: ClientRoot, p_match: MatchController) -> void:
@@ -50,6 +65,9 @@ func _ready() -> void:
 	match_ctrl.chat_received.connect(_on_chat)
 	match_ctrl.info.connect(func(t: String) -> void: _show_status(t, UI.MUTED, 3.0))
 	match_ctrl.players_changed.connect(_refresh_players)
+	match_ctrl.undone.connect(_on_undone)
+	if _is_training():
+		(match_ctrl as OfflineMatch).gate = _bot_may_move
 	if match_ctrl is OnlineMatch:
 		var online := match_ctrl as OnlineMatch
 		online.reaction_received.connect(_on_reaction)
@@ -75,11 +93,18 @@ func _build_hud() -> void:
 	for side in ["left", "right", "top"]:
 		top.add_theme_constant_override("margin_" + side, 12)
 	add_child(top)
+	var top_box := UI.vbox(8)
+	top_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(top_box)
 	var cards := UI.hbox(10)
 	cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(cards)
+	top_box.add_child(cards)
 	for p in [1, 2]:
 		cards.add_child(_make_card(p))
+	# Stillingsmåleren under spillerne (tilskuere og trening): hvem som leder
+	_eval_bar = EvalBar.new()
+	_eval_bar.visible = false
+	top_box.add_child(_eval_bar)
 
 	# Bunn: meny, status, chat
 	var bottom := MarginContainer.new()
@@ -90,9 +115,14 @@ func _build_hud() -> void:
 	for side in ["left", "right", "bottom"]:
 		bottom.add_theme_constant_override("margin_" + side, 12)
 	add_child(bottom)
+	var bottom_box := UI.vbox(8)
+	bottom_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bottom.add_child(bottom_box)
+	if _is_training():
+		bottom_box.add_child(_build_coach())
 	var bar := UI.hbox(10)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bottom.add_child(bar)
+	bottom_box.add_child(bar)
 	bar.add_child(UI.button("Meny", _open_menu))
 	_status = UI.label("", "", HORIZONTAL_ALIGNMENT_CENTER)
 	_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -211,7 +241,8 @@ func _refresh_players() -> void:
 		if online.is_spectator():
 			_leave_button.text = tr("Tilbake til turneringen") if not online.tournament.is_empty() else tr("Slutt å se på")
 		else:
-			_leave_button.text = tr("Til hovedmenyen")
+			_leave_button.text = tr("Tilbake til turneringen") if not online.tournament.is_empty() else tr("Til hovedmenyen")
+		_result_leave.text = _leave_button.text
 	app.board.set_looks(match_ctrl.look_of(1), match_ctrl.look_of(2))
 	_highlight_turn()
 
@@ -267,6 +298,10 @@ func _build_result_overlay() -> void:
 	_result_reason = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_CENTER, true)
 	v.add_child(_result_title)
 	v.add_child(_result_reason)
+	_analysis_label = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_CENTER, true)
+	_analysis_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_analysis_label.visible = false
+	v.add_child(_analysis_label)
 	v.add_child(UI.spacer(6))
 	_rematch_button = UI.button("Spill igjen", func() -> void:
 		_rematch_button.disabled = match_ctrl.mode == "online"
@@ -275,20 +310,26 @@ func _build_result_overlay() -> void:
 	v.add_child(_rematch_button)
 	_change_button = UI.button("Endre innstillinger", change_settings)
 	v.add_child(_change_button)
+	_undo_result = UI.button("Angre siste trekk", _undo)
+	_undo_result.visible = _is_training()
+	v.add_child(_undo_result)
 	v.add_child(UI.button("Se partiet igjen", start_replay))
 	v.add_child(UI.button("Se på brettet", func() -> void: _result_overlay.visible = false))
-	v.add_child(UI.button("Til hovedmenyen", _leave))
+	_result_leave = UI.button("Til hovedmenyen", _leave)
+	v.add_child(_result_leave)
 
 
-## Tilskuere går tilbake til turneringen, spillere til hovedmenyen.
+## Turneringskamp (spillere og tilskuere): tilbake til turneringssiden. Ellers går tilskuere til
+## lobbyen og spillere til hovedmenyen.
 func _leave() -> void:
 	var online := match_ctrl as OnlineMatch
-	if online and online.is_spectator():
+	if online and not online.tournament.is_empty():
+		var id := int(online.tournament.id)
 		app.end_match()
-		if not online.tournament.is_empty():
-			app.show_tournament(int(online.tournament.id))
-		else:
-			app.show_online()
+		app.show_tournament(id)
+	elif online and online.is_spectator():
+		app.end_match()
+		app.show_online()
 	else:
 		app.show_menu()
 
@@ -320,6 +361,7 @@ func start_replay() -> void:
 	var names := { 1: str(match_ctrl.players[1].name), 2: str(match_ctrl.players[2].name) }
 	var colors := { 1: match_ctrl.color_of(1), 2: match_ctrl.color_of(2) }
 	_replay = ReplayPlayer.new(app.board, match_ctrl.options, s.first_player, s.history.duplicate(), names, colors)
+	_replay.review = _review
 	var holder := MarginContainer.new()
 	holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	holder.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -392,14 +434,14 @@ func _toggle_chat() -> void:
 func _setup_tournament_chat(online: OnlineMatch) -> void:
 	if _tchat != null or online.tournament.is_empty():
 		return
-	_tchat = ChatPanel.new(false, "Skriv til turneringen…")
+	_tchat = GlobalChat.new()
+	_tchat.tournament_only = true
 	_tchat.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tchat.visible = false
 	_chat.get_parent().add_child(_tchat)
-	_tchat.send_requested.connect(func(t: String) -> void: online.send_tournament_chat(t))
+	_tchat.set_tournament(int(online.tournament.id), str(online.tournament.get("name", "")))
 	_chat_tabs.visible = true
 	_show_tab(0)
-	online.send_tournament_chat("")   # hent det som er skrevet før
 	if online.is_spectator():
 		_chat.add_system(tr("Spillerne ser ikke det tilskuerne skriver her, bare reaksjonene."))
 
@@ -415,14 +457,10 @@ func _show_tab(i: int) -> void:
 	_match_tab.text = tr("Kamp")
 
 
-func _on_tournament_chat(messages: Array, history: bool) -> void:
+## Ny melding i turneringschatten (GlobalChat viser den): prikk på fanen hvis den ikke er åpen.
+func _on_tournament_chat(_messages: Array, history: bool) -> void:
 	if _tchat == null:
 		return
-	if history:
-		_tchat.clear_log()
-	for m in messages:
-		if m is Dictionary:
-			_tchat.add_message(str(m.get("from", "")), str(m.get("text", "")), UI.ACCENT_HOVER)
 	if not history and (not _chat_drawer.visible or _tab != 1):
 		_tour_tab.text = tr("Turnering") + " •"
 		if not _chat_drawer.visible:
@@ -452,6 +490,8 @@ func _on_started() -> void:
 		_replay.closed.emit()
 	_result_overlay.visible = false
 	_rematch_button.disabled = false
+	_review = null
+	_analysis_label.visible = false
 	app.board.setup(s.size)
 	_refresh_players()
 	# Tegn brikker som allerede finnes (f.eks. ved gjenkobling online).
@@ -465,6 +505,7 @@ func _on_started() -> void:
 	if online:
 		_setup_tournament_chat(online)
 		_reactions.visible = online.is_spectator()
+	_setup_live()
 	_countdown_shown = -1
 	WinFx.prewarm(app.board)
 
@@ -475,6 +516,10 @@ func _on_move_applied(_col: Vector2i, pos: Vector3i, player: int) -> void:
 	app.board.add_piece(pos, player)
 	Sfx.play("drop", 1.0 if player == 1 else 0.85)
 	Settings.vibrate(20)
+	if _live != null:
+		_hint_wanted = false
+		_live.update(match_ctrl.state)
+		_on_live_changed()
 
 
 func _on_move_rejected(text: String, hints: Array) -> void:
@@ -531,6 +576,8 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		if new_tier.id != EloBadge.tier(before).id:
 			var text := tr("Nytt nivå: %s!") if after > before else tr("Ned til %s")
 			_result_reason.text += "\n" + text % tr(new_tier.name)
+	if online and not online.last_xp.is_empty():
+		_result_reason.text += "\n" + xp_text(online.last_xp)
 	# Mellom partier kan innstillingene endres: alltid mot AI og lokalt, online bare av verten.
 	_change_button.visible = online == null or (online.tournament.is_empty() and online.my_seat() == 1)
 	_change_button.text = tr("Endre regler") if online else tr("Endre innstillinger")
@@ -538,6 +585,10 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 		_rematch_button.visible = false
 		_result_reason.text += "\n" + tr("Turnering: %s") % online.tournament.name
 	_show_status(_result_title.text, UI.TEXT, 0.0)
+	# AI-analysen: regnes ut i bakgrunnen mens resultatet vises
+	_review = MoveReview.new(match_ctrl.options, s.first_player, s.history.duplicate())
+	_analysis_label.visible = true
+	_update_analysis()
 
 	var delay := 0.4
 	if not line.is_empty():
@@ -559,6 +610,20 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 	await get_tree().create_timer(delay, true, false, true).timeout
 	if is_inside_tree() and match_ctrl.state == s and _replay == null:
 		_result_overlay.visible = true
+
+
+## «+35 XP · Nivå 6», og «Nivå 7! Låst opp: Lava» når noe nytt er nådd (runde 17). Brukes også av
+## dagens oppgave. Fikk partiet ingen XP (samme motstander for mange ganger i dag), står det.
+static func xp_text(xp: Dictionary) -> String:
+	var gained := int(xp.get("gained", 0))
+	var text := I18n.t("+%d XP · Nivå %d") % [gained, int(xp.get("level", 1))] if gained > 0 \
+		else I18n.t("Ingen XP for dette partiet (for kort, eller mange mot samme motstander i dag).")
+	if int(xp.get("level", 1)) > int(xp.get("level_before", 1)):
+		text += "\n" + I18n.t("Nytt nivå: %d!") % int(xp.level)
+	var unlocked: Array = xp.get("unlocked", [])
+	if not unlocked.is_empty():
+		text += "\n" + I18n.t("Låst opp: %s") % ", ".join(unlocked.map(func(item: String) -> String: return Progression.item_name(item)))
+	return text
 
 
 func _on_chat(from_name: String, text: String) -> void:
@@ -624,6 +689,37 @@ func _show_status(text: String, color: Color, duration: float) -> void:
 	_status_timer = duration
 
 
+## Litt av AI-analysen hvert bilde (høyst ca. 8 ms), så skjermen ikke fryser.
+func _step_review() -> void:
+	if _review == null or _review.done():
+		return
+	var until := Time.get_ticks_usec() + 8000
+	while not _review.done() and Time.get_ticks_usec() < until:
+		_review.step()
+	_update_analysis()
+
+
+## «Treffsikkerhet: Du 87 % · Bob 72 %» under resultatet (AI-ens vurdering av trekkene).
+func _update_analysis() -> void:
+	if _review == null:
+		return
+	if not _review.done():
+		_analysis_label.text = tr("Analyserer partiet… %d %%") % roundi(_review.progress() * 100.0)
+		return
+	var sum := _review.summary()
+	var me := match_ctrl.my_seat()
+	var parts := []
+	for p in ([me, GameState.opponent(me)] if me != 0 else [1, 2]):
+		var who := tr("Du") if p == me else str(match_ctrl.players[p].name)
+		var line := tr("%s %d %%") % [who, int(sum[p].accuracy)]
+		var errors := int(sum[p].mistakes) + int(sum[p].blunders)
+		if errors > 0:
+			line += " " + (tr("(%d feil)") % errors)
+		parts.append(line)
+	_analysis_label.text = tr("Treffsikkerhet (AI): %s") % "  ·  ".join(parts) + "\n" \
+		+ tr("«Se partiet igjen» viser tips for hvert trekk.")
+
+
 ## Nedtellingen før partiet: 3, 2, 1 midt på skjermen. Brikkene kan ikke legges før den er ferdig.
 func _update_countdown() -> void:
 	var left := match_ctrl.countdown_left_ms()
@@ -653,6 +749,9 @@ func _flash_countdown(text: String, color: Color) -> void:
 
 
 func _process(delta: float) -> void:
+	_step_review()
+	if _live != null and _live.step(LIVE_SLICE_USEC):
+		_on_live_changed()
 	_update_countdown()
 	if _status_timer > 0.0:
 		_status_timer -= delta
@@ -678,6 +777,139 @@ func _update_clocks() -> void:
 			if sec != _last_tick_s:
 				_last_tick_s = sec
 				Sfx.play("tick")
+
+
+# ---------------------------------------------------------------- Stillingsmåler og trening (runde 17)
+
+func _is_training() -> bool:
+	return match_ctrl is OfflineMatch and (match_ctrl as OfflineMatch).training
+
+
+## Stillingsmåleren vises for tilskuere og i treningen (ikke for spillerne i et vanlig parti).
+func _setup_live() -> void:
+	var online := match_ctrl as OnlineMatch
+	var show := _is_training() or (online != null and online.is_spectator())
+	_eval_bar.visible = show
+	if not show:
+		_live = null
+		return
+	if _live == null:
+		_live = LiveEval.new()
+	_eval_bar.colors = { 1: match_ctrl.color_of(1), 2: match_ctrl.color_of(2) }
+	_eval_bar.set_unknown()
+	_feedback_for = -1
+	_hint_wanted = false
+	_live.update(match_ctrl.state)
+	_on_live_changed()
+
+
+## Ny vurdering (eller ny stilling som ikke er vurdert ennå).
+func _on_live_changed() -> void:
+	var e := _live.get_eval(match_ctrl.state)
+	if e.is_empty():
+		_eval_bar.set_pending()
+	else:
+		_eval_bar.set_eval(float(e.p1), str(e.text), int(e.leader))
+	if _is_training():
+		_update_coach()
+
+
+## Treningen: vurderingen av trekket du nettopp gjorde (når stillingen før og etter er vurdert), og
+## beste trekk når du har bedt om det.
+func _update_coach() -> void:
+	var s := match_ctrl.state
+	var human := match_ctrl.my_seat()
+	var my_turn := not s.is_over() and s.current_player == human
+	_hint_button.disabled = not my_turn
+	var n := s.history.size()
+	var last_mine := n > 0 and (s.first_player if (n - 1) % 2 == 0 else GameState.opponent(s.first_player)) == human
+	if last_mine and _feedback_for != n:
+		var r := _live.judge_last(s)
+		if not r.is_empty():
+			_feedback_for = n
+			_set_coach(tr("Ditt trekk: %s") % MoveReview.describe(r), ReplayPlayer.GRADE_COLORS.get(str(r.grade), UI.MUTED))
+			var better: Vector3i = r.better
+			if better.x >= 0 and not s.is_over():
+				app.board.add_hints([better], BoardView.BETTER)
+				_bot_hold_until = Time.get_ticks_msec() + BETTER_PAUSE_MS
+		elif _live.is_busy():
+			_set_coach(tr("Vurderer trekket ditt…"), UI.MUTED)
+		else:
+			_feedback_for = n
+			_set_coach(tr("Du la før AI-en var ferdig med stillingen, så trekket ble ikke vurdert."), UI.MUTED)
+	if _hint_wanted and my_turn:
+		var e := _live.get_eval(s)
+		if e.is_empty():
+			_set_coach(tr("AI-en tenker…"), UI.MUTED)
+			return
+		_hint_wanted = false
+		var info: Dictionary = e.info
+		if info.get("best_pos", Vector3i(-1, -1, -1)).x >= 0:
+			app.board.add_hints([info.best_pos], BoardView.BETTER)
+		_set_coach(tr("Beste trekk (grønn): %s") % MoveReview.best_text(info, int(e.score)), BoardView.BETTER)
+
+
+func _set_coach(text: String, color: Color) -> void:
+	_coach_label.text = text
+	_coach_label.add_theme_color_override("font_color", color)
+
+
+## Treningen: boten venter til trekket ditt er vurdert (og litt til hvis det kunne vært bedre, så du
+## rekker å se den grønne markøren).
+func _bot_may_move() -> bool:
+	return _live == null or (not _live.get_eval(match_ctrl.state).is_empty() and Time.get_ticks_msec() >= _bot_hold_until)
+
+
+func _build_coach() -> PanelContainer:
+	_coach = PanelContainer.new()
+	_coach.add_theme_stylebox_override("panel", UI._box(UI.PANEL, UI.RADIUS, UI.BORDER, 12, 8))
+	var v := UI.vbox(6)
+	_coach.add_child(v)
+	_coach_label = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_coach_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_coach_label.text = tr("Trening: «Vis beste trekk» gir et tips, og «Angre» lar deg prøve igjen.")
+	v.add_child(_coach_label)
+	var row := UI.hbox(8)
+	_hint_button = UI.button("Vis beste trekk", func() -> void:
+		_hint_wanted = true
+		_update_coach()
+	, "PrimaryButton")
+	_hint_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(_hint_button)
+	var undo := UI.button("Angre", _undo)
+	undo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(undo)
+	v.add_child(row)
+	return _coach
+
+
+func _undo() -> void:
+	var offline := match_ctrl as OfflineMatch
+	if offline == null or not offline.undo():
+		_show_status(tr("Ingenting å angre."), UI.MUTED, 2.0)
+
+
+## Trekk ble angret: tegn brettet på nytt (også etter at partiet var slutt).
+func _on_undone() -> void:
+	var s := match_ctrl.state
+	_result_overlay.visible = false
+	_review = null
+	_analysis_label.visible = false
+	app.board.setup(s.size)
+	_refresh_players()
+	for i in s.cells.size():
+		if s.cells[i] != 0:
+			app.board.add_piece(s.lines.pos_of(i), s.cells[i], false)
+	app.board.input_enabled = true
+	_feedback_for = s.history.size()
+	_hint_wanted = false
+	_bot_hold_until = 0
+	if _coach_label:
+		_set_coach(tr("Angret. Prøv et annet trekk!"), UI.MUTED)
+	_update_turn_status()
+	if _live != null:
+		_live.update(s)
+		_on_live_changed()
 
 
 func _on_back() -> void:

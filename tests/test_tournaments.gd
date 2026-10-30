@@ -376,3 +376,157 @@ func test_tournaments_survive_restart() -> void:
 	check_eq(t.name, "Høstcup")
 	check_eq(t.status, "open")
 	check_eq(typeof(t.players[0]), TYPE_INT, "tall er heltall igjen etter JSON:")
+
+
+## «Klar» i pausen mellom rundene: når begge i neste kamp er klare, starter den med en gang.
+func test_ready_skips_the_break_between_rounds() -> void:
+	var id := _create()
+	var peers := {}
+	for i in 4:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var t := _t(id)
+	for m in t.rounds[0]:
+		_play_match(m, peers)
+	var final: Dictionary = t.rounds[1][0]
+	check_eq(final.status, "scheduled", "pause før finalen:")
+	_msg(peers[final.p1], { "t": "tournament_ready", "id": id })
+	check_eq(final.status, "scheduled", "én klar er ikke nok:")
+	check_eq(_last(peers[final.p2], "tournament_notice").args[0], lobby.accounts.username_of(final.p1),
+		"den andre får beskjed:")
+	_msg(peers[final.p2], { "t": "get_tournament", "id": id })
+	check_eq(_last(peers[final.p2], "tournament_state").tournament.rounds[1][0].ready, [true, false])
+	_msg(peers[final.p2], { "t": "tournament_ready", "id": id })
+	lobby.tick(now)
+	check_eq(final.status, "waiting", "begge klare: kampen starter uten å vente ut pausen:")
+	_msg(peers[final.p1], { "t": "tournament_ready", "id": id })
+	check_eq(_last(peers[final.p1], "error").code, "tournament", "ingen kamp å bli klar for nå")
+
+
+## Påmeldte får turneringschatten selv uten siden oppe, og alle får den mens turneringen pågår.
+func test_tournament_chat_reaches_participants() -> void:
+	var id := _create()
+	_user(2, "Bobo")
+	_user(3, "Cyra")
+	_user(4, "Dino")
+	_msg(2, { "t": "tournament_join", "id": id })
+	_msg(3, { "t": "tournament_join", "id": id })
+	_msg(3, { "t": "tournament_chat", "id": id, "text": "Gleder meg!" })
+	check_eq(_last(2, "tournament_chat_msg").messages[0].text, "Gleder meg!", "påmeldt:")
+	check(_last(4, "tournament_chat_msg").is_empty(), "ikke påmeldt og turneringen har ikke startet")
+	_advance(61)
+	now += 2000
+	_msg(2, { "t": "tournament_chat", "id": id, "text": "Lykke til!" })
+	check_eq(_last(4, "tournament_chat_msg").messages[0].text, "Lykke til!", "alle mens den pågår:")
+
+
+## Alle mot alle med høyst 2 runder (admin kan endre det før start): hver spiller spiller 2 partier.
+func test_round_robin_with_limited_rounds() -> void:
+	var id := _create("round_robin", { "max_rounds": 3 })
+	check_eq(int(_t(id).max_rounds), 3)
+	_msg(1, { "t": "tournament_update", "id": id, "data": { "max_rounds": 2 } })
+	check_eq(int(_t(id).max_rounds), 2, "admin endret antall runder:")
+	var peers := {}
+	for i in 6:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var t := _t(id)
+	check_eq(t.rounds.size(), 2, "bare 2 runder (ikke 5):")
+	for r in 2:
+		if r > 0:
+			_advance(31)
+		for m in t.rounds[r]:
+			if m.status == "waiting":
+				_play_match(m, peers)
+	check_eq(t.status, "finished", "ferdig etter 2 runder:")
+	var games := {}
+	for r in t.rounds:
+		for m in r:
+			for p in [m.p1, m.p2]:
+				games[p] = int(games.get(p, 0)) + 1
+	check(games.values().all(func(n: int) -> bool: return n == 2), "alle spilte 2 partier: %s" % str(games))
+	_msg(2, { "t": "list_tournaments" })
+	check_eq(int(_last(2, "tournament_list").tournaments[0].max_rounds), 2, "listen viser grensen:")
+
+
+## Runde 17: partiene lagres på kampene, så finalen (og de andre kampene) kan ses i reprise.
+func test_final_can_be_replayed() -> void:
+	var id := _create()
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var t := _t(id)
+	var final: Dictionary = t.rounds[0][0]
+	_play_match(final, peers)
+	check_eq(t.status, "finished")
+	check_eq((final.games as Array).size(), 1, "partiet er lagret på kampen")
+	var game_id := int(final.games[0])
+	check_eq(str(lobby.store.get_game(game_id).tournament), str(final.id))
+	_msg(2, { "t": "get_tournament", "id": id })
+	var pub: Dictionary = _last(2, "tournament_state").tournament
+	check_eq(int(pub.final_game), game_id, "«Se finalen»")
+	check_eq(int(pub.rounds[0][0].games[0]), game_id, "reprise av kampen")
+	_msg(2, { "t": "get_game", "id": game_id })
+	check_eq(int(_last(2, "game_record").game.id), game_id)
+	# Turneringer fra før runde 17 (uten partiene på kampene) finner dem i partiloggen ved oppstart
+	final.games = []
+	var again := Tournaments.new(lobby.store, lobby.accounts)
+	check_eq(int(Tournaments.final_game(again.get_t(id))), game_id)
+
+
+## Runde 17: admin kan endre turneringen. Før start alt, mens den pågår navn, pauser, møtefrist og pokal.
+func test_admin_can_edit_before_and_during() -> void:
+	var id := _create()
+	_msg(1, { "t": "tournament_update", "id": id, "data": { "name": "Vintercup", "format": "round_robin", "max_players": 8 } })
+	check_eq(_t(id).name, "Vintercup")
+	check_eq(_t(id).format, "round_robin")
+	check_eq(_t(id).max_players, 8)
+	for i in 3:
+		_user(i + 2, "Spiller%d" % i)
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	check_eq(_t(id).status, "running")
+	var start := int(_t(id).start_time)
+	_msg(1, { "t": "tournament_update", "id": id, "data": { "name": "Vintercup 2", "round_gap_s": 300, "show_up_s": 600,
+		"format": "knockout", "max_players": 4, "start_time": unix + 9999 } })
+	check(_last(1, "error").is_empty() or _last(1, "error").code != "tournament", "endringen godtas")
+	check_eq(_t(id).name, "Vintercup 2")
+	check_eq(_t(id).round_gap_s, 300)
+	check_eq(_t(id).show_up_s, 600)
+	check_eq(_t(id).format, "round_robin", "formatet ligger fast etter start")
+	check_eq(_t(id).max_players, 8)
+	check_eq(int(_t(id).start_time), start, "starttiden ligger fast")
+
+
+## Runde 17: rangert turnering gir XP etter plassering, og vinneren får premien og Mester-skinnet.
+func test_tournament_xp_and_prize() -> void:
+	var id := _create("knockout", { "prize": "skin:blackhole" })
+	check_eq(str(_t(id).prize), "skin:blackhole")
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var final: Dictionary = _t(id).rounds[0][0]
+	var xp_before := {}
+	for uid in peers:
+		xp_before[uid] = int(lobby.store.users[uid].xp)
+	_play_match(final, peers)
+	var winner: Dictionary = lobby.store.users[int(final.p1)]
+	var loser: Dictionary = lobby.store.users[int(final.p2)]
+	check_eq(Tournaments.new(lobby.store, lobby.accounts).placements(_t(id)), { int(final.p1): "winner", int(final.p2): "final" })
+	check("skin:blackhole" in winner.unlocks, "premien")
+	var progress := Progression.progress_of(winner)
+	check(Progression.is_unlocked("skin:champion", progress), "første turneringsseier låser opp Mester")
+	check(int(loser.xp) - int(xp_before[int(final.p2)]) >= Progression.TOURNAMENT_XP.final, "finalisten får XP")
+	var notice := _last(peers[int(final.p1)], "notice")
+	check(str(notice.text).contains("XP"), str(notice))
+	check(str(notice.text).contains("Sort hull"), "premien står i beskjeden: " + str(notice.text))

@@ -37,6 +37,10 @@ func test_every_skin_pair_is_distinguishable() -> void:
 			var pair := Skins.resolve_pair(Skins.look(a.id), Skins.look(b.id))
 			var d := Skins._distance(Skins.ui_color(pair[0]), Skins.ui_color(pair[1]))
 			check(d >= Skins.SIMILAR, "%s mot %s er for like (%.2f)" % [a.id, b.id, d])
+			check(not Skins.too_similar(pair[0], pair[1]), "%s mot %s ligner for mye" % [a.id, b.id])
+	# Ganske like skins (før ble bare nesten like oppdaget): gjesten får bortedrakten
+	for p in [["ember", "copper"], ["ice", "opal"], ["oak", "copper"], ["lime", "toxic"]]:
+		check(Skins.resolve_pair(Skins.look(p[0]), Skins.look(p[1]))[1] != Skins.look(p[1]), "%s mot %s byttes" % p)
 
 
 func test_boards_and_decal_colors() -> void:

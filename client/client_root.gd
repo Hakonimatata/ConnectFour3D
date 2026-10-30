@@ -251,8 +251,8 @@ func show_tournament(id: int, back_to_menu := false) -> void:
 	show_screen(TournamentScreen.new(self, id, back_to_menu))
 
 
-func show_tournament_edit() -> void:
-	show_screen(TournamentEditScreen.new(self))
+func show_tournament_edit(tournament := {}) -> void:
+	show_screen(TournamentEditScreen.new(self, tournament))
 
 
 func show_admin() -> void:
@@ -312,16 +312,22 @@ func _on_net_message(msg: Dictionary) -> void:
 				"request": _show_banner(I18n.server_text(msg), "", tr("Se"), func() -> void: show_friends())
 				_: _show_banner(I18n.server_text(msg), "")
 		Protocol.TOURNAMENT_NOTICE:
-			# Kampen starter: spilleren kastes rett inn (med mindre et annet parti online pågår).
+			# Kampen starter: spilleren kastes rett inn, uten banner som er i veien (med mindre et annet
+			# parti online pågår; da kommer banneret med «Gå til kamp»).
 			var code := str(msg.get("room", ""))
+			var tour := int(msg.get("tournament", 0))
 			if code != "" and not _busy_online():
 				if _screen is GameScreen or _screen is SetupScreen:
 					_end_match()   # ser på et annet parti eller spiller mot boten
 					show_online()
 				join_room(code)
-				_show_banner(I18n.server_text(msg), "")
-			else:
+			elif code != "":
 				_show_banner(I18n.server_text(msg), code)
+			elif tour != 0:
+				# F.eks. «Bob er klar for neste kamp»: «Se» åpner turneringssiden med Klar-knappen
+				_show_banner(I18n.server_text(msg), "", tr("Se"), func() -> void: show_tournament(tour))
+			else:
+				_show_banner(I18n.server_text(msg), "")
 		Protocol.GLOBAL_MSG:
 			# Kunngjøring fra admin: banner hos alle som er online (historikken gir ikke banner)
 			if str(msg.get("kind", "")) == "announcement":

@@ -1,11 +1,10 @@
 class_name ReactionView
 extends Control
-## En reaksjon fra en tilskuer (hjerte, stjerne, flamme eller lyn), tegnet med kode.
-## Spillets skrift har ikke emoji, så ikonene tegnes som polygoner. Se Protocol.REACTIONS.
+## En reaksjon fra en tilskuer (hjerte, flamme, latter eller «wow»), tegnet med kode.
+## Spillets skrift har ikke emoji, så ikonene tegnes med polygoner og sirkler. Se Protocol.REACTIONS.
 
-const COLORS := {
-	"heart": Color("ff5277"), "star": Color("ffd23a"), "fire": Color("ff8a2a"), "bolt": Color("7fd4ff"),
-}
+const FACE := Color("ffcf3a")
+const FACE_DARK := Color("6b3d12")
 
 var kind := "heart"
 
@@ -19,21 +18,40 @@ func _init(p_kind := "heart", px := 32.0) -> void:
 func _draw() -> void:
 	var s := minf(size.x, size.y)
 	var c := size * 0.5
-	var color: Color = COLORS.get(kind, Color.WHITE)
 	match kind:
 		"heart":
-			draw_colored_polygon(_heart(c, s * 0.46), color)
-		"star":
-			draw_colored_polygon(_star(c + Vector2(0, s * 0.03), s * 0.5, s * 0.21), color)
+			draw_colored_polygon(_heart(c + Vector2(0, s * 0.02), s * 0.46), Color("ff4d6d"))
+			draw_circle(c + Vector2(-s * 0.17, -s * 0.15), s * 0.07, Color(1, 1, 1, 0.55))   # glans
 		"fire":
-			draw_colored_polygon(_flame(c + Vector2(0, s * 0.08), s * 0.42), color)
-			draw_colored_polygon(_flame(c + Vector2(0, s * 0.22), s * 0.22), Color("ffe25a"))
-		"bolt":
-			var pts := PackedVector2Array()
-			for p in [Vector2(0.12, -0.5), Vector2(-0.3, 0.06), Vector2(-0.02, 0.06), Vector2(-0.14, 0.5),
-					Vector2(0.3, -0.08), Vector2(0.03, -0.08), Vector2(0.18, -0.5)]:
-				pts.append(c + p * s)
-			draw_colored_polygon(pts, color)
+			# Tre flammetunger i hverandre: rød ytterst, så oransje og gul innerst
+			draw_colored_polygon(_flame(c + Vector2(0, s * 0.06), s * 0.46, 0.0), Color("ff3d1f"))
+			draw_colored_polygon(_flame(c + Vector2(0, s * 0.15), s * 0.34, 0.6), Color("ff8a1f"))
+			draw_colored_polygon(_flame(c + Vector2(0, s * 0.24), s * 0.21, 1.3), Color("ffd84a"))
+		"laugh":
+			_face(c, s)
+			# Lukkede, smilende øyne (^ ^) og stor åpen munn
+			for side in [-1, 1]:
+				draw_arc(c + Vector2(side * s * 0.15, -s * 0.06), s * 0.08, PI * 1.1, PI * 1.9, 8, FACE_DARK, s * 0.05)
+			var mouth := PackedVector2Array()
+			for i in 13:
+				var a := PI * i / 12.0
+				mouth.append(c + Vector2(cos(a) * s * 0.24, s * 0.06 + sin(a) * s * 0.2))
+			draw_colored_polygon(mouth, FACE_DARK)
+			draw_circle(c + Vector2(0, s * 0.2), s * 0.07, Color("ff6b6b"))   # tunge
+			# Gledestårer
+			for side in [-1, 1]:
+				draw_circle(c + Vector2(side * s * 0.36, s * 0.02), s * 0.06, Color("7fd4ff"))
+		"wow":
+			_face(c, s)
+			for side in [-1, 1]:
+				draw_circle(c + Vector2(side * s * 0.14, -s * 0.08), s * 0.075, FACE_DARK)
+				draw_arc(c + Vector2(side * s * 0.14, -s * 0.25), s * 0.08, PI * 1.15, PI * 1.85, 8, FACE_DARK, s * 0.04)
+			draw_circle(c + Vector2(0, s * 0.19), s * 0.1, FACE_DARK)   # åpen munn: «oi!»
+
+
+func _face(c: Vector2, s: float) -> void:
+	draw_circle(c, s * 0.46, FACE)
+	draw_arc(c, s * 0.46, 0, TAU, 32, Color("e0a420"), s * 0.03)
 
 
 static func _heart(c: Vector2, r: float) -> PackedVector2Array:
@@ -46,22 +64,18 @@ static func _heart(c: Vector2, r: float) -> PackedVector2Array:
 	return pts
 
 
-static func _star(c: Vector2, outer: float, inner: float) -> PackedVector2Array:
+## En flammetunge: rund nederst, med bølgete sider som smalner til en spiss som bøyer seg litt.
+static func _flame(c: Vector2, r: float, phase: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	for i in 10:
-		var a := -PI / 2 + PI * i / 5.0
-		pts.append(c + Vector2(cos(a), sin(a)) * (outer if i % 2 == 0 else inner))
-	return pts
-
-
-## Dråpeform med spissen opp.
-static func _flame(c: Vector2, r: float) -> PackedVector2Array:
-	var pts := PackedVector2Array()
-	for i in 32:
-		var t := TAU * i / 32.0
-		var x := sin(t) * r * 0.62 * (1.0 - 0.55 * (1.0 + cos(t)) * 0.5)
-		var y := -cos(t) * r * 1.05
-		pts.append(c + Vector2(x * (1.0 + 0.25 * sin(t * 2.0)), y))
+	var n := 28
+	for i in n:
+		var t := float(i) / n   # 0 = spissen, venstre side ned, rundt bunnen, høyre side opp
+		var a := t * TAU
+		var y := -cos(a) * r                                  # -r øverst, r nederst
+		var h := (y + r) / (2.0 * r)                          # 0 øverst, 1 nederst
+		var width := r * 0.72 * pow(h, 0.7) * (1.0 + 0.12 * sin(h * 9.0 + phase))
+		var x := -sin(a) * width + (1.0 - h) * (1.0 - h) * r * 0.25   # spissen bøyer seg mot høyre
+		pts.append(c + Vector2(x, y))
 	return pts
 
 

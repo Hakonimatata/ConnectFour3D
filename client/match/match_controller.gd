@@ -12,6 +12,7 @@ signal finished(result: int, reason: int, line: Array)
 signal chat_received(from_name: String, text: String)
 signal info(text: String)                                    ## Statusmeldinger til spilleren
 signal players_changed
+signal undone                                                ## Trekk ble angret (treningen): tegn brettet på nytt
 
 var mode := "local"           ## "local", "ai" eller "online"
 var options := GameOptions.new()

@@ -73,15 +73,21 @@ func _ready() -> void:
 	_skin_picker.add_theme_constant_override("v_separation", 6)
 	_skin_picker.visible = false
 	var group := ButtonGroup.new()
-	for skin in Skins.ALL:
+	var progress := Settings.progress()
+	for skin in Progression.sorted_skins(progress):
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
-		b.button_pressed = skin.id == Settings.skin_id
+		b.button_pressed = skin.id == Settings.look().skin
 		b.theme_type_variation = "ChoiceButton"
 		b.icon = Skins.swatch(skin.id, 26)
-		b.tooltip_text = skin.name
+		b.tooltip_text = tr(skin.name)
 		b.custom_minimum_size = Vector2(44, 40)
+		var item := "skin:" + str(skin.id)
+		if not Progression.is_unlocked(item, progress):
+			b.disabled = true   # låses opp med nivå eller prestasjon (runde 17)
+			b.modulate.a = 0.4
+			b.tooltip_text = "%s · %s" % [tr(skin.name), Progression.requirement_text(item)]
 		b.pressed.connect(_pick_skin.bind(str(skin.id)))
 		_skin_picker.add_child(b)
 	var kit := UI.button("Bytt drakt", func() -> void:

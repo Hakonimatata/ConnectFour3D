@@ -6,9 +6,11 @@ extends Control
 ##
 ## Er det plass, tegnes treet speilvendt: øvre halvdel av første runde til venstre, nedre til høyre,
 ## og finalen i midten med pokalen over. Ellers (smal skjerm) går treet fra venstre mot høyre, med
-## pokalen over finalen. Trykk på en kamp som spilles nå (grønn kant) for å se på (watch_requested).
+## pokalen over finalen. Trykk på en kamp som spilles nå (grønn kant) for å se på (watch_requested),
+## eller på en ferdig kamp (▶ i hjørnet) for å se reprisen av partiet (replay_requested, runde 17).
 
 signal watch_requested(code: String)
+signal replay_requested(game_id: int)
 
 const BOX_H := 46.0
 const GAP_Y := 12.0
@@ -195,18 +197,38 @@ func _draw_match(font: Font, rect: Rect2, m: Dictionary, final: bool) -> void:
 			_fit(font, name, rect.size.x - 20, FONT_SIZE), HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE, color)
 	if m.get("status") == "playing":
 		draw_circle(Vector2(rect.end.x - 8, rect.position.y + 8), 3.0, UI.SUCCESS)
+	elif _game_of(m) > 0:
+		# Liten ▶: partiet kan ses i reprise
+		var c := Vector2(rect.end.x - 9, rect.position.y + 9)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(-3, -4), c + Vector2(4, 0), c + Vector2(-3, 4)]),
+			Color(UI.MUTED, 0.9))
 
 
-## Trykk på en kamp som spilles nå: se på den.
+## Trykk på en kamp som spilles nå: se på den. På en ferdig kamp: reprisen.
 func _gui_input(event: InputEvent) -> void:
 	var mb := event as InputEventMouseButton
 	if mb and mb.button_index == MOUSE_BUTTON_LEFT and not mb.pressed:
 		var code := live_room_at(mb.position)
 		if code != "":
 			watch_requested.emit(code)
+		elif game_at(mb.position) > 0:
+			replay_requested.emit(game_at(mb.position))
 	elif event is InputEventMouseMotion:
-		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if live_room_at(event.position) != "" \
-			else Control.CURSOR_ARROW
+		var tappable := live_room_at(event.position) != "" or game_at(event.position) > 0
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if tappable else Control.CURSOR_ARROW
+
+
+## Det siste partiet i den ferdige kampen på dette punktet (til reprisen), eller 0.
+func game_at(pos: Vector2) -> int:
+	for b in _boxes:
+		if (b.rect as Rect2).has_point(pos):
+			return _game_of(b.m)
+	return 0
+
+
+static func _game_of(m: Dictionary) -> int:
+	var games: Array = m.get("games", [])
+	return int(games[-1]) if m.get("status") == "done" and not games.is_empty() else 0
 
 
 ## Romkoden til kampen som spilles nå på dette punktet, eller "".

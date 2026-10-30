@@ -10,6 +10,9 @@ extends RefCounted
 ## Ved starttid trekkes oppsettet (sortert etter Elo). Hver kamp får et privat rom, og begge
 ## spillerne varsles. Møter ikke begge innen show_up_s, vinner den som kom (walkover).
 ## Uavgjort i utslag spilles om (inntil 3 ganger). I alle-mot-alle gir uavgjort ½ poeng.
+## Alle mot alle kan begrenses til max_rounds runder (admin velger; 0 = alle). Da spiller hver spiller
+## så mange partier (én færre ved fri runde), og flest poeng vinner. Med 16 spillere tar alle 15 runder
+## ca. 2 timer, så det trengs.
 ## Hver turnering har sin egen pokal (Trophy). Admin kan velge den i skjemaet, ellers lages en
 ## tilfeldig. Vinneren får pokalen med turneringens navn på profilen sin.
 ## Uranket turnering («ranked» = false): partiene endrer ikke Elo, og turneringen vises ikke i
@@ -40,15 +43,34 @@ func _init(p_store: Store, p_accounts: Accounts) -> void:
 	rng.randomize()
 	for t in store.tournaments:
 		normalize(t)
+	_link_old_games()
+
+
+## Turneringer fra før runde 17 har ikke partiene på kampene: finn dem i partiloggen (der hvert parti
+## har kamp-id-en), så finalen og de andre kampene kan ses i reprise.
+func _link_old_games() -> void:
+	var by_match := {}
+	for g in store.games:
+		var mid := str(g.get("tournament", ""))
+		if mid != "":
+			by_match.get_or_add(mid, []).append(int(g.id))
+	if by_match.is_empty():
+		return
+	for t in store.tournaments:
+		for round in t.rounds:
+			for m in round:
+				if (m.games as Array).is_empty() and by_match.has(m.id):
+					m.games = by_match[m.id]
 
 
 ## JSON gir desimaltall. Gjør tall om til heltall igjen etter innlesing fra fil.
 static func normalize(t: Dictionary) -> void:
-	for k in ["id", "current_round", "winner", "created_by", "created_at", "max_players", "start_time",
+	for k in ["id", "current_round", "winner", "created_by", "created_at", "max_players", "max_rounds", "start_time",
 			"signup_deadline", "round_gap_s", "show_up_s", "finished_at"]:
 		t[k] = int(t.get(k, 0))
 	t.ranked = bool(t.get("ranked", true))
 	t.with_trophy = bool(t.get("with_trophy", true))
+	t.prize = str(t.get("prize", ""))
 	# Turneringer fra før pokalene fantes, får en fast pokal ut fra id-en.
 	t.trophy = Trophy.normalize(t.trophy) if t.get("trophy") is Dictionary else Trophy.generate(int(t.id) * 7919)
 	t.players = (t.get("players", []) as Array).map(func(v: Variant) -> int: return int(v))
@@ -56,6 +78,8 @@ static func normalize(t: Dictionary) -> void:
 		for m in round:
 			for k in ["round", "p1", "p2", "start_at", "waiting_since", "winner", "draws"]:
 				m[k] = int(m.get(k, 0))
+			m.ready = (m.get("ready", []) as Array).map(func(v: Variant) -> int: return int(v))
+			m.games = (m.get("games", []) as Array).map(func(v: Variant) -> int: return int(v))
 
 
 func get_t(id: int) -> Dictionary:
@@ -80,16 +104,40 @@ func create(user_id: int, data: Dictionary, now: int) -> Dictionary:
 	return t
 
 
-## Endrer navn, regler og tider. Bare før turneringen har startet.
+## Endrer turneringen (admin). Før start kan alt endres. Mens den pågår: navn, beskrivelse, pause
+## mellom rundene, møtefrist og pokalen (format, deltakere, tider og regler ligger fast, siden
+## oppsettet er trukket). Etter at den er ferdig: navn og beskrivelse.
 func update(id: int, data: Dictionary, now: int) -> String:
 	var t := get_t(id)
 	if t.is_empty():
 		return "Fant ikke turneringen."
-	if not t.status in ["draft", "open"]:
-		return "Turneringen har allerede startet."
-	_apply(t, data, now)
+	if t.status in ["draft", "open"]:
+		_apply(t, data, now)
+	elif t.status in ["running", "finished"]:
+		_apply_live(t, data)
+	else:
+		return "Turneringen er avlyst."
 	_save(t)
 	return ""
+
+
+func _apply_live(t: Dictionary, d: Dictionary) -> void:
+	if d.has("name"):
+		var name := str(d.name).strip_edges().substr(0, 40)
+		t.name = name if name != "" else t.name
+	if d.has("description"):
+		t.description = str(d.description).strip_edges().substr(0, 300)
+	if t.status != "running":
+		return
+	if d.has("round_gap_s"):
+		t.round_gap_s = clampi(int(d.round_gap_s), 0, 3600)
+	if d.has("show_up_s"):
+		t.show_up_s = clampi(int(d.show_up_s), 30, 1800)
+	if d.has("with_trophy"):
+		t.with_trophy = bool(d.with_trophy)
+	if d.get("trophy") is Dictionary:
+		t.trophy = Trophy.normalize(d.trophy)
+	_apply_prize(t, d)
 
 
 func _apply(t: Dictionary, d: Dictionary, now: int) -> void:
@@ -104,16 +152,24 @@ func _apply(t: Dictionary, d: Dictionary, now: int) -> void:
 	o.starter = "alternate"   # rettferdig ved omspill
 	t.options = o.to_dict()
 	t.max_players = clampi(int(d.get("max_players", t.get("max_players", 16))), 2, 64)
+	t.max_rounds = clampi(int(d.get("max_rounds", t.get("max_rounds", 0))), 0, 63)   # alle mot alle: 0 = alle runder
 	t.start_time = maxi(int(d.get("start_time", t.get("start_time", now + 600))), now)
 	t.signup_deadline = mini(int(d.get("signup_deadline", t.get("signup_deadline", t.start_time))), t.start_time)
 	t.round_gap_s = clampi(int(d.get("round_gap_s", t.get("round_gap_s", 120))), 0, 3600)
 	t.show_up_s = clampi(int(d.get("show_up_s", t.get("show_up_s", 300))), 30, 1800)
 	t.ranked = bool(d.get("ranked", t.get("ranked", true)))
 	t.with_trophy = bool(d.get("with_trophy", t.get("with_trophy", true)))
+	_apply_prize(t, d)
 	if d.get("trophy") is Dictionary:
 		t.trophy = Trophy.normalize(d.trophy)
 	elif not t.get("trophy") is Dictionary:
 		t.trophy = Trophy.generate(rng.randi())
+
+
+## Premien vinneren låser opp (runde 17): en skin eller seiersanimasjon som ellers krever nivå, eller ingen ("").
+static func _apply_prize(t: Dictionary, d: Dictionary) -> void:
+	var prize := str(d.get("prize", t.get("prize", "")))
+	t.prize = prize if Progression.UNLOCKS.has(prize) else ""
 
 
 ## publish | start | cancel | delete
@@ -177,6 +233,30 @@ func leave(id: int, uid: int) -> String:
 	return ""
 
 
+## «Klar for neste kamp» i pausen mellom rundene. Er begge i kampen klare, starter den med en gang.
+## Den andre spilleren får beskjed om at motstanderen er klar.
+func ready(id: int, uid: int, now: int) -> String:
+	var t := get_t(id)
+	if t.is_empty() or t.status != "running":
+		return "Turneringen pågår ikke."
+	for m in t.rounds[int(t.current_round)]:
+		if m.status != "scheduled" or not uid in [m.p1, m.p2]:
+			continue
+		if not uid in m.ready:
+			m.ready.append(uid)
+		var other: int = m.p2 if uid == m.p1 else m.p1
+		if other in m.ready:
+			m.start_at = mini(int(m.start_at), now)   # tick() åpner rommet
+		else:
+			notify.call(other, { "t": Protocol.TOURNAMENT_NOTICE, "tournament": t.id, "room": "",
+				"key": "%s er klar for neste kamp. Trykk «Klar» på turneringssiden for å starte med en gang.",
+				"args": [accounts.username_of(uid)],
+				"text": "%s er klar for neste kamp. Trykk «Klar» på turneringssiden for å starte med en gang." % accounts.username_of(uid) })
+		_save(t)
+		return ""
+	return "Du har ingen kamp som venter."
+
+
 # ---------------------------------------------------------------- Tid
 
 func tick(now: int) -> void:
@@ -201,6 +281,8 @@ func _start(t: Dictionary, now: int) -> void:
 	t.rounds = []
 	if t.format == "round_robin":
 		var rounds := _round_robin(seeds)
+		if int(t.max_rounds) > 0 and rounds.size() > int(t.max_rounds):
+			rounds = rounds.slice(0, int(t.max_rounds))   # admin har begrenset antall runder
 		for r in rounds.size():
 			var matches := []
 			for i in rounds[r].size():
@@ -241,7 +323,7 @@ static func _round_robin(players: Array) -> Array:
 
 func _match(t: Dictionary, round_i: int, i: int, p1: int, p2: int) -> Dictionary:
 	return { "id": "t%d-r%d-m%d" % [t.id, round_i, i], "round": round_i, "p1": p1, "p2": p2, "status": "pending",
-		"start_at": 0, "waiting_since": 0, "room": "", "winner": 0, "reason": "", "draws": 0 }
+		"start_at": 0, "waiting_since": 0, "room": "", "winner": 0, "reason": "", "draws": 0, "ready": [], "games": [] }
 
 
 func _schedule_round(t: Dictionary, round_i: int, start_at: int) -> void:
@@ -291,6 +373,14 @@ func on_match_started(match_id: String) -> void:
 	if not found.is_empty():
 		found.m.status = "playing"
 		_save(found.t)
+
+
+## Lobbyen har lagret et parti i en turneringskamp (id i partiloggen, til reprisen). Lagres sammen med
+## resultatet (report), som kommer rett etter.
+func add_game(match_id: String, game_id: int) -> void:
+	var found := _find_match(match_id)
+	if not found.is_empty():
+		(found.m.games as Array).append(game_id)
 
 
 ## Lobbyen melder resultatet av et parti i en turneringskamp.
@@ -368,7 +458,9 @@ func _finish(t: Dictionary, winner: int, now: int) -> void:
 	t.status = "finished"
 	t.winner = winner
 	t.finished_at = now
+	var before := {}   # vinnerens progresjon før seieren (skin-en som låses opp av første turneringsseier)
 	if winner != 0 and store.users.has(winner):
+		before = Progression.progress_of(store.users[winner])
 		if t.ranked:
 			store.users[winner].stats.tournaments_won += 1
 			announce.call("%s vant turneringen «%s»!", [accounts.username_of(winner), t.name])
@@ -377,6 +469,62 @@ func _finish(t: Dictionary, winner: int, now: int) -> void:
 		_notify_all(t, "«%s» er ferdig. Vinner: %s!", [t.name, accounts.username_of(winner)])
 	else:
 		_notify_all(t, "«%s» er ferdig.", [t.name])
+	if t.ranked:
+		_award_xp(t, before)
+
+
+## Rangert turnering ferdig: XP etter plassering (Progression.TOURNAMENT_XP) til alle som spilte, og
+## premien (prize) til vinneren. Hver spiller får beskjed og den nye progresjonen (STATS).
+func _award_xp(t: Dictionary, winner_before: Dictionary) -> void:
+	var places := placements(t)
+	for uid in places:
+		var u: Dictionary = store.users.get(int(uid), {})
+		if u.is_empty():
+			continue
+		var winner := int(uid) == int(t.winner)
+		var prize := winner and accounts.unlock(u, str(t.get("prize", "")))
+		var r := accounts.add_xp(u, int(Progression.TOURNAMENT_XP[places[uid]]), winner_before if winner else {})
+		if prize:
+			r.unlocked.append(str(t.prize))
+		var unlocked := ", ".join((r.unlocked as Array).map(func(item: String) -> String: return Progression.item_name(item)))
+		var key := "Du fikk %d XP for «%s». Låst opp: %s!" if unlocked != "" else "Du fikk %d XP for «%s»."
+		var args: Array = [int(r.gained), t.name, unlocked] if unlocked != "" else [int(r.gained), t.name]
+		notify.call(int(uid), { "t": Protocol.NOTICE, "key": key, "args": args, "text": key % args })
+		notify.call(int(uid), { "t": Protocol.STATS, "user": accounts.public_info(u) })
+	store.save_users()
+
+
+## Plasseringen til alle som spilte minst ett parti: winner, final (andreplass), semi (tredje/fjerde)
+## eller played. Utslag: etter hvor langt de kom. Alle mot alle: etter tabellen. { bruker-id: plassering }
+func placements(t: Dictionary) -> Dictionary:
+	var played := {}
+	for round in t.rounds:
+		for m in round:
+			if m.reason in ["played", "draws", "draw"] or not (m.get("games", []) as Array).is_empty():
+				played[int(m.p1)] = true
+				played[int(m.p2)] = true
+	var out := {}
+	for uid in played:
+		if uid != 0:
+			out[uid] = "played"
+	if t.format == "round_robin":
+		var table := standings(t)
+		for i in mini(table.size(), 4):
+			var uid := int(table[i].id)
+			if out.has(uid):
+				out[uid] = "winner" if i == 0 else ("final" if i == 1 else "semi")
+		return out
+	var n: int = t.rounds.size()
+	for r in [n - 2, n - 1]:
+		if r < 0:
+			continue
+		for m in t.rounds[r]:
+			var loser := int(m.p1) if int(m.winner) == int(m.p2) else int(m.p2)
+			if out.has(loser):
+				out[loser] = "final" if r == n - 1 else "semi"
+	if out.has(int(t.winner)):
+		out[int(t.winner)] = "winner"
+	return out
 
 
 ## Tabell for alle-mot-alle: seier 1 poeng, uavgjort ½ (lagret som 2 og 1 for å unngå desimaler).
@@ -415,9 +563,21 @@ func standings(t: Dictionary) -> Array:
 ## Kort versjon til listen.
 func summary(t: Dictionary) -> Dictionary:
 	return { "id": t.id, "name": t.name, "format": t.format, "status": t.status, "start_time": t.start_time,
-		"players": t.players.size(), "max_players": t.max_players, "options": t.options,
+		"players": t.players.size(), "max_players": t.max_players, "max_rounds": int(t.get("max_rounds", 0)),
+		"options": t.options,
 		"winner": accounts.username_of(t.winner) if int(t.winner) != 0 else "", "trophy": t.trophy,
-		"finished_at": int(t.get("finished_at", 0)), "ranked": t.ranked, "with_trophy": t.with_trophy }
+		"finished_at": int(t.get("finished_at", 0)), "ranked": t.ranked, "with_trophy": t.with_trophy,
+		"final_game": final_game(t), "prize": str(t.get("prize", "")) }
+
+
+## Det siste partiet i finalen (utslag, når turneringen er ferdig), til «Se finalen». 0 = ingen.
+static func final_game(t: Dictionary) -> int:
+	if t.status != "finished" or t.format != "knockout" or (t.rounds as Array).is_empty():
+		return 0
+	var last: Array = t.rounds[-1]
+	if last.size() != 1 or (last[0].get("games", []) as Array).is_empty():
+		return 0
+	return int(last[0].games[-1])
 
 
 ## Full versjon til turneringssiden, med navn i stedet for id-er.
@@ -434,7 +594,10 @@ func public(t: Dictionary) -> Dictionary:
 	out.rounds = t.rounds.map(func(r: Array) -> Array:
 		return r.map(func(m: Dictionary) -> Dictionary:
 			var pm := { "id": m.id, "p1": m.p1, "p2": m.p2, "p1_name": _name_or_dash(m.p1), "p2_name": _name_or_dash(m.p2),
-				"status": m.status, "start_at": m.start_at, "room": m.room, "winner": m.winner, "reason": m.reason }
+				"status": m.status, "start_at": m.start_at, "room": m.room, "winner": m.winner, "reason": m.reason,
+				"games": m.get("games", []) }
+			if m.status == "scheduled":
+				pm.ready = [m.p1 in m.get("ready", []), m.p2 in m.get("ready", [])]
 			if m.status == "waiting":
 				# Hvem som har kommet, og når den som mangler taper på walkover
 				var here: Array = presence.call(m.room)

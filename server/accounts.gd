@@ -291,7 +291,64 @@ func public_info(u: Dictionary) -> Dictionary:
 	if u.is_empty():
 		return {}
 	return { "id": u.id, "username": u.username, "admin": u.admin, "elo": u.elo, "stats": u.stats,
-		"trophies": u.trophies }
+		"trophies": u.trophies, "xp": int(u.get("xp", 0)), "level": Progression.level_for(int(u.get("xp", 0))),
+		"unlocks": u.get("unlocks", []) }
+
+
+# ---------------------------------------------------------------- XP (runde 17, se core/progression.gd)
+
+## Gir brukeren XP. Gir { gained, xp, level, level_before, unlocked: [ting] } (til klienten).
+## before: progresjonen før det som skjedde (f.eks. før rekken på dagens oppgave økte), så det som
+## ble låst opp av prestasjonen også kommer med.
+func add_xp(u: Dictionary, gained: int, before := {}) -> Dictionary:
+	if before.is_empty():
+		before = Progression.progress_of(u)
+	u.xp = int(u.get("xp", 0)) + maxi(0, gained)
+	var after := Progression.progress_of(u)
+	return { "gained": maxi(0, gained), "xp": u.xp, "level": Progression.level_for(u.xp),
+		"level_before": Progression.level_for(int(before.xp)), "unlocked": Progression.newly_unlocked(before, after) }
+
+
+## Låser opp en ting (premie i en turnering). Gir true hvis den ikke var låst opp fra før.
+func unlock(u: Dictionary, item: String) -> bool:
+	if item == "" or Progression.is_unlocked(item, Progression.progress_of(u)):
+		return false
+	(u.unlocks as Array).append(item)
+	return true
+
+
+## XP etter et parti mellom to kontoer (ids som i record_game). elo = endringene fra record_game (for
+## Elo-en før partiet). Se Progression: minst MIN_MOVES trekk, høyst SAME_OPPONENT_DAILY partier mot
+## samme motstander per dag, og høyst DAILY_GAME_XP per dag fra partier.
+## Gir { sete: add_xp-resultatet } for dem som fikk (eller kunne fått) XP.
+func award_game_xp(ids: Array, result: int, move_count: int, elo: Dictionary, now_s: int) -> Dictionary:
+	var out := {}
+	var users := [{}, store.users.get(int(ids[1]), {}), store.users.get(int(ids[2]), {})]
+	if users[1].is_empty() or users[2].is_empty() or int(ids[1]) == int(ids[2]) or move_count < Progression.MIN_MOVES:
+		return out
+	var day := Puzzles.day_of(now_s)
+	for seat in [1, 2]:
+		var me: Dictionary = users[seat]
+		var opp: Dictionary = users[3 - seat]
+		var my_elo := int(elo[seat].before) if elo.has(seat) else int(me.elo)
+		var opp_elo := int(elo[3 - seat].before) if elo.has(3 - seat) else int(opp.elo)
+		var score := 0.5 if result == 0 else (1.0 if result == seat else 0.0)
+		var gained := Progression.game_xp(score, my_elo, opp_elo)
+		var d: Dictionary = me.xp_day
+		if d.day != day:
+			d.day = day
+			d.games = 0
+			d.opponents = {}
+		var key := str(opp.id)
+		var played := int(d.opponents.get(key, 0))
+		d.opponents[key] = played + 1
+		if played >= Progression.SAME_OPPONENT_DAILY:
+			gained = 0
+		gained = mini(gained, maxi(0, Progression.DAILY_GAME_XP - int(d.games)))
+		d.games = int(d.games) + gained
+		out[seat] = add_xp(me, gained)
+	store.save_users()
+	return out
 
 
 # ---------------------------------------------------------------- Statistikk og Elo

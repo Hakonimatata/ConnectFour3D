@@ -2,6 +2,9 @@ class_name PuzzleScreen
 extends Screen
 ## Dagens oppgave: finn den tvungne seieren. Motstanderen forsvarer seg så godt det går
 ## (Puzzle.defend), og glipper den tvungne seieren, må du prøve igjen.
+## Runde 17: dagens oppgave bytter mellom tre typer (Puzzle.kind_for): tving frem seier (som over),
+## «Vinn på N trekk» (stille trekk er lov, motstanderen svarer etter løsningen, line) og «Finn beste
+## trekk» (eneste trekk som redder deg; bommer du, vises hvordan motstanderen vinner).
 ## Løsningen sendes til serveren, som sjekker den og fører listen over dagens løsere.
 ## Uten nett lages oppgaven lokalt (samme oppgave, siden den lages fra datoen).
 ## «Flere oppgaver»: oppgavebanken (ai/puzzle_bank.gd) med fire vanskelighetsgrader, 3–6 trekk.
@@ -37,6 +40,7 @@ var _retry_button: Button
 var _solution_button: Button
 var _solvers_box: VBoxContainer
 var _solvers_title: Label
+var _tip: Label
 
 
 func _ready() -> void:
@@ -86,8 +90,9 @@ func _ready() -> void:
 	_attempts_label = UI.label("", "Muted")
 	_attempts_label.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	v.add_child(_attempts_label)
-	v.add_child(UI.label("Tips: et tvunget trekk lager en trussel motstanderen må blokkere. Sett opp to trusler samtidig, så vinner du.",
-		"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+	_tip = UI.label("", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_tip.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(_tip)
 
 	var daily := UI.vbox(6)
 	_daily_box = daily
@@ -209,6 +214,11 @@ func _on_message(msg: Dictionary) -> void:
 					_status.text = tr("Løst! Du er nr. %d i dag.") % rank
 				elif not Net.is_logged_in():
 					_status.text = tr("Løst! Logg inn for å komme på listen.")
+				var xp = msg.get("xp", {})
+				if xp is Dictionary and int(xp.get("gained", 0)) > 0:
+					_status.text += "\n" + GameScreen.xp_text(xp)
+					if int(msg.get("streak", 0)) > 1:
+						_status.text += "\n" + tr("%d dager på rad!") % int(msg.streak)
 			else:
 				_status.text = I18n.server_text(msg)
 
@@ -279,7 +289,16 @@ func _reset() -> void:
 			app.board.add_piece(_state.lines.pos_of(i), _state.cells[i], false)
 	app.board.input_enabled = true
 	var depth := int(_puzzle.get("depth", Puzzle.MIN_DEPTH))
-	_goal.text = tr("Du har tur. Finn den tvungne seieren med %d trekk – motstanderen forsvarer seg så godt den kan.") % depth
+	match _kind():
+		"win":
+			_goal.text = tr("Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan.") % depth
+			_tip.text = tr("Tips: let etter et trekk som forbereder to trusler samtidig, gjerne på kryss og tvers gjennom flere høyder.")
+		"defend":
+			_goal.text = tr("Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg.")
+			_tip.text = tr("Tips: se etter plassen motstanderen trenger for å lage to trusler samtidig, og ta den først.")
+		_:
+			_goal.text = tr("Du har tur. Finn den tvungne seieren med %d trekk – motstanderen forsvarer seg så godt den kan.") % depth
+			_tip.text = tr("Tips: et tvunget trekk lager en trussel motstanderen må blokkere. Sett opp to trusler samtidig, så vinner du.")
 	_goal.add_theme_color_override("font_color", app.board.colors[_me].lerp(Color.WHITE, 0.35))
 	_show_legend(looks[_me], looks[other])
 	_status.text = ""
@@ -352,6 +371,13 @@ func play(col: Vector2i) -> void:
 	if _state.is_over():
 		_fail(tr("Brettet ble fullt."))
 		return
+	match _kind():
+		"win":
+			_reply_from_line(col)
+			return
+		"defend":
+			_check_defense(col)
+			return
 	# Et trekk uten trussel gir motstanderen et fritt trekk: da er den tvungne seieren borte.
 	var quiet := _state.winning_columns(_me).is_empty()
 	_busy = true
@@ -374,6 +400,51 @@ func play(col: Vector2i) -> void:
 	_busy = false
 
 
+func _kind() -> String:
+	return str(_puzzle.get("kind", "forced"))
+
+
+## «Vinn på N trekk»: trekket må være neste i løsningen (den er entydig), og motstanderen svarer
+## som i løsningen. Siste trekk: alle vinnertrekk godtas (det tar play()).
+func _reply_from_line(col: Vector2i) -> void:
+	var line: Array = _puzzle.get("line", [])
+	var i := (_my_moves.size() - 1) * 2
+	if i + 1 >= line.size() or col != Puzzle._vec(line[i]):
+		_fail(tr("Ikke det trekket – nå slipper motstanderen unna. Prøv igjen!"))
+		return
+	_busy = true
+	var gen := _generation
+	await get_tree().create_timer(REPLY_DELAY_S).timeout
+	if not is_inside_tree() or gen != _generation:
+		return
+	var r2 := _state.play(Puzzle._vec(line[i + 1]), false)
+	app.board.add_piece(r2.pos, GameState.opponent(_me))
+	Sfx.play("drop", 0.85)
+	_status.text = tr("Bra! %d trekk igjen.") % ((line.size() - i - 1) / 2)
+	_busy = false
+
+
+## «Finn beste trekk»: riktig trekk løser oppgaven. Ellers vises motstanderens første trekk i
+## seieren (lagret i oppgaven, refute), og du kan prøve igjen.
+func _check_defense(col: Vector2i) -> void:
+	if col == Puzzle._vec(_puzzle.get("answer", [])):
+		_on_solved()
+		return
+	_busy = true
+	var gen := _generation
+	await get_tree().create_timer(REPLY_DELAY_S).timeout
+	if not is_inside_tree() or gen != _generation:
+		return
+	var win := Puzzle._vec((_puzzle.get("refute", {}) as Dictionary).get("%d,%d" % [col.x, col.y], []))
+	if win.x >= 0 and _state.is_column_open(win):
+		var r2 := _state.play(win, false)
+		app.board.add_piece(r2.pos, GameState.opponent(_me))
+		Sfx.play("drop", 0.85)
+		_fail(tr("Da kan motstanderen tvinge frem seier, og slik begynner den. Prøv igjen!"))
+	else:
+		_fail(tr("Ikke det trekket. Prøv igjen!"))
+
+
 func _fail(text: String) -> void:
 	_busy = true
 	_status.text = text
@@ -390,14 +461,19 @@ func _retry() -> void:
 func _on_solved() -> void:
 	_solved = true
 	app.board.input_enabled = false
-	app.board.highlight(_state.winning_line)
-	WinFx.play(app.board, app.camera, _state.winning_line, app.board.colors[_me], Settings.win_fx_id)
+	if not _state.winning_line.is_empty():
+		app.board.highlight(_state.winning_line)
+		WinFx.play(app.board, app.camera, _state.winning_line, app.board.colors[_me], Settings.look().win_fx)
+	else:
+		Sfx.play("win")   # «Finn beste trekk»: ingen fire på rad, bare riktig trekk
 	_retry_button.visible = true
 	if _shown_solution:
 		_status.text = tr("Slik løses den. Prøv selv neste gang!")
 		_next_button.visible = _mode != 0
 		return
 	_status.text = tr("Løst på %d forsøk!") % _attempts
+	if _kind() == "defend":
+		_status.text = tr("Riktig! Det var det eneste trekket som redder deg. Løst på %d forsøk.") % _attempts
 	if _mode != 0:
 		if not str(_puzzle.id) in Settings.solved_puzzles:
 			Settings.solved_puzzles.append(str(_puzzle.id))
@@ -431,6 +507,8 @@ func _show_solution() -> void:
 		if r.won:
 			_on_solved()
 			return
+	if _kind() == "defend":
+		_on_solved()
 
 
 func _show_solvers(list: Array, count: int) -> void:

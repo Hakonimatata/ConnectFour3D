@@ -12,6 +12,7 @@ var _seat := 0
 var _start_msg: Dictionary
 var tournament: Dictionary = {}     ## { id, name, ranked } hvis dette er en turneringskamp
 var last_elo: Dictionary = {}       ## Elo før/etter for mitt sete etter partiet (tom = ikke rangert)
+var last_xp: Dictionary = {}        ## XP etter partiet for mitt sete { gained, xp, level, level_before, unlocked } (tom = ingen)
 var spectators := 0                 ## antall tilskuere (bare turneringskamper)
 var room_code := ""
 var keep_room := false              ## true = bli i rommet når skjermen byttes (f.eks. endre regler mellom partier)
@@ -105,7 +106,7 @@ func leave() -> void:
 	if keep_room:
 		return
 	Net.send({ "t": Protocol.LEAVE_ROOM })
-	if not is_spectator():
+	if not is_spectator() and tournament.is_empty():   # fra en turneringskamp går vi tilbake til turneringssiden
 		Net.close()
 
 
@@ -119,6 +120,7 @@ func _apply_start(msg: Dictionary) -> void:
 	_raw_players = msg.get("players", [])
 	tournament = msg.get("tournament") if msg.get("tournament") is Dictionary else {}
 	last_elo = {}
+	last_xp = {}
 	game_number = int(msg.get("number", 1))
 	_read_players(msg.get("players", []))
 	var moves: Array = msg.get("moves", [])
@@ -207,6 +209,9 @@ func _finish_from(msg: Dictionary) -> void:
 	var elo = msg.get("elo", {})
 	if elo is Dictionary and elo.has(str(_seat)):
 		last_elo = elo[str(_seat)]
+	var xp = msg.get("xp", {})
+	if xp is Dictionary and xp.get(str(_seat)) is Dictionary:
+		last_xp = xp[str(_seat)]
 	var line := Protocol.positions_from_json(msg.get("line", []))
 	finished.emit(result, reason, line)
 

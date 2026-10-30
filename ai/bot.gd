@@ -10,6 +10,10 @@ extends RefCounted
 ## motstanderen ikke kan nå ennå), stablede trusler og tvungne angrepssekvenser.
 ##
 ## Boten endrer brettet midlertidig med place/unplace og setter det alltid tilbake.
+##
+## Vanskelig og Ekspert (profile.search_ms > 0) bruker i stedet SearchBot, som søker flere trekk
+## fram. I spillet brukes begin_move/think/chosen_move, så tenkingen deles over flere bilder.
+## Evalueringsfunksjonene her brukes fortsatt av AI-analysen (MoveReview) og oppgavene.
 
 const W_OPEN_LINE := 1.0
 const W_OPEN_TWO := 1.0
@@ -25,6 +29,9 @@ var profile: BotProfile
 var rng := RandomNumberGenerator.new()
 var last_info: Dictionary = {}    ## For feilsøking: hvorfor trekket ble valgt
 var _force_cache: Dictionary = {} ## Stilling + trekk -> resultat av can_force_win (tømmes per trekk)
+var _searcher: SearchBot          ## Søket (lages første gang det trengs)
+var _pending := Vector2i(-1, -1)  ## Trekket fra begin_move når boten ikke søker
+var force_depth := FORCE_DEPTH    ## Hvor dypt tvangssøket går (analysen bruker mindre på 5×5×5, der det er tregt)
 
 
 func _init(p_profile: BotProfile = null) -> void:
@@ -32,8 +39,36 @@ func _init(p_profile: BotProfile = null) -> void:
 	rng.randomize()
 
 
+## Starter tenkingen på et trekk. Kall think() hvert bilde til den gir true, og hent chosen_move().
+func begin_move(state: GameState) -> void:
+	if profile.search_ms > 0:
+		_search_bot().begin(state, profile.search_ms, profile.search_depth)
+	else:
+		_pending = choose_move(state)
+
+
+## Tenker høyst budget_usec mikrosekunder. Gir true når trekket er klart.
+func think(budget_usec: int) -> bool:
+	return _search_bot().think(budget_usec) if profile.search_ms > 0 else true
+
+
+func chosen_move() -> Vector2i:
+	return _search_bot().result() if profile.search_ms > 0 else _pending
+
+
+func _search_bot() -> SearchBot:
+	if _searcher == null:
+		_searcher = SearchBot.new()
+		_searcher.rng.seed = rng.seed
+		for key in profile.search_tweaks:
+			_searcher.set(key, profile.search_tweaks[key])
+	return _searcher
+
+
 ## Velger et lovlig trekk for spilleren som har tur.
 func choose_move(state: GameState) -> Vector2i:
+	if profile.search_ms > 0:
+		return _search_bot().choose(state, profile.search_ms, profile.search_depth)
 	var me := state.current_player
 	var opp := GameState.opponent(me)
 	var legal := state.legal_moves()
@@ -110,7 +145,7 @@ func evaluate(state: GameState, col: Vector2i, piece: int, force_search: bool) -
 
 	if creates_three and creates_hanging_three(state, col, piece):
 		value += W_HANGING_THREE
-	if force_search and can_force_win(state, col, piece, FORCE_DEPTH):
+	if force_search and can_force_win(state, col, piece, force_depth):
 		value += W_FORCE_WIN
 	if profile.use_stacked and creates_stacked_threat(state, col, piece):
 		value += W_FORCE_WIN

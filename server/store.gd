@@ -112,6 +112,19 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 	var profile: Dictionary = d.get("profile", {}) if d.get("profile") is Dictionary else {}
 	var trophies: Array = (d.get("trophies", []) if d.get("trophies") is Array else []).map(Trophy.normalize_entry) \
 		.filter(func(e: Dictionary) -> bool: return not e.is_empty())
+	# Runde 17: XP og opplåste ting. Kontoer fra før får XP ut fra statistikken, og beholder skinnet og
+	# seiersanimasjonen de bruker (selv om nivået ikke holder).
+	var xp := int(d.get("xp", -1))
+	var unlocks: Array = (d.get("unlocks", []) as Array).map(func(v: Variant) -> String: return str(v)) \
+		if d.get("unlocks") is Array else []
+	if xp < 0:
+		xp = Progression.backfill_xp(clean_stats)
+		var progress := { "xp": xp, "unlocks": unlocks, "tournaments_won": clean_stats.tournaments_won,
+			"best_puzzle_streak": clean_stats.best_puzzle_streak }
+		for item in ["skin:" + str(profile.get("skin", "ocean")), "fx:" + str(profile.get("win_fx", "classic"))]:
+			if not Progression.is_unlocked(item, progress):
+				unlocks.append(item)
+	var xp_day: Dictionary = d.get("xp_day", {}) if d.get("xp_day") is Dictionary else {}
 	return {
 		"id": int(d.get("id", 0)),
 		"username": str(d.get("username", "")),
@@ -125,6 +138,10 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"elo": int(d.get("elo", 1200)),
 		"stats": clean_stats,
 		"last_puzzle": str(d.get("last_puzzle", "")),   # dato for sist løste oppgave (for rekken)
+		"xp": xp,
+		"unlocks": unlocks,                              # låst opp uten nivå: premier og det de brukte før XP
+		"xp_day": { "day": str(xp_day.get("day", "")), "games": int(xp_day.get("games", 0)),
+			"opponents": xp_day.get("opponents", {}) if xp_day.get("opponents") is Dictionary else {} },
 		"profile": { "skin": str(profile.get("skin", "ocean")), "decal": str(profile.get("decal", "none")),
 			"win_fx": str(profile.get("win_fx", "classic")), "decal_color": str(profile.get("decal_color", "auto")),
 			"away": bool(profile.get("away", false)),

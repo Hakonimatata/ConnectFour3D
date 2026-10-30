@@ -4,12 +4,22 @@ extends TestCase
 const DAYS := ["2026-10-21", "2026-10-23", "2027-01-01"]
 
 
+## Første dag fra og med from som får typen kind (runde 17: typen bytter dag for dag).
+static func _day_of_kind(kind: String, from := "2026-10-21") -> String:
+	var unix := int(Time.get_unix_time_from_datetime_string(from + "T12:00:00"))
+	while Puzzle.kind_for(Time.get_date_string_from_unix_time(unix)) != kind:
+		unix += 86400
+	return Time.get_date_string_from_unix_time(unix)
+
+
 func test_puzzle_is_the_same_all_day_and_has_a_forced_win() -> void:
-	var a := Puzzle.generate("2026-10-21")
-	var b := Puzzle.generate("2026-10-21")
+	var day := _day_of_kind("forced")
+	var a := Puzzle.generate(day)
+	var b := Puzzle.generate(day)
 	check(not a.is_empty(), "fant en oppgave")
 	check_eq(a.moves, b.moves, "samme dag gir samme oppgave:")
-	check(Puzzle.generate("2026-10-22").moves != a.moves, "ny dag, ny oppgave")
+	var next_day := Time.get_date_string_from_unix_time(int(Time.get_unix_time_from_datetime_string(day + "T12:00:00")) + 86400)
+	check(Puzzle.generate(_day_of_kind("forced", next_day)).moves != a.moves, "ny dag, ny oppgave")
 	var s := Puzzle.start_state(a)
 	check_eq(s.current_player, int(a.player))
 	check(int(a.depth) >= Puzzle.MIN_DEPTH, "minst tre trekk")
@@ -21,11 +31,9 @@ func test_puzzle_is_the_same_all_day_and_has_a_forced_win() -> void:
 func test_solution_is_accepted_and_others_are_not() -> void:
 	for day in DAYS:
 		var p := Puzzle.generate(day)
-		var sol := Puzzle.solution(p)
-		var mine := []
-		for i in range(0, sol.size(), 2):
-			mine.append([sol[i].x, sol[i].y])
-		check_eq(mine.size(), int(p.depth), "%s: løsningen bruker akkurat dybden:" % day)
+		var mine := _attacker_moves(p)
+		if str(p.get("kind", "forced")) == "forced":
+			check_eq(mine.size(), int(p.depth), "%s: løsningen bruker akkurat dybden:" % day)
 		check(Puzzle.verify(p, mine), "%s: løsningen godtas" % day)
 		check(not Puzzle.verify(p, mine.slice(0, mine.size() - 1)), "%s: halv løsning godtas ikke" % day)
 		check(not Puzzle.verify(p, [[9, 9]]), "ugyldig trekk")
@@ -36,7 +44,7 @@ func test_solution_is_accepted_and_others_are_not() -> void:
 
 
 func test_defender_is_deterministic() -> void:
-	var p := Puzzle.generate("2026-10-21")
+	var p := Puzzle.generate(_day_of_kind("forced"))
 	var s := Puzzle.start_state(p)
 	s.play(Puzzle.best_move(s, int(p.depth)), false)
 	var a := Puzzle.defend(s, int(p.depth) - 1)
@@ -90,3 +98,67 @@ func test_puzzle_bank_has_valid_puzzles_on_every_level() -> void:
 		check(Puzzle.verify(first, mine), "løsningen på %s godtas" % first.id)
 		if level <= 4:
 			check(not Puzzle.can_win(Puzzle.start_state(first), level - 1), "%s har ingen raskere seier" % first.id)
+
+
+## Runde 17: dagens oppgave bytter mellom tre typer, dag for dag.
+func test_daily_kinds_rotate() -> void:
+	var kinds := {}
+	for d in ["2026-11-01", "2026-11-02", "2026-11-03"]:
+		kinds[Puzzle.kind_for(d)] = true
+	check_eq(kinds.size(), 3, "tre dager på rad gir tre typer")
+	check_eq(Puzzle.kind_for("bank-3-1"), "forced", "andre nøkler enn datoer")
+	for d in ["2026-11-01", "2026-11-02", "2026-11-03"]:
+		var p := Puzzle.generate(d)
+		check(not p.is_empty(), d)
+		var has_bank := DailyBank.PUZZLES.any(func(b: Dictionary) -> bool: return b.kind == Puzzle.kind_for(d))
+		check_eq(str(p.get("kind", "forced")), Puzzle.kind_for(d) if has_bank else "forced", d)
+		check(Puzzle.verify(p, _attacker_moves(p)), "løsningen godtas: %s" % d)
+
+
+## Det eksakte søket (stille trekk lov) finner de tvungne seirene i oppgavebanken, og aldri lengre.
+func test_quiet_search_agrees_with_forced_puzzles() -> void:
+	for p in PuzzleBank.PUZZLES.slice(0, 6):
+		var s := Puzzle.start_state(p)
+		var d := Puzzle.quiet_win_depth(s, int(p.depth))
+		check(d > 0 and d <= int(p.depth), "%s: %d" % [p.id, d])
+
+
+## «Vinn på N trekk» i banken: seier på N trekk med stille trekk, ingen med bare trusler, entydig.
+func test_win_puzzles_in_the_bank() -> void:
+	var wins := DailyBank.PUZZLES.filter(func(p: Dictionary) -> bool: return p.kind == "win").slice(0, 3)
+	for p in wins:
+		var s := Puzzle.start_state(p)
+		var n := int(p.depth)
+		check_eq(Puzzle.quiet_win_depth(s, n), n, "%s: seier på %d" % [p.id, n])
+		check_eq(Puzzle.win_depth(s, n), 0, "%s: ikke bare med trusler" % p.id)
+		check(Puzzle.verify(p, _attacker_moves(p)), "%s: løsningen" % p.id)
+		var first := Puzzle._vec(p.line[0])
+		for c in s.legal_moves():
+			if c != first:
+				check(not Puzzle.verify(p, [[c.x, c.y]]), "%s: feil første trekk godtas ikke" % p.id)
+				break
+
+
+## «Finn beste trekk» i banken: bare svaret redder deg, og alle andre trekk har en vist vei til tap.
+func test_defend_puzzles_in_the_bank() -> void:
+	var defends := DailyBank.PUZZLES.filter(func(p: Dictionary) -> bool: return p.kind == "defend").slice(0, 3)
+	for p in defends:
+		var s := Puzzle.start_state(p)
+		var answer := Puzzle._vec(p.answer)
+		check(Puzzle.verify(p, [p.answer]), "%s: svaret" % p.id)
+		for c in s.legal_moves():
+			if c == answer:
+				continue
+			check(not Puzzle.verify(p, [[c.x, c.y]]), "%s: feil trekk" % p.id)
+			check((p.refute as Dictionary).has("%d,%d" % [c.x, c.y]), "%s: motstanderens svar på %s" % [p.id, c])
+		s.play(answer, false)
+		check_eq(Puzzle.quiet_win_depth(s, int(p.depth)), 0, "%s: svaret holder" % p.id)
+
+
+static func _attacker_moves(p: Dictionary) -> Array:
+	var sol := Puzzle.solution(p)
+	var out := []
+	var step := 1 if str(p.get("kind", "forced")) == "defend" else 2
+	for i in range(0, sol.size(), step):
+		out.append([sol[i].x, sol[i].y])
+	return out

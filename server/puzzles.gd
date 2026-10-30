@@ -66,10 +66,13 @@ func solve(user_id: int, day: String, moves: Array, attempts: int, now_s: int) -
 	var u: Dictionary = store.users[user_id]
 	d.solvers.append({ "user": user_id, "username": u.username, "attempts": clampi(attempts, 1, 99), "time": now_s })
 	store.save_puzzles()
+	var before := Progression.progress_of(u)
 	var st: Dictionary = u.stats
 	st.puzzles_solved += 1
 	st.puzzle_streak = st.puzzle_streak + 1 if u.last_puzzle == day_of(now_s - 86400) else 1
 	st.best_puzzle_streak = maxi(st.best_puzzle_streak, st.puzzle_streak)
 	u.last_puzzle = day
+	# XP: mer for hver dag på rad (runde 17), og 7 dager på rad låser opp en egen skin
+	var xp := accounts.add_xp(u, Progression.puzzle_xp(st.puzzle_streak), before)
 	store.save_users()
-	return { "ok": true, "rank": d.solvers.size(), "first": true }
+	return { "ok": true, "rank": d.solvers.size(), "first": true, "xp": xp, "streak": st.puzzle_streak }

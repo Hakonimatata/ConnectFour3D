@@ -259,6 +259,10 @@ func _set_user(u: Variant) -> void:
 		Settings.last_elo = int(user.elo)
 		Settings.last_username = str(user.username)
 		Settings.save()
+	# XP og det som er låst opp huskes, så det gjelder også uten nett (runde 17)
+	if user.has("xp") and Progression.progress_of(user) != Settings.last_progress:
+		Settings.last_progress = Progression.progress_of(user)
+		Settings.save()
 	account_changed.emit()
 
 
