@@ -87,3 +87,36 @@ func test_strong_bot_scores_higher_than_easy_bot() -> void:
 		if better.x >= 0:
 			check(Vector2i(better.x, better.y) != res.col, "bedre trekk i en annen kolonne")
 			check(str(res.reason) != "", "et bedre trekk har et tips")
+
+
+## Tre på rad er bare verdt noe så lenge den ikke kan blokkeres: analysen sier fra når et trekk bruker
+## opp en trussel (motstanderen bare blokkerer), både en ny og en spart en.
+func test_spending_a_threat_is_explained() -> void:
+	var o := GameOptions.from_dict(FREE)
+	var fresh := GameState.from_moves(o, 1, [[0, 0], [0, 3], [1, 0], [3, 3]])
+	check_eq(MoveReview.spent_threat(fresh, Vector2i(2, 0), 1), "spent_threat", "ny tre på rad som kan blokkeres straks:")
+	check_eq(MoveReview.spent_threat(fresh, Vector2i(2, 2), 1), "", "et stille trekk:")
+	# Spiller 1 har tre på rad i andre høyde; den siste plassen (3, 0, 1) kan ikke spilles ennå
+	var saved := GameState.from_moves(o, 1, [[1, 0], [0, 0], [0, 0], [2, 0], [2, 0], [3, 3], [1, 0], [3, 2]])
+	check_eq(MoveReview.spent_threat(saved, Vector2i(3, 0), 1), "under_own_threat", "rett under egen trussel:")
+	check_eq(MoveReview.spent_threat(saved, Vector2i(3, 1), 1), "", "trusselen spares:")
+	var info := MoveReview.position_info(saved, Vector2i(3, 1))
+	check_eq(info.spends.get(Vector2i(3, 0), ""), "under_own_threat")
+	# Et trekk som brukte opp trusselen og mistet vinnersjanse, får det tipset (ikke grunnen til det beste trekket)
+	var r := MoveReview.judge(info, Vector2i(3, 0), 1, 150, -150)
+	check(r.grade != "best", "trekket var dårligere")
+	check_eq(r.reason, "under_own_threat")
+	check(MoveReview.describe(r).ends_with(MoveReview.tip("under_own_threat")), MoveReview.describe(r))
+	# Var det beste trekket også en trussel, er det den som forklares
+	info.why = "threat"
+	check_eq(MoveReview.judge(info, Vector2i(3, 0), 1, 150, -150).reason, "threat")
+
+
+## «Tar plassen motstanderen trenger» bare når motstanderens tre på rad ikke kunne vært blokkert med en
+## gang (ellers er det ingen fare).
+func test_block_three_only_when_it_could_not_be_blocked() -> void:
+	var o := GameOptions.from_dict(FREE)
+	var open := GameState.from_moves(o, 1, [[2, 2], [0, 0], [3, 3], [1, 0]])
+	check_eq(MoveReview.explain(open, Vector2i(2, 0), 1), "better_spot", "siste plass kan spilles:")
+	var hanging := GameState.from_moves(o, 1, [[0, 0], [0, 0], [1, 0], [1, 0], [3, 3], [2, 0]])
+	check_eq(MoveReview.explain(hanging, Vector2i(2, 0), 1), "block_three", "siste plass henger:")

@@ -10,7 +10,9 @@ extends RefCounted
 ##   accuracy  0–100 for trekket (100 = botens beste, eller like godt)
 ##   grade     best | good | inaccuracy | mistake | blunder | only (bare ett lovlig trekk, teller ikke)
 ##   reason    hvorfor et annet trekk var bedre (missed_win, missed_block, missed_force, allows_force,
-##             double, threat, hanging_three, block_three, better_spot) – tom når trekket var best
+##             under_own_threat, spent_threat, double, threat, hanging_three, block_three, better_spot)
+##             – tom når trekket var best. under_own_threat og spent_threat handler om trekket som ble
+##             spilt: det brukte opp en trussel (motstanderen bare blokkerer) uten å vinne noe på det
 ##   better    stedet (Vector3i) der brikken heller burde lagt (bare når trekket ikke var best).
 ##             Det er landingsplassen før trekket, i en annen kolonne enn trekket som ble spilt.
 ##   mate      missed_force: antall egne trekk til seieren som glapp. allows_force: til motstanderens
@@ -23,6 +25,10 @@ extends RefCounted
 ## Å bomme på en tvungen seier, eller gi motstanderen en, er «feil» (med tips), ikke «tabbe». Det skjer
 ## ofte i vanlige partier, og ellers ville nesten alt blitt rødt. Tabbe er å ikke vinne eller ikke
 ## blokkere når det står tre på rad (eller å miste mye av vinnersjansen på annen måte).
+##
+## Tre på rad er bare verdt noe så lenge motstanderen ikke kan blokkere den: en trussel som ikke kan
+## spilles ennå, kan spares og brukes senere i en tvungen rekke. Søket gir derfor poeng for slike
+## trusler, ikke for tre på rad som blokkeres med en gang (se SearchBot._eval og tempo_w).
 
 const BEST := 98.0
 const GOOD := 80.0
@@ -128,9 +134,9 @@ static func grade_of(acc: float) -> String:
 	return "blunder"
 
 
-## Hva et trekk gjør (til tipsene): double (to trusler), threat (motstanderen må blokkere),
-## hanging_three (tre på rad som ikke kan blokkeres ennå), block_three (stopper tre på rad for
-## motstanderen), ellers better_spot. Brettet endres bare midlertidig.
+## Hva et trekk gjør (til tipsene): double (to trusler), hanging_three (tre på rad som ikke kan
+## blokkeres ennå), threat (motstanderen må blokkere), block_three (tar plassen motstanderen trenger
+## for tre på rad som ikke kan blokkeres ennå), ellers better_spot. Brettet endres bare midlertidig.
 static func explain(s: GameState, col: Vector2i, me: int) -> String:
 	var opp := GameState.opponent(me)
 	var n := s.n_lines
@@ -151,17 +157,40 @@ static func explain(s: GameState, col: Vector2i, me: int) -> String:
 					var p := s.lines.pos_of(x)
 					hanging = hanging or s.column_height(Vector2i(p.x, p.y)) != p.z
 		elif mine == 1 and theirs == L - 2:
-			block_three = true
+			# Bare verdt å nevne hvis motstanderens tre på rad her ikke kunne vært blokkert med en gang
+			for x in s.lines.cells[li]:
+				if s.cells[x] == 0:
+					var p := s.lines.pos_of(x)
+					block_three = block_three or s.column_height(Vector2i(p.x, p.y)) != p.z
 	s.unplace(col)
 	if threats >= 2:
 		return "double"
+	if hanging:
+		return "hanging_three"   # det som varer: trusselen motstanderen må blokkere nå, er brukt opp etterpå
 	if threats == 1:
 		return "threat"
-	if hanging:
-		return "hanging_three"
 	if block_three:
 		return "block_three"
 	return "better_spot"
+
+
+## Bruker trekket opp en trussel? "under_own_threat": brikken legges rett under en egen vinnerplass,
+## så motstanderen kan blokkere den. "spent_threat": ny tre på rad der den siste plassen kan spilles
+## med en gang. Ellers "" (også ved seier eller to trusler, da brukes ingenting opp).
+static func spent_threat(s: GameState, col: Vector2i, me: int) -> String:
+	var pos := s.landing_pos(col)
+	var above := pos + Vector3i(0, 0, 1)
+	var saved := above.z < s.size and s.is_winning_cell(s.lines.index_of(above), me)
+	var index := s.place(col, me)
+	var threats := 0
+	if not s.is_win_at(index, me):
+		for c in s.open_columns():
+			if s.wins_by(c, me):
+				threats += 1
+	s.unplace(col)
+	if threats != 1:
+		return ""
+	return "under_own_threat" if saved else "spent_threat"
 
 
 ## Treffsikkerhet per spiller: { 1: { accuracy, moves, best, mistakes, blunders }, 2: … }.
@@ -204,10 +233,16 @@ static func tip(reason: String, mate := 0) -> String:
 			return I18n.t("Herfra kunne du tvunget frem seier på %d trekk. Første trekk: den grønne markøren.") % mate
 		"allows_force":
 			return I18n.t("Trekket lar motstanderen tvinge frem seier på %d trekk. Bedre: den grønne markøren.") % mate
+		"under_own_threat":
+			return I18n.t("Du la rett under din egen trussel, så motstanderen kunne blokkere den. Spar slike trusler til de gir deg seier. Bedre: den grønne markøren.")
+		"spent_threat":
+			return I18n.t("Tre på rad som kan blokkeres med en gang, gir deg ingenting: trusselen er brukt opp. Bedre: den grønne markøren.")
 		"double": return I18n.t("Bedre: den grønne markøren gir to trusler samtidig.")
-		"threat": return I18n.t("Bedre: den grønne markøren lager en trussel motstanderen må blokkere.")
-		"hanging_three": return I18n.t("Bedre: den grønne markøren gir tre på rad som motstanderen ikke kan blokkere ennå.")
-		"block_three": return I18n.t("Bedre: den grønne markøren stopper motstanderen fra å få tre på rad.")
+		"threat": return I18n.t("Bedre: den grønne markøren tvinger motstanderen til å blokkere, og det gir deg en bedre stilling.")
+		"hanging_three":
+			return I18n.t("Bedre: den grønne markøren gir tre på rad som motstanderen ikke kan blokkere ennå. Spar den til den gir deg seier.")
+		"block_three":
+			return I18n.t("Bedre: den grønne markøren tar plassen motstanderen trenger for tre på rad som du ikke kan blokkere ennå.")
 		"better_spot": return I18n.t("Den grønne markøren viser en bedre plass.")
 	return ""
 
@@ -256,9 +291,9 @@ static func best_text(info: Dictionary, score: int) -> String:
 		return I18n.t("Motstanderen kan tvinge frem seier uansett. Dette trekket holder lengst.")
 	match str(info.get("why", "")):
 		"double": return I18n.t("Gir to trusler samtidig. Motstanderen kan bare blokkere én.")
-		"threat": return I18n.t("Lager en trussel motstanderen må blokkere.")
-		"hanging_three": return I18n.t("Gir tre på rad som motstanderen ikke kan blokkere ennå.")
-		"block_three": return I18n.t("Stopper motstanderen fra å få tre på rad.")
+		"threat": return I18n.t("Tvinger motstanderen til å blokkere, og det gir deg en bedre stilling.")
+		"hanging_three": return I18n.t("Gir tre på rad som motstanderen ikke kan blokkere ennå. Spar den til den gir deg seier.")
+		"block_three": return I18n.t("Tar plassen motstanderen trenger for tre på rad som du ikke kan blokkere ennå.")
 	return I18n.t("Gir flest muligheter videre (åpne linjer og trusler).")
 
 
@@ -305,7 +340,8 @@ func _blame_hidden_losses() -> void:
 
 
 ## Det vi må vite om stillingen før et trekk for å vurdere det (regnes mens stillingen står på
-## brettet): vinnertrekk, hva som må blokkeres, og botens beste trekk (best) med landingsplass og grunn.
+## brettet): vinnertrekk, hva som må blokkeres, botens beste trekk (best) med landingsplass og grunn,
+## og trekkene som ville brukt opp en trussel (spends: kolonne -> spent_threat).
 static func position_info(s: GameState, best: Vector2i) -> Dictionary:
 	if s.is_over():
 		return {}
@@ -313,11 +349,14 @@ static func position_info(s: GameState, best: Vector2i) -> Dictionary:
 	var opp := GameState.opponent(me)
 	var legal := s.legal_moves()
 	var info := { "only": legal.size() == 1, "win": Vector2i(-1, -1), "wins": [], "block": Vector2i(-1, -1), "blocks": 0,
-		"best": best, "best_pos": Vector3i(-1, -1, -1), "why": "" }
+		"best": best, "best_pos": Vector3i(-1, -1, -1), "why": "", "spends": {} }
 	for c in legal:
 		if s.wins_by(c, me):
 			info.win = c
 			info.wins.append(c)
+		var spent := spent_threat(s, c, me)
+		if spent != "":
+			info.spends[c] = spent   # trekk som bruker opp en trussel (se spent_threat)
 	for c in s.open_columns():
 		if s.wins_by(c, opp):
 			info.blocks += 1
@@ -363,6 +402,10 @@ static func judge(b: Dictionary, col: Vector2i, player: int, before: int, after:
 			acc = maxf(acc, ALLOWS_FORCE)
 		else:
 			reason = str(b.why)
+			# Brukte trekket opp en trussel (og det beste trekket gjorde ikke det samme), er det tipset
+			var spent := str(b.get("spends", {}).get(col, ""))
+			if spent != "" and not reason in ["double", "threat"]:
+				reason = spent
 	r.accuracy = acc
 	r.grade = grade_of(acc)
 	if r.grade != "best" and b.best_pos.x >= 0:

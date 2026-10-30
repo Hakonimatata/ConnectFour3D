@@ -626,3 +626,13 @@ Banken har 30 «Vinn på N trekk» (16 på 3 trekk, 14 på 4 trekk) og 30 «Finn
 - **Stillingsmåleren for spillerne selv i et parti** er ikke med, siden det ville vært juks. En spiller kan i teorien se på sitt eget parti som tilskuer fra en annen enhet.
 - **Oppgavebanken er endelig.** Kjør `tools/make_daily_bank.gd` på nytt for flere. Å lage dem på serveren i bakgrunnen (litt hvert sekund) går, men er mer arbeid.
 - **Treningen og analysen er ikke tidsmålt i nettleser på mobil.** Analysen har tak på 0,5 s per stilling, og i nettleseren blir den grunnere, ikke tregere.
+
+**Etterpå: verdsetter AI-en tre på rad?** Poenget i spillet er å spare tre på rad til de kan brukes i en tvungen rekke, så det ble sjekket:
+- **Søket gjør det allerede riktig.** Evalueringen gir bare poeng for trusler som ikke kan spilles ennå. Tre på rad som kan blokkeres med en gang, gir ingenting, fordi motstanderen blokkerer og linjen er død.
+- **Målt:** når boten (dybde 4) bruker opp en trussel uten tvungen seier, velger et søk på dybde 8 det samme i 22 av 29 tilfeller. Ellers koster det i snitt 0,2 % vinnersjanse. Det meste skjer i tapte stillinger, der det er riktig å trekke ut tiden.
+- **Prøvd og forkastet:** en verdi for å ha tur (tempo), i tilfelle tvungne blokkeringer ga et gratis trekk i søket. Den ga ikke sterkere spill og fikk boten til å bruke opp flere trusler.
+- **Feilen var i forklaringene i analysen:**
+  - «Stopper motstanderen fra å få tre på rad» ble også brukt når motstanderens tre på rad kunne vært blokkert med en gang. Nå brukes den bare når den siste plassen ikke kan nås ennå («tar plassen motstanderen trenger for tre på rad som du ikke kan blokkere ennå»). I testpartiene gikk den fra 11 til 1 gang.
+  - **Nye tips når et trekk bruker opp en trussel og koster vinnersjanse:** «Tre på rad som kan blokkeres med en gang, gir deg ingenting: trusselen er brukt opp», og «Du la rett under din egen trussel, så motstanderen kunne blokkere den».
+  - **Andre tips:** «Lager en trussel motstanderen må blokkere» heter nå «tvinger motstanderen til å blokkere, og det gir deg en bedre stilling». Tre på rad som ikke kan blokkeres ennå, nevnes før en vanlig trussel, med «spar den til den gir deg seier».
+- 191 tester, alle grønne.

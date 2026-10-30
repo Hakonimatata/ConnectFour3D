@@ -734,12 +734,16 @@ const EN := {
 	"Trekket lar motstanderen tvinge frem seier på %d trekk. Bedre: den grønne markøren.":
 		"This move lets your opponent force a win in %d moves. Better: the green marker.",
 	"Bedre: den grønne markøren gir to trusler samtidig.": "Better: the green marker makes two threats at once.",
-	"Bedre: den grønne markøren lager en trussel motstanderen må blokkere.":
-		"Better: the green marker makes a threat your opponent must block.",
-	"Bedre: den grønne markøren gir tre på rad som motstanderen ikke kan blokkere ennå.":
-		"Better: the green marker makes three in a row your opponent can't block yet.",
-	"Bedre: den grønne markøren stopper motstanderen fra å få tre på rad.":
-		"Better: the green marker stops your opponent from getting three in a row.",
+	"Bedre: den grønne markøren tvinger motstanderen til å blokkere, og det gir deg en bedre stilling.":
+		"Better: the green marker forces your opponent to block, and that leaves you better placed.",
+	"Bedre: den grønne markøren gir tre på rad som motstanderen ikke kan blokkere ennå. Spar den til den gir deg seier.":
+		"Better: the green marker makes three in a row your opponent can't block yet. Save it until it wins you the game.",
+	"Du la rett under din egen trussel, så motstanderen kunne blokkere den. Spar slike trusler til de gir deg seier. Bedre: den grønne markøren.":
+		"You played right below your own threat, so your opponent could block it. Save threats like that until they win you the game. Better: the green marker.",
+	"Tre på rad som kan blokkeres med en gang, gir deg ingenting: trusselen er brukt opp. Bedre: den grønne markøren.":
+		"Three in a row that can be blocked right away gets you nothing: the threat is used up. Better: the green marker.",
+	"Bedre: den grønne markøren tar plassen motstanderen trenger for tre på rad som du ikke kan blokkere ennå.":
+		"Better: the green marker takes the spot your opponent needs for three in a row you couldn't block yet.",
 	"Den grønne markøren viser en bedre plass.": "The green marker shows a better spot.",
 	"Seier om %d": "Win in %d",
 	"Vunnet": "Won",
@@ -749,9 +753,11 @@ const EN := {
 	"Motstanderen kan tvinge frem seier uansett. Dette trekket holder lengst.":
 		"Your opponent can force a win anyway. This move holds out the longest.",
 	"Gir to trusler samtidig. Motstanderen kan bare blokkere én.": "Makes two threats at once. Your opponent can only block one.",
-	"Lager en trussel motstanderen må blokkere.": "Makes a threat your opponent must block.",
-	"Gir tre på rad som motstanderen ikke kan blokkere ennå.": "Makes three in a row your opponent can't block yet.",
-	"Stopper motstanderen fra å få tre på rad.": "Stops your opponent from getting three in a row.",
+	"Tvinger motstanderen til å blokkere, og det gir deg en bedre stilling.": "Forces your opponent to block, and that leaves you better placed.",
+	"Gir tre på rad som motstanderen ikke kan blokkere ennå. Spar den til den gir deg seier.":
+		"Makes three in a row your opponent can't block yet. Save it until it wins you the game.",
+	"Tar plassen motstanderen trenger for tre på rad som du ikke kan blokkere ennå.":
+		"Takes the spot your opponent needs for three in a row you couldn't block yet.",
 	"Gir flest muligheter videre (åpne linjer og trusler).": "Gives the most chances later (open lines and threats).",
 	"Trening": "Training",
 	"Se hvem som leder, få vist beste trekk med forklaring, og angre trekk. Uten klokke.":

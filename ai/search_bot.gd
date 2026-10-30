@@ -10,6 +10,11 @@ extends RefCounted
 ## - Evalueringen: åpne linjer (jo flere egne brikker, jo mer), trusler som ikke kan spilles ennå,
 ##   den laveste trusselen i en kolonne, to trusler over hverandre, og høyden truslene står på
 ##   (paritet: den som startet tjener på trusler på 1., 3., … høyde, den andre på 2., 4., …).
+##   Tre på rad som kan blokkeres med en gang, gir ingen poeng: motstanderen blokkerer (tvunget trekk),
+##   og linjen er død. Å spare en trussel er derfor verdt mer enn å bruke den, med mindre søket ser
+##   at det gir noe. Målt (runde 17): når boten på dybde 4 bruker en trussel uten tvungen seier, velger
+##   et søk på dybde 8 det samme i 22 av 29 tilfeller, og ellers koster det i snitt 0,2 % vinnersjanse.
+##   En ekstra verdi for å ha tur (tempo) ga ikke sterkere spill og fikk boten til å bruke flere trusler.
 ## - Egne, kompakte tabeller i stedet for GameState. Evalueringen og vinnerplassene oppdateres for
 ##   hvert trekk (bare linjene gjennom cellen), så hver node er billig.
 ##   Trekklistene ligger i én fast tabell (ingen nye lister per node), evalueringen ser bare på
