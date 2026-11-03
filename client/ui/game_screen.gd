@@ -499,6 +499,7 @@ func _on_started() -> void:
 		if s.cells[i] != 0:
 			app.board.add_piece(s.lines.pos_of(i), s.cells[i], false)
 	app.board.input_enabled = true
+	_update_last_move(0.0)
 	_update_turn_status()
 	_update_clocks()
 	var online := match_ctrl as OnlineMatch
@@ -514,12 +515,31 @@ func _on_move_applied(_col: Vector2i, pos: Vector3i, player: int) -> void:
 	app.board.hide_target()
 	app.board.clear_hints()
 	app.board.add_piece(pos, player)
+	_update_last_move()
 	Sfx.play("drop", 1.0 if player == 1 else 0.85)
 	Settings.vibrate(20)
 	if _live != null:
 		_hint_wanted = false
 		_live.update(match_ctrl.state)
 		_on_live_changed()
+
+
+## Markerer motstanderens siste trekk med en rolig ring (BoardView.show_last_move). Mot boten og online
+## bare når det var motstanderen som trakk sist (etter ditt trekk forsvinner den). To på samme enhet og
+## tilskuere: alltid det siste trekket. Ikke når partiet er slutt.
+func _update_last_move(delay := 0.35) -> void:
+	var s := match_ctrl.state
+	if s == null or s.history.is_empty() or s.is_over():
+		app.board.hide_last_move()
+		return
+	var col: Vector2i = s.history[-1]
+	var pos := Vector3i(col.x, col.y, s.column_height(col) - 1)
+	var mover := s.get_cell(pos)
+	var both_local := bool(match_ctrl.players[1].get("local", false)) and bool(match_ctrl.players[2].get("local", false))
+	if bool(match_ctrl.players[mover].get("local", false)) and not both_local:
+		app.board.hide_last_move()
+		return
+	app.board.show_last_move(pos, delay)
 
 
 func _on_move_rejected(text: String, hints: Array) -> void:
@@ -546,6 +566,7 @@ func _on_finished(result: int, reason: int, line: Array) -> void:
 	app.board.input_enabled = false
 	app.board.hide_target()
 	app.board.clear_hints()
+	app.board.hide_last_move()   # vinnerlinjen lyser i stedet
 	_highlight_turn()
 	var s := match_ctrl.state
 	var winner := s.winner()
@@ -901,6 +922,7 @@ func _on_undone() -> void:
 		if s.cells[i] != 0:
 			app.board.add_piece(s.lines.pos_of(i), s.cells[i], false)
 	app.board.input_enabled = true
+	_update_last_move(0.0)
 	_feedback_for = s.history.size()
 	_hint_wanted = false
 	_bot_hold_until = 0

@@ -72,6 +72,9 @@ func _ready() -> void:
 	top.add_child(_reconnect)
 	_toggle = UI.button("Chat", func() -> void:
 		open = not open
+		if not open:   # «Lukk» avslutter skrivingen (ellers holder menyen chatten åpen for tastaturet)
+			WebTextField.stop(_input)
+			_input.release_focus()
 		_apply_compact()
 		toggled.emit(open)
 	, "GhostButton")
@@ -103,9 +106,9 @@ func _ready() -> void:
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
-		b.theme_type_variation = "ChoiceButton"
-		b.add_theme_font_size_override("font_size", 14)
-		b.custom_minimum_size.y = 32
+		b.theme_type_variation = "TabButton"   # lave faner, så chatten får mer plass (mobil)
+		b.add_theme_font_size_override("font_size", 13)
+		b.custom_minimum_size.y = 26
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.clip_text = true
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -121,9 +124,9 @@ func _ready() -> void:
 	_tour_tab = Button.new()
 	_tour_tab.toggle_mode = true
 	_tour_tab.button_group = group
-	_tour_tab.theme_type_variation = "ChoiceButton"
-	_tour_tab.add_theme_font_size_override("font_size", 14)
-	_tour_tab.custom_minimum_size.y = 32
+	_tour_tab.theme_type_variation = "TabButton"
+	_tour_tab.add_theme_font_size_override("font_size", 13)
+	_tour_tab.custom_minimum_size.y = 26
 	_tour_tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_tour_tab.clip_text = true
 	_tour_tab.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -158,6 +161,7 @@ func _ready() -> void:
 	_send_button = UI.button("Send", _send)
 	row.add_child(_send_button)
 	v.add_child(row)
+	WebTextField.attach(_input, _send_button)   # mobil i nettleseren: ekte tekstfelt (tastatur, markering, emojier)
 	_body.append(row)
 	_apply_compact()
 
@@ -184,8 +188,11 @@ func set_channel(c: String) -> void:
 		_tabs[i].button_pressed = CHANNELS[i] == channel
 	_tour_tab.button_pressed = channel == TOUR
 	_input.placeholder_text = tr("Skriv til turneringen…") if channel == TOUR \
-		else tr(PLACEHOLDERS[CHANNELS.find(channel)])
+		else (tr("Som gjest kan du skrive i turneringschatten") if bool(Net.user.get("guest", false))
+		else tr(PLACEHOLDERS[CHANNELS.find(channel)]))
 	_rebuild()
+	if _send_button != null:
+		_update_state()
 
 
 ## Turneringsfanen: id 0 fjerner den. Henter det som er skrevet før.
@@ -201,7 +208,7 @@ func set_tournament(id: int, name: String) -> void:
 		Net.send({ "t": Protocol.TOURNAMENT_CHAT, "id": id, "text": "" })
 	if channel == TOUR and id == 0:
 		set_channel(CHANNELS[0])
-	elif tournament_only and id != 0:
+	elif (tournament_only or bool(Net.user.get("guest", false))) and id != 0:
 		set_channel(TOUR)
 	else:
 		_rebuild()
@@ -337,7 +344,7 @@ func _render(m: Dictionary) -> void:
 
 ## Skriver spilleren i chatten nå? (Da er tastaturet oppe på mobil.)
 func is_typing() -> bool:
-	return _input != null and _input.has_focus()
+	return _input != null and (_input.has_focus() or WebTextField.is_editing(_input))
 
 
 func _send() -> void:
@@ -354,8 +361,10 @@ func _send() -> void:
 
 func _update_state() -> void:
 	var online := Net.is_online()
-	_input.editable = online
-	_send_button.disabled = not online
+	# Gjester (bare kallenavn, runde 18) kan lese alt, men bare skrive i turneringschatten
+	var may_write := online and (channel == TOUR or not bool(Net.user.get("guest", false)))
+	_input.editable = may_write
+	_send_button.disabled = not may_write
 	_reconnect.visible = Net.status == Net.Status.OFFLINE
 	_dot.modulate = Color.WHITE if online else Color(1, 1, 1, 0.25)
 	if online:

@@ -171,6 +171,8 @@ func _handle(msg: Dictionary) -> void:
 		_set_user(msg.get("user"))
 	elif msg.t == Protocol.LOGGED_OUT:
 		_set_user(null)
+	elif msg.t == Protocol.RENAMED:
+		_set_user(msg.get("user"))   # nytt brukernavn (også når det ble byttet på en annen enhet)
 	elif msg.t == Protocol.STATS and msg.get("user") is Dictionary and str(msg.user.get("username", "")) == str(user.get("username", "-")):
 		_set_user(msg.user)
 	elif msg.t == Protocol.ERROR and msg.get("code") == "version":

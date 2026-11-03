@@ -105,7 +105,7 @@ func send_tournament_chat(text: String) -> void:
 func leave() -> void:
 	if keep_room:
 		return
-	Net.send({ "t": Protocol.LEAVE_ROOM })
+	Net.send({ "t": Protocol.LEAVE_ROOM, "code": room_code })
 	if not is_spectator() and tournament.is_empty():   # fra en turneringskamp går vi tilbake til turneringssiden
 		Net.close()
 
@@ -160,7 +160,8 @@ func _read_players(list: Array) -> void:
 func _on_message(msg: Dictionary) -> void:
 	match msg.t:
 		Protocol.GAME_START, Protocol.GAME_SYNC:
-			_apply_start(msg)
+			if room_code == "" or str(msg.get("code", room_code)) == room_code:   # et parti i et annet rom er ikke vårt
+				_apply_start(msg)
 		Protocol.MOVE_MADE:
 			_waiting_for_server = false
 			if state == null or int(msg.ply) != state.history.size():

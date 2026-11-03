@@ -64,10 +64,7 @@ func _ready() -> void:
 	_vbox = v
 	card.add_child(v)
 
-	v.add_child(UI.label("Fire på rad", "Title"))
-	v.add_child(UI.label("i 3D · mot AI, lokalt eller online", "Muted"))
-	v.add_child(UI.spacer(8))
-	# To hovedvalg side om side. «Spill offline» er en fane som folder ut et panel under seg
+	# Ingen tittel: plassen går til brettet og chatten. To hovedvalg side om side. «Spill offline» er en fane som folder ut et panel under seg
 	# (mot AI / to spillere på samme enhet). Fanen og panelet har samme farge og kant, så de blir én form.
 	var play := UI.vbox(DRAWER_GAP)
 	_offline_button = UI.button("Spill offline", _toggle_offline)
@@ -437,11 +434,11 @@ func _update_friends_button() -> void:
 ## og turneringen. Hele kortet er en knapp som åpner turneringen.
 func _build_champion_card() -> PanelContainer:
 	_champion = PanelContainer.new()
-	_champion.add_theme_stylebox_override("panel", UI._box(Color("2a2617"), 12, Color("b8913a"), 10, 6, 3))
+	_champion.add_theme_stylebox_override("panel", UI._box(Color("2a2617"), 12, Color("b8913a"), 10, 4, 3))
 	_champion.visible = false
 	var row := UI.hbox(10)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_champion_trophy = TrophyView.new({}, 64, true)
+	_champion_trophy = TrophyView.new({}, 52, true)
 	row.add_child(_champion_trophy)
 	var texts := UI.vbox(0)
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -449,14 +446,17 @@ func _build_champion_card() -> PanelContainer:
 	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var title := UI.label("Siste turneringsvinner", "Muted")
 	title.add_theme_color_override("font_color", Color(CHAMPION_GOLD, 0.75))
+	title.add_theme_font_size_override("font_size", 13)
 	texts.add_child(title)
 	_champion_name = UI.label("", "Heading")
 	_champion_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_champion_name.add_theme_color_override("font_color", CHAMPION_GOLD)
+	_champion_name.add_theme_font_size_override("font_size", 20)
 	_champion_name.clip_text = true
 	_champion_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	texts.add_child(_champion_name)
 	_champion_sub = UI.label("", "Muted")
+	_champion_sub.add_theme_font_size_override("font_size", 13)
 	_champion_sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	_champion_sub.clip_text = true
 	_champion_sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -567,7 +567,7 @@ static func next_signup(list: Array) -> Dictionary:
 func _promo_card(t: Dictionary) -> PanelContainer:
 	var id := int(t.id)
 	var card := PanelContainer.new()
-	card.add_theme_stylebox_override("panel", UI._box(Color("1d2a42"), 12, UI.ACCENT_HOVER, 10, 8, 4))
+	card.add_theme_stylebox_override("panel", UI._box(Color("1d2a42"), 12, UI.ACCENT_HOVER, 10, 5, 4))
 	var open_page := Button.new()   # under innholdet: trykk hvor som helst på kortet
 	open_page.theme_type_variation = "GhostButton"
 	open_page.pressed.connect(func() -> void:
@@ -578,17 +578,18 @@ func _promo_card(t: Dictionary) -> PanelContainer:
 	card.add_child(open_page)
 	var row := UI.hbox(10)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(TrophyView.new(t.get("trophy", {}), 62, true))
+	row.add_child(TrophyView.new(t.get("trophy", {}), 50, true))
 	var texts := UI.vbox(0)
 	texts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	texts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var kicker := UI.label("Du er påmeldt!" if bool(t.get("joined", false)) else "Turnering – meld deg på!", "Muted")
 	kicker.add_theme_color_override("font_color", Color("a9c1f2"))
+	kicker.add_theme_font_size_override("font_size", 13)
 	texts.add_child(kicker)
 	var name := UI.label(str(t.name))
 	name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	name.add_theme_font_size_override("font_size", 19)
+	name.add_theme_font_size_override("font_size", 17)
 	name.clip_text = true
 	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	texts.add_child(name)
@@ -601,6 +602,7 @@ func _promo_card(t: Dictionary) -> PanelContainer:
 			return tr("Starter om %s") % TournamentScreen.countdown_text(left) + " · " + count
 		return "%s · %s" % [UI.format_when(start), count]
 	var sub := UI.label(when_text.call(), "Muted")
+	sub.add_theme_font_size_override("font_size", 13)
 	_ticking.append([sub, when_text])
 	if joined_now:
 		sub.add_theme_color_override("font_color", UI.SUCCESS)
@@ -642,7 +644,10 @@ func _tournament_button(t: Dictionary) -> Button:
 	b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	b.clip_text = true
-	b.custom_minimum_size.y = 58
+	# Lav knapp med litt mindre tekst, så chatten og brettet får plass (særlig på mobil)
+	b.theme_type_variation = "SlimButton"
+	b.add_theme_font_size_override("font_size", 15)
+	b.custom_minimum_size.y = 44
 	b.icon = _dot_icon(UI.SUCCESS if running else UI.ACCENT)
 	var when := tr("Pågår nå") if running else tr("Påmelding åpen") + " · " + tr("starter %s") % UI.format_time(int(t.start_time))
 	if bool(t.get("joined", false)):

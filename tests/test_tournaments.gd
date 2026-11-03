@@ -15,6 +15,8 @@ func before_each() -> void:
 	lobby.send = func(peer: int, msg: Dictionary) -> void:
 		_inbox.get_or_add(peer, []).append(Protocol.decode(Protocol.encode(msg)))
 	lobby.clock_s = func() -> int: return unix
+	# Innsjekken (runde 18) har egne tester. Her regnes alle påmeldte som til stede ved start.
+	lobby.tournaments.here = func(_t: Dictionary, _uid: int) -> bool: return true
 
 
 func after_each() -> void:
@@ -100,17 +102,22 @@ func _play_match(m: Dictionary, peers: Dictionary, p1_wins := true) -> void:
 		ply += 1
 
 
-func test_admin_only_and_login_required() -> void:
+## Alle med konto kan lage turneringer (runde 18), men bare private. Uten konto: logg inn først.
+func test_everyone_creates_private_and_login_required() -> void:
 	_user(2, "Bobo")
-	_msg(2, { "t": "tournament_create", "data": { "name": "Juks" } })
-	check_eq(_last(2, "error").code, "admin_only")
+	_msg(2, { "t": "tournament_create", "data": { "name": "Bobos cup", "private": false, "ranked": true } })
+	check(bool(_last(2, "tournament_state").tournament.private), "vanlige brukere lager private turneringer")
+	check(bool(_last(2, "tournament_state").admin), "og styrer sin egen")
 	_msg(3, { "t": "hello", "name": "Gjest", "skin": "ocean", "version": Protocol.VERSION })
+	_msg(3, { "t": "tournament_create", "data": { "name": "Uten konto" } })
+	check_eq(_last(3, "error").code, "login_required")
 	var id := _create()
 	_msg(3, { "t": "tournament_join", "id": id })
 	check_eq(_last(3, "error").code, "login_required")
 	_msg(2, { "t": "list_tournaments" })
-	check_eq(_last(2, "tournament_list").tournaments.size(), 1)
+	check_eq(_last(2, "tournament_list").tournaments.size(), 2, "sin egne private og den offentlige:")
 	check_eq(_last(2, "tournament_list").admin, false)
+	check(bool(_last(2, "tournament_list").create), "får «Ny turnering»")
 
 
 func test_knockout_with_walkover_and_winner() -> void:
@@ -307,6 +314,8 @@ func test_countdown_before_every_game() -> void:
 	check_eq(room.clock.time_left(room.state.first_player, now), 59_500, "bare 0,5 s er brukt:")
 
 
+## Uavgjort i utslag spilles om. Blir også tredje parti uavgjort, går den som ikke startet det, videre
+## (ikke den med høyest Elo).
 func test_knockout_draw_is_replayed() -> void:
 	var id := _create()
 	for i in 2:
@@ -314,12 +323,14 @@ func test_knockout_draw_is_replayed() -> void:
 		_msg(i + 2, { "t": "tournament_join", "id": id })
 	_advance(61)
 	var m: Dictionary = _t(id).rounds[0][0]
+	lobby.store.users[m.p2].elo = 2000   # Elo skal ikke avgjøre
 	check_eq(lobby.tournaments.report(m.id, 0, true, unix), "replay")
 	check_eq(m.status != "done", true)
-	check_eq(lobby.tournaments.report(m.id, 0, true, unix), "replay")
-	check_eq(lobby.tournaments.report(m.id, 0, true, unix), "", "etter tre uavgjorte avgjøres det:")
+	check_eq(lobby.tournaments.report(m.id, 0, true, unix), "replay_last", "før siste omspill sies det fra:")
+	check_eq(lobby.tournaments.report(m.id, 0, true, unix, m.p1), "", "etter tre uavgjorte avgjøres det:")
 	check_eq(m.status, "done")
 	check_eq(m.reason, "draws")
+	check_eq(m.winner, m.p1, "den som ikke startet tredje parti, går videre:")
 	check_eq(_t(id).status, "finished")
 
 
@@ -343,7 +354,7 @@ func test_round_robin_with_bye_and_table() -> void:
 	check_eq(t.status, "finished")
 	var table := lobby.tournaments.standings(t)
 	check_eq(table[0].id, ids.min(), "vinneren har flest poeng:")
-	check_eq(table[0].points2, 4, "to seire = 2 poeng (lagret som 4 halve):")
+	check_eq(table[0].points2, 6, "to seire og fri runde = 3 poeng (lagret som 6 halve):")
 	check_eq(t.winner, ids.min())
 
 
@@ -435,7 +446,8 @@ func test_round_robin_with_limited_rounds() -> void:
 		_msg(i + 2, { "t": "tournament_join", "id": id })
 	_advance(61)
 	var t := _t(id)
-	check_eq(t.rounds.size(), 2, "bare 2 runder (ikke 5):")
+	check_eq(t.pairing, "swiss", "færre runder enn alle mot alle: sveitsisk")
+	check_eq(t.rounds.size(), 1, "neste runde settes opp når denne er ferdig:")
 	for r in 2:
 		if r > 0:
 			_advance(31)
@@ -530,3 +542,304 @@ func test_tournament_xp_and_prize() -> void:
 	var notice := _last(peers[int(final.p1)], "notice")
 	check(str(notice.text).contains("XP"), str(notice))
 	check(str(notice.text).contains("Sort hull"), "premien står i beskjeden: " + str(notice.text))
+
+
+## Runde 18: alle som møter opp til start, får XP med en gang (i tillegg til XP etter plassering).
+func test_show_up_xp() -> void:
+	var id := _create("knockout")
+	var peers := _join(id, 2)
+	_advance(61)
+	check_eq(_t(id).status, "running")
+	for uid in peers:
+		check_eq(int(lobby.store.users[uid].xp), Progression.SHOW_UP_XP)
+		var told: Array = _inbox.get(peers[uid], []).filter(func(m: Dictionary) -> bool:
+			return m.t == "notice" and str(m.text).contains("møte opp"))
+		check_eq(told.size(), 1, "får beskjed")
+		check_eq(int(_last(peers[uid], "stats").user.xp), Progression.SHOW_UP_XP, "og den nye progresjonen")
+
+
+# ---------------------------------------------------------------- Runde 18: alle mot alle uten Elo
+
+## n spillere melder seg på. Gir bruker-id -> peer.
+func _join(id: int, n: int) -> Dictionary:
+	var peers := {}
+	for i in n:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	return peers
+
+
+## Avgjør alle kampene i runden som pågår (pick(m) gir vinneren, eller 0 for uavgjort), og går videre.
+func _decide_round(t: Dictionary, pick: Callable) -> void:
+	for m in (t.rounds[int(t.current_round)] as Array).duplicate():
+		if m.status != "done" and int(m.p2) != 0:
+			var w: int = pick.call(m)
+			lobby.tournaments.report(m.id, w, w == 0, unix)
+	if t.status == "running":
+		_advance(31)
+
+
+static func _key(m: Dictionary) -> Array:
+	return [mini(int(m.p1), int(m.p2)), maxi(int(m.p1), int(m.p2))]
+
+
+## Sveitsisk (færre runder enn alle mot alle): like mange poeng møtes, ingen møtes to ganger, og hvem som
+## starter, fordeles jevnt.
+func test_swiss_pairs_by_points_without_rematches() -> void:
+	var id := _create("round_robin", { "max_rounds": 3 })
+	_join(id, 8)
+	_advance(61)
+	var t := _t(id)
+	check_eq(t.pairing, "swiss")
+	for r in 3:
+		if r > 0:
+			var points := {}
+			for row in lobby.tournaments.standings(t):
+				points[int(row.id)] = int(row.points2)
+			for m in t.rounds[r]:
+				check_eq(points[m.p1], points[m.p2], "runde %d: like mange poeng møtes:" % (r + 1))
+		_decide_round(t, func(m: Dictionary) -> int: return mini(m.p1, m.p2))   # lavest id vinner
+	check_eq(t.status, "finished")
+	check_eq(t.rounds.size(), 3)
+	var met := {}
+	var starts := {}
+	for round in t.rounds:
+		for m in round:
+			check(not met.has(_key(m)), "ingen møtes to ganger: %s" % str(_key(m)))
+			met[_key(m)] = true
+			# Den som har startet færrest kamper før runden, starter (likt: hvem som helst)
+			check(int(starts.get(m.p1, 0)) <= int(starts.get(m.p2, 0)), "den som har startet minst, starter")
+		for m in round:
+			starts[m.p1] = int(starts.get(m.p1, 0)) + 1
+	check_eq(t.winner, (t.players as Array).min(), "den som vant alt:")
+
+
+## Likt antall poeng avgjøres av innbyrdes oppgjør, ikke Elo. Fri runde gir 1 poeng.
+func test_round_robin_ties_without_elo() -> void:
+	var id := _create("round_robin")
+	_join(id, 4)
+	var ids: Array = _t(id).players.duplicate()
+	ids.sort()
+	var a: int = ids[0]
+	var b: int = ids[1]
+	var c: int = ids[2]
+	var d: int = ids[3]
+	for uid in [b, c]:
+		lobby.store.users[uid].elo = 2400   # høy Elo skal ikke hjelpe
+	# a slår b og d, taper for c. b slår c og d. d slår c. Da har a og b 2 poeng, og a slo b; d og c 1, og d slo c.
+	var beats := { [a, b]: a, [a, c]: c, [a, d]: a, [b, c]: b, [b, d]: b, [c, d]: d }
+	_advance(61)
+	var t := _t(id)
+	check_eq(t.pairing, "all")
+	for r in 3:
+		_decide_round(t, func(m: Dictionary) -> int: return int(beats[_key(m)]))
+	check_eq(t.status, "finished")
+	var table := lobby.tournaments.standings(t)
+	check_eq(table.map(func(row: Dictionary) -> int: return int(row.id)), [a, b, d, c], "innbyrdes avgjør begge likhetene:")
+	check_eq(t.winner, a)
+	var odd := _create("round_robin", { "name": "Oddetall" })
+	for i in 3:
+		_msg(i + 2, { "t": "tournament_join", "id": odd })
+	_advance(61)
+	var t2 := _t(odd)
+	_decide_round(t2, func(_m: Dictionary) -> int: return 0)   # uavgjort
+	var bye := int(t2.rounds[0].filter(func(m: Dictionary) -> bool: return m.reason == "bye")[0].winner)
+	var rows := lobby.tournaments.standings(t2)
+	check_eq(int(rows.filter(func(r: Dictionary) -> bool: return int(r.id) == bye)[0].points2), 2, "fri runde gir 1 poeng:")
+
+
+## Står det helt likt øverst etter siste runde, spilles omkamp om seieren (her: tre som slo hverandre
+## i ring, så alt er likt).
+func test_round_robin_playoff_when_fully_tied() -> void:
+	var id := _create("round_robin")
+	var peers := _join(id, 3)
+	var ids: Array = _t(id).players.duplicate()
+	ids.sort()
+	var beats := { [ids[0], ids[1]]: ids[0], [ids[1], ids[2]]: ids[1], [ids[0], ids[2]]: ids[2] }
+	_advance(61)
+	var t := _t(id)
+	for r in 3:
+		_decide_round(t, func(m: Dictionary) -> int: return int(beats[_key(m)]))
+	check_eq(t.status, "running", "ikke ferdig: omkamp")
+	check_eq((t.playoff as Array).size(), 3, "alle tre står likt:")
+	check((t.rounds[-1] as Array).all(func(m: Dictionary) -> bool: return m.playoff), "omkamprunden er merket")
+	for i in 2:   # første omkamprunde (én kamp og fri runde), så finalen
+		var round: Array = t.rounds[int(t.current_round)]
+		for m in round:
+			if m.status == "scheduled":
+				_advance(31)
+			if m.status == "waiting":
+				_play_match(m, peers)
+	check_eq(t.status, "finished", "ferdig etter omkampen")
+	var table := lobby.tournaments.standings(t)
+	check_eq(int(table[0].id), t.winner, "vinneren av omkampen står øverst:")
+	check(Tournaments.final_game(t) > 0, "«Se finalen» viser omkampen")
+	_msg(2, { "t": "get_tournament", "id": id })
+	check(_last(2, "tournament_state").tournament.rounds[-1][0].playoff, "klienten ser at det er omkamp")
+
+
+## Sveitsisk: to som står uten motstander, spiller mot hverandre i stedet for å vinne på walkover. Den som
+## ikke kom, taper; poengene kommer fra den nye kampen.
+func test_swiss_players_without_opponent_play_each_other() -> void:
+	var id := _create("round_robin", { "max_rounds": 2 })
+	var peers := _join(id, 6)
+	_advance(61)
+	var t := _t(id)
+	var first: Array = t.rounds[0]
+	var m1: Dictionary = first[0]
+	var m2: Dictionary = first[1]
+	_msg(peers[m1.p1], { "t": "join_room", "code": m1.room })   # bare p1 kommer i de to første kampene
+	_msg(peers[m2.p1], { "t": "join_room", "code": m2.room })
+	_play_match(first[2], peers)
+	_advance(121)   # møtefristen
+	check_eq(m1.reason, "forfeit", "ikke walkover:")
+	check_eq(m2.reason, "forfeit")
+	check_eq(m1.winner, 0, "ingen vinner den kampen:")
+	check_eq(first.size(), 4, "en ny kamp i runden:")
+	var extra: Dictionary = first[3]
+	check(extra.extra and extra.status == "waiting", "den nye kampen er i gang")
+	check_eq(_key(extra), [mini(m1.p1, m2.p1), maxi(m1.p1, m2.p1)], "de to som kom:")
+	check_eq(_last(peers[m1.p1], "tournament_notice").room, extra.room, "spilleren kastes inn i den nye kampen")
+	_play_match(extra, peers)
+	var rows := {}
+	for row in lobby.tournaments.standings(t):
+		rows[int(row.id)] = row
+	check_eq(int(rows[extra.p1].points2), 2, "seier i den nye kampen:")
+	check_eq(int(rows[extra.p2].points2), 0, "tap i den nye kampen:")
+	check_eq(int(rows[m1.p2].points2), 0, "den som ikke kom:")
+	check_eq(int(rows[m1.p2].losses), 1)
+	check_eq(int(t.current_round), 1, "neste runde etter den nye kampen")
+
+
+## Alle møter alle: de to uten motstander spiller kampen de skulle hatt mot hverandre senere, nå, og vinner
+## walkoveren. Blir bare én stående uten motstander, er det walkover som før.
+func test_round_robin_players_without_opponent_play_their_later_match() -> void:
+	var id := _create("round_robin")
+	var peers := _join(id, 4)
+	_advance(61)
+	var t := _t(id)
+	var first: Array = t.rounds[0]
+	var m1: Dictionary = first[0]
+	var m2: Dictionary = first[1]
+	_msg(peers[m1.p1], { "t": "join_room", "code": m1.room })
+	_msg(peers[m2.p1], { "t": "join_room", "code": m2.room })
+	_advance(121)
+	check_eq(m1.reason, "walkover")
+	check_eq(m1.winner, m1.p1)
+	check_eq(first.size(), 3, "kampen fra en senere runde er flyttet hit:")
+	var pulled: Dictionary = first[2]
+	check(pulled.extra and pulled.status == "waiting")
+	var later := 0
+	for r in range(1, t.rounds.size()):
+		for m in t.rounds[r]:
+			if _key(m) == _key(pulled):
+				later += 1
+	check_eq(later, 0, "og er borte fra den senere runden:")
+	_play_match(pulled, peers)
+	check_eq(int(t.current_round), 1, "neste runde")
+	# Neste runde: én kamp der bare én kommer, og ingen andre uten motstander: walkover
+	_advance(31)
+	var second: Array = t.rounds[1]
+	var lone: Dictionary = second[0]
+	_msg(peers[lone.p1], { "t": "join_room", "code": lone.room })
+	for m in second.slice(1):
+		if m.status == "waiting":
+			_play_match(m, peers)
+	_advance(121)
+	check_eq(lone.reason, "walkover", "ingen å spille mot: walkover")
+
+
+## Innsjekken (runde 18): 2 min før start får de påmeldte beskjed (klienten åpner siden). Den som har
+## siden oppe, er med; de andre er ute ved start. Begynner innsjekken for sent (serveren var nede), får
+## alle hele tiden på seg.
+func test_checkin_before_start() -> void:
+	lobby.tournaments.here = lobby._views_tournament   # den ekte innsjekken
+	var id := _create("knockout", { "start_time": unix + 600, "signup_deadline": unix + 600 })
+	var uids := []
+	for i in 3:
+		_user(i + 2, "Spiller%d" % i)
+		uids.append(int(lobby.store.find_user("Spiller%d" % i).id))
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_msg(2, { "t": "view_tournament", "id": id })
+	_advance(600 - Tournaments.CHECKIN_S - 5)
+	check_eq(_t(id).checkin_at, 0, "ikke ennå")
+	_advance(10)
+	check(_t(id).checkin_at > 0, "innsjekken er i gang")
+	check_eq(_t(id).checked_in, [uids[0]], "den som har siden oppe:")
+	check(bool(_last(3, "tournament_notice").get("open", false)), "de andre får beskjed om å åpne siden")
+	check(_last(2, "tournament_notice").is_empty())
+	_msg(3, { "t": "view_tournament", "id": id })
+	_advance(1)
+	check_eq(_t(id).checked_in.size(), 2)
+	check_eq(_t(id).status, "open", "offentlige turneringer starter på klokkeslettet, ikke før")
+	_advance(Tournaments.CHECKIN_S)
+	check_eq(_t(id).status, "running")
+	check_eq(_t(id).players, [uids[0], uids[1]], "bare de som møtte:")
+	check_eq(_t(id).missed, [uids[2]])
+	check_eq(_last(4, "notice").key, "Du møtte ikke til start, så du er ikke med i «%s».")
+	# Serveren var nede over starttiden: innsjekken begynner nå, og starten flyttes
+	var late := _create("knockout", { "name": "Etter omstart", "start_time": unix + 60, "signup_deadline": unix + 60 })
+	_msg(3, { "t": "tournament_join", "id": late })
+	_msg(4, { "t": "tournament_join", "id": late })
+	_advance(300)
+	check_eq(_t(late).status, "open", "ikke avlyst fordi ingen rakk å komme")
+	check_eq(_t(late).start_time, unix + Tournaments.CHECKIN_S, "alle får hele innsjekken:")
+	_msg(3, { "t": "view_tournament", "id": late })
+	_msg(4, { "t": "view_tournament", "id": late })
+	_advance(Tournaments.CHECKIN_S)
+	check_eq(_t(late).status, "running")
+	check_eq(_t(late).players.size(), 2)
+
+
+## Faller man ut underveis, kan man komme tilbake: kobler man til igjen (eller logger inn), kastes man rett
+## inn i kampen som venter. «Forlat rommet» for et annet rom (en gammel skjerm som lukkes) gjelder ikke.
+func test_dropped_player_comes_back_and_old_leave_is_ignored() -> void:
+	var id := _create()
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	var token := str(_last(2, "session").token)
+	_advance(61)
+	var m: Dictionary = _t(id).rounds[0][0]
+	lobby.on_disconnect(2, now)
+	_advance(61)   # lenger enn RECONNECT_GRACE_MS: en helt ny tilkobling
+	_inbox.erase(2)
+	_msg(2, { "t": "hello", "name": "Spiller0", "skin": "ocean", "version": Protocol.VERSION, "session": token })
+	check_eq(str(_last(2, "tournament_notice").get("room", "")), str(m.room), "kastes inn i kampen igjen:")
+	for uid in peers:
+		_msg(peers[uid], { "t": "join_room", "code": m.room })
+	var room: Lobby.Room = lobby.rooms[m.room]
+	check(room.in_game(), "kampen startet")
+	var a: int = peers[m.p1]
+	_msg(a, { "t": "leave_room", "code": "QQQQQ" })   # gammelt rom
+	check(room.in_game() and room.seat_of(lobby._peers[a]) == 1, "en gammel «forlat rommet» gir ikke tap")
+	_msg(a, { "t": "leave_room", "code": m.room })
+	check(not room.in_game(), "men å forlate dette rommet gjør det")
+
+
+## Man kan ikke se på sitt eget parti (samme konto i en annen fane gir stillingsmåleren og «vinner om 3 trekk»).
+func test_players_cannot_watch_their_own_game() -> void:
+	var id := _create()
+	var peers := {}
+	for i in 2:
+		_user(i + 2, "Spiller%d" % i)
+		peers[int(lobby.store.find_user("Spiller%d" % i).id)] = i + 2
+		_msg(i + 2, { "t": "tournament_join", "id": id })
+	_advance(61)
+	var m: Dictionary = _t(id).rounds[0][0]
+	var name := lobby.accounts.username_of(int(m.p1))
+	_msg(9, { "t": "hello", "name": "Fane 2", "skin": "ocean", "version": Protocol.VERSION })
+	_msg(9, { "t": "login", "username": name, "password": "hemmelig123" })
+	_msg(9, { "t": "watch", "code": m.room })
+	check_eq(_last(9, "error").code, "own_game", "før partiet:")
+	for uid in peers:
+		_msg(peers[uid], { "t": "join_room", "code": m.room })
+	_msg(9, { "t": "watch", "code": m.room })
+	check_eq(_last(9, "error").code, "own_game", "og mens det spilles:")
+	check(_last(9, "room_state").is_empty())
+	_user(8, "Tilskuer")
+	_msg(8, { "t": "watch", "code": m.room })
+	check_eq(int(_last(8, "room_state").you), 0, "andre kan se på")

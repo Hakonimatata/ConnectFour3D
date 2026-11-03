@@ -406,6 +406,17 @@ func test_chat_stays_open_while_typing_on_phone() -> void:
 	app.ui.offset_bottom = 0.0
 	await _frames(3)
 	check(chat.open, "fortsatt åpen etter at tastaturet er borte")
+	# «Lukk» mens man skriver i HTML-feltet (mobil i nettleseren): lukker chatten og avslutter skrivingen
+	WebTextField.editing = chat._input
+	app.ui.offset_bottom = -380.0
+	await _frames(3)
+	check(chat.is_typing() and chat.open, "skriver")
+	chat._toggle.pressed.emit()
+	await _frames(1)
+	app.ui.offset_bottom = 0.0   # tastaturet går ned
+	await _frames(3)
+	check(not chat.is_typing(), "ferdig å skrive")
+	check(not chat.open and not chat._log.visible, "chatten er lukket")
 	app.get_window().size = old_size
 
 
@@ -622,7 +633,7 @@ func test_friends_screen_chat_channels_and_invites() -> void:
 	check(texts.has("Godta") and texts.has("Avslå"), "forespørselen kan godtas")
 	check(texts.has("Se på"), "venn som spiller kan ses på")
 	check(texts.has("Utfordre"), "venn som er online kan utfordres")
-	check_eq(texts.count("Fjern"), 3)
+	check(not texts.has("Fjern"), "venner fjernes fra profilen, ikke fra listen")
 	check(fs._requests_title.visible)
 	Net.user = old_user
 
@@ -878,8 +889,25 @@ func test_account_profile_and_tournament_screens() -> void:
 		return (_screen() as ProfileScreen)._stats_box.get_child_count() > 3
 	), "statistikken vises")
 
+	# Bytt brukernavn fra din egen profil
+	var prof := _screen() as ProfileScreen
+	check(prof._rename_form != null and not prof._rename_form.visible, "«Bytt brukernavn» er lukket til man trykker")
+	prof._rename_edit.text = "Testsjef"
+	prof._send_rename()
+	check(await wait_until(func() -> bool: return str(Net.user.get("username", "")) == "Testsjef"), "brukernavnet ble byttet")
+	check_eq(Settings.last_username, "Testsjef", "huskes på enheten:")
+	check(await wait_until(func() -> bool:
+		return (_screen() as ProfileScreen)._stats_box.find_children("*", "Label", true, false).any(
+			func(l: Label) -> bool: return l.text == tr("Brukernavnet er byttet til %s.") % "Testsjef")
+	), "profilen sier fra om det nye navnet")
+	prof = _screen() as ProfileScreen
+	prof._rename_edit.text = "Testsjef2"
+	prof._send_rename()
+	check(await wait_until(func() -> bool: return prof._rename_status.text.contains(str(Protocol.RENAME_DAYS))),
+		"et nytt bytte med en gang avvises med ventetiden")
+
 	# Gjør brukeren til admin (som å sette "admin": true i users.json) og lag en turnering
-	server.lobby.accounts.set_admin("Testadmin", true)
+	server.lobby.accounts.set_admin("Testsjef", true)
 	app.show_tournaments()
 	check(await wait_until(func() -> bool: return (_screen() as TournamentsScreen)._new_button.visible), "admin ser «Ny turnering»")
 	app.show_tournament_edit()
@@ -894,8 +922,17 @@ func test_account_profile_and_tournament_screens() -> void:
 	check(await wait_until(func() -> bool:
 		return (ts._t.get("player_list", []) as Array).size() == 1
 	), "påmeldt")
-	Net.logout()
+	# Logg ut fra din egen profil (åpnet fra hovedmenyen)
+	app.show_profile("", true)
 	await _frames(2)
+	var logout: Array = _screen().find_children("*", "Button", true, false).filter(func(b: Button) -> bool:
+		return b.text == "Logg ut")
+	check_eq(logout.size(), 1, "«Logg ut» på profilen:")
+	if not logout.is_empty():
+		(logout[0] as Button).pressed.emit()
+	await _frames(2)
+	check(not Net.is_logged_in(), "logget ut")
+	check(_screen() is MainMenu, "tilbake til hovedmenyen")
 	Settings.session_token = old_session
 
 
@@ -986,7 +1023,10 @@ func test_names_open_profiles_with_friend_button() -> void:
 	check_eq(buttons.call(), ["Forespørsel sendt"])
 	Net.friends = { "friends": [{ "username": "Bob", "online": true, "playing": false }], "requests": [], "sent": [] }
 	ps._update_actions()
-	check_eq(buttons.call(), ["Utfordre"], "venner som er online kan utfordres:")
+	check_eq(buttons.call(), ["Utfordre", "Fjern venn"], "venner som er online kan utfordres:")
+	var remove: Button = ps._actions.get_children().filter(func(c: Node) -> bool: return c is Button)[1]
+	remove.pressed.emit()
+	check_eq(buttons.call(), ["Utfordre", "Sikker?"], "fjerne må bekreftes:")
 	# Egen profil: ingen venneknapp
 	app.show_profile("ada", true)
 	await _frames(2)
@@ -1106,7 +1146,31 @@ func test_tournament_page_countdown_rules_and_links() -> void:
 	check(buttons.has("Legg i kalender") or buttons.has(tr("Legg i kalender")), "kalenderknapp før start")
 	check(buttons.has("Del lenke til turneringen") or buttons.has(tr("Del lenke til turneringen")), "del-lenke før start")
 	check(ts.find_children("*", "TrophyView", true, false).is_empty(), "ingen pokal når turneringen er uten")
+	var top := ts._top.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(top.has(TournamentScreen.countdown_text(3725)), "nedtellingen står øverst (det som skjer nå)")
+	# Reglene ligger bak «Regler» (runde 18: mye mindre tekst på siden)
+	var rule: Label = ts.find_children("*", "Label", true, false).filter(func(l: Label) -> bool:
+		return l.text.contains(I18n.t("Uranket: partiene endrer ikke Elo.")))[0]
+	check(not rule.is_visible_in_tree(), "reglene er skjult til man trykker «Regler»")
+	var rules_button: Button = ts.find_children("*", "Button", true, false).filter(func(b: Button) -> bool:
+		return b.text == "Regler")[0]
+	rules_button.pressed.emit()
+	check(rule.is_visible_in_tree(), "«Regler» viser dem")
+	# Innsjekken: stor nedtelling, om du er med, og hvem som mangler
 	t = t.duplicate(true)   # siden sammenligner med det den har (samme objekt = ingen endring)
+	t.checkin = true
+	t.start_time = now + 100
+	t.players = 2
+	t.player_list = [{ "id": 5, "username": "Meg", "elo": 1200, "here": true },
+		{ "id": 6, "username": "Sen", "elo": 1200, "here": false }]
+	ts._on_message({ "t": Protocol.TOURNAMENT_STATE, "tournament": t, "admin": false, "you": 5, "now": now })
+	await _frames(2)
+	top = ts._top.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(top.has(tr("Du er med! Kampen din starter av seg selv.")), "du er sjekket inn: %s" % str(top))
+	check(top.has(tr("Her nå: %d av %d") % [1, 2] + "  ·  " + tr("Venter på: %s") % "Sen"), "hvem som mangler: %s" % str(top))
+	check(top.has(TournamentScreen.countdown_text(100)), "nedtellingen til start")
+	t = t.duplicate(true)
+	t.checkin = false
 	t.status = "running"
 	t.rounds = [[{ "id": "a", "p1": 1, "p2": 2, "p1_name": "A", "p2_name": "B", "status": "waiting", "start_at": now,
 		"room": "ABCDE", "winner": 0, "reason": "", "here": [true, false], "walkover_at": now + 90 }]]
@@ -1177,6 +1241,89 @@ func test_tournament_player_returns_to_tournament_after_game() -> void:
 	await _frames(2)
 	check(_screen() is TournamentScreen, "tilbake på turneringssiden")
 	check_eq((_screen() as TournamentScreen).tournament_id, 7)
+
+
+## Runde 18-buggen: «Se» i banneret («Bob er klar for neste kamp») fra resultatet av forrige kamp lot partiet
+## henge igjen usynlig. Når neste kamp startet, sendte det «forlat rommet», og man tapte med en gang.
+## Nå avsluttes et parti som ikke vises lenger, og et parti i et annet rom tas ikke over.
+func test_old_match_does_not_linger_after_the_screen_changes() -> void:
+	MatchController.countdown_ms = 0
+	var start := { "options": { "must_block": false, "no_gift": false }, "first": 1, "you": 1,
+		"players": [{ "seat": 1, "name": "Ada", "skin": "ocean" }, { "seat": 2, "name": "Bob", "skin": "ember" }],
+		"clocks": [0, 0], "number": 1, "tournament": { "id": 7, "name": "Cup", "ranked": true }, "code": "AAAAA" }
+	var m := OnlineMatch.new(start)
+	app.start_match(m)
+	await _frames(2)
+	m._on_message({ "t": Protocol.GAME_OVER, "result": 1, "reason": GameState.EndReason.RESIGN, "winner": 1,
+		"line": [], "clocks": [0, 0] })
+	app.show_tournament(7)   # «Se» i banneret
+	await _frames(1)
+	check(app.current_match == null, "partiet er avsluttet når skjermen byttes")
+	var m2 := OnlineMatch.new(start)
+	app.start_match(m2)
+	await _frames(1)
+	var other := start.duplicate(true)
+	other.t = Protocol.GAME_START
+	other.code = "BBBBB"
+	m2._on_message(other)
+	check_eq(m2.room_code, "AAAAA", "et parti i et annet rom tas ikke over:")
+	app.join_room("BBBBB")   # «Gå til kamp» fra spillskjermen
+	await _frames(1)
+	check(app.current_match == null, "det gamle partiet er borte")
+	check(_screen() is LobbyScreen, "lobbyen til venterommet kommer")
+
+
+## Chatfeltet på mobil i nettleseren er et HTML-felt over LineEdit-en (WebTextField, runde 18). Plassen
+## regnes i vinduspiksler og klippes av rullelister, og feltet tar ikke trykk når noe annet ligger over.
+func test_web_chat_field_placement_and_cover() -> void:
+	await _frames(2)
+	var holder := Control.new()
+	holder.size = Vector2(800, 600)
+	app.ui.add_child(holder)
+	var chat := ChatPanel.new(false)
+	chat.position = Vector2(20, 20)
+	chat.size = Vector2(400, 300)
+	holder.add_child(chat)
+	await _frames(2)
+	var edit := chat._input
+	var scale := app.get_window().content_scale_factor
+	var r := WebTextField._screen_rect(edit)
+	check(absf(r.size.x - edit.size.x * scale) < 1.0, "vinduspiksler: %s mot %s × %.2f" % [r.size, edit.size, scale])
+	check(not WebTextField._is_covered(edit), "ingenting over feltet")
+	var cover := PanelContainer.new()   # f.eks. resultatet etter partiet
+	cover.size = holder.size
+	holder.add_child(cover)
+	check(WebTextField._is_covered(edit), "noe ligger over feltet")
+	cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	check(not WebTextField._is_covered(edit), "men ikke når det slipper trykk gjennom")
+	cover.queue_free()
+	# I en rulleliste som er rullet halvveis forbi feltet, synes bare en del av det
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(450, 20)
+	scroll.size = Vector2(300, 120)
+	holder.add_child(scroll)
+	var col := UI.vbox(0)
+	scroll.add_child(col)
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 100
+	col.add_child(spacer)
+	var field := UI.chat_input("Skriv…")
+	col.add_child(field)
+	var below := Control.new()
+	below.custom_minimum_size.y = 400
+	col.add_child(below)
+	await _frames(2)
+	scroll.scroll_vertical = 100 + int(field.size.y * 0.5)
+	await _frames(2)
+	var fr := WebTextField._screen_rect(field)
+	var clip := WebTextField._clip_rect(field, fr)
+	check(clip.size.y > 0.0 and clip.size.y < fr.size.y - 1.0, "klippet: %s av %s" % [clip.size.y, fr.size.y])
+	holder.queue_free()
+	# Nettleseren sier fra når tastaturet kommer, og ClientRoot legger om med en gang
+	WebTextField._on_js([0, "viewport", ""])
+	check(WebTextField.viewport_changed, "beskjed fra nettleseren")
+	await _frames(1)
+	check(not WebTextField.viewport_changed, "ClientRoot har målt tastaturet på nytt")
 
 
 ## Antall runder og omtrentlig varighet (vises i skjemaet og i reglene).
@@ -1275,3 +1422,146 @@ func test_spectators_see_who_is_ahead() -> void:
 	check(not (_screen() as GameScreen)._eval_bar.visible, "spillerne ser den ikke")
 	app.show_menu()
 	await _frames(2)
+
+
+## Motstanderens siste trekk markeres med en rolig ring på brikken. Etter ditt trekk forsvinner den,
+## og tilskuere ser alltid det siste trekket. Ikke når partiet er slutt.
+func test_last_move_of_the_opponent_is_marked() -> void:
+	var profile := BotProfile.create(BotProfile.Level.MEDIUM)
+	profile.think_time_s = 0.0
+	var o := GameOptions.new()
+	o.starter = "p1"
+	var m := OfflineMatch.new(o, profile)
+	app.start_match(m)
+	await _frames(2)
+	check_eq(app.board.last_move_shown(), Vector3i(-1, -1, -1), "ingen trekk ennå")
+	m.submit_move(Vector2i(1, 1))
+	check_eq(app.board.last_move_shown(), Vector3i(-1, -1, -1), "ditt eget trekk markeres ikke")
+	check(await wait_until(func() -> bool: return m.state.history.size() == 2), "boten svarer")
+	var bot: Vector2i = m.state.history[1]
+	check_eq(app.board.last_move_shown(), Vector3i(bot.x, bot.y, m.state.column_height(bot) - 1), "botens trekk markeres")
+	m.submit_move(m.state.legal_moves()[0])
+	check_eq(app.board.last_move_shown(), Vector3i(-1, -1, -1), "borte etter ditt trekk")
+	check(await wait_until(func() -> bool: return m.state.history.size() == 4), "boten svarer igjen")
+	check(app.board.last_move_shown().x >= 0, "og det nye trekket markeres")
+	var players :=[{ "seat": 1, "name": "Ada", "skin": "ocean" }, { "seat": 2, "name": "Bobo", "skin": "ember" }]
+	var watch := OnlineMatch.new({ "t": Protocol.GAME_SYNC, "options": {}, "first": 1, "you": 0, "players": players,
+		"moves": [[1, 1], [2, 2], [1, 2]], "clocks": [0, 0], "number": 1 })
+	app.start_match(watch)
+	await _frames(2)
+	check_eq(app.board.last_move_shown(), Vector3i(1, 2, 0), "tilskuere ser siste trekk")
+	app.show_menu()
+	await _frames(2)
+	check_eq(app.board.last_move_shown(), Vector3i(-1, -1, -1), "ikke i menyen")
+
+
+## Menyen på mobil: lave turneringsknapper og chatfaner, så chatten og brettet får plass, men teksten
+## i fanene får fortsatt plass.
+func test_menu_is_compact_on_phone() -> void:
+	var old_size := app.get_window().size
+	app.get_window().size = Vector2i(400, 820)
+	await _frames(2)
+	var menu := _screen() as MainMenu
+	menu.show_tournaments([
+		{ "id": 2, "name": "Vårcupen", "status": "open", "format": "knockout", "start_time": 2000000000, "players": 3, "max_players": 16 },
+		{ "id": 3, "name": "Fredagsligaen", "status": "running", "format": "round_robin", "start_time": 1000, "players": 6, "max_players": 8 },
+	])
+	menu._chat.set_tournament(3, "Fredagsligaen")
+	menu._chat._toggle.pressed.emit()
+	await _frames(4)
+	var items := menu._tour_list.get_children()
+	check((items[1] as Button).size.y <= 56.0, "turneringsknappen er lav: %.0f" % (items[1] as Button).size.y)
+	check((items[0] as Control).size.y <= 76.0, "påmeldingskortet er lavt: %.0f" % (items[0] as Control).size.y)
+	for b in menu._chat._tabs + [menu._chat._tour_tab]:
+		check(b.size.y <= 28.0, "fanen «%s» er lav: %.0f" % [b.text, b.size.y])
+		var font: Font = b.get_theme_font("font")
+		var w := font.get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, b.get_theme_font_size("font_size")).x
+		check(w <= b.size.x - 10.0, "teksten «%s» får plass (%.0f av %.0f)" % [b.text, w, b.size.x])
+	check(menu._chat._log.size.y >= 150.0, "chatten har plass til meldinger: %.0f" % menu._chat._log.size.y)
+	check(not menu._vbox.find_children("*", "Label", true, false).any(func(l: Label) -> bool: return l.theme_type_variation == "Title"),
+		"ingen tittel i menyen (plassen går til brettet og chatten)")
+	app.get_window().size = old_size
+	await _frames(2)
+
+
+## Runde 18: en privat turnering. Lenken med koden gir et felt for kallenavn, og «Bli med» lager en
+## gjestekonto og melder deg på. Storskjermen viser QR-koden og deltakerne, og etter start treet.
+func test_private_tournament_with_nickname_and_big_screen() -> void:
+	server = ServerMain.new()
+	server.port = PORT + 4
+	server.data_dir = ":memory:"
+	root.add_child(server)
+	var old_session := Settings.session_token
+	Settings.session_token = ""
+	Settings.server_url = "ws://127.0.0.1:%d" % (PORT + 4)
+	var lobby: Lobby = server.lobby
+	lobby.accounts.iterations = 10
+	var org := lobby.store.add_user("Arran", {})
+	var t := lobby.tournaments.create(int(org.id), { "name": "Fredagskveld", "private": true,
+		"options": { "must_block": false, "no_gift": false } }, int(Time.get_unix_time_from_system()))
+	for n in ["Bobo", "Cyra", "Dino"]:
+		var other := lobby.store.add_user(n, {})
+		lobby.tournaments.join(int(t.id), int(other.id), int(Time.get_unix_time_from_system()))
+	app.show_tournament_code(str(t.code).to_lower())
+	var screen := _screen() as TournamentScreen
+	check(await wait_until(func() -> bool: return screen._nickname != null and is_instance_valid(screen._nickname)),
+		"feltet for kallenavn vises")
+	screen._nickname.text = "Kari"
+	screen._join_as_guest()
+	check(await wait_until(func() -> bool: return Net.is_logged_in() and bool(Net.user.get("guest", false))), "gjestekonto")
+	check(await wait_until(func() -> bool: return (screen._t.get("player_list", []) as Array).size() == 4), "påmeldt")
+	check(Settings.session_token != "", "økten huskes (laster man siden på nytt, er man samme gjest)")
+	app.show_tournament_display(str(t.code))
+	await _frames(2)
+	var big := _screen() as TournamentDisplay
+	check(await wait_until(func() -> bool: return not big._t.is_empty()), "storskjermen henter turneringen")
+	await _frames(2)
+	check(not big.find_children("*", "QrView", true, false).is_empty(), "QR-koden for å bli med")
+	var names := big.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check("Kari" in names and "Bobo" in names, "deltakerne vises: %s" % str(names))
+	var start_button := func() -> Array:
+		return big.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Start nå")
+	check(start_button.call().is_empty(), "en deltaker får ikke «Start nå»")
+	big._manage = true   # som om arrangøren var logget inn på skjermen
+	big._rebuild()
+	check_eq(start_button.call().size(), 1, "arrangøren får «Start nå» på storskjermen:")
+	# «Start nå» begynner innsjekken. Bobo, Cyra og Dino er ikke koblet til her: Dino regnes som borte.
+	var dino := int(lobby.store.find_user("Dino").id)
+	var everyone := { "here": false }
+	lobby.tournaments.here = func(_t: Dictionary, uid: int) -> bool: return everyone.here or uid != dino
+	lobby.tournaments.action(int(t.id), "start", int(Time.get_unix_time_from_system()))
+	check(await wait_until(func() -> bool: return bool(big._t.get("checkin", false))), "storskjermen viser innsjekken")
+	big._manage = true   # serveren sier at skjermen ikke er arrangøren; vi later som igjen
+	big._rebuild()
+	await _frames(2)
+	var heads := big.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(tr("Her nå: %d av %d") % [3, 4] in heads, "hvem som er her: %s" % str(heads))
+	check(heads.any(func(s: String) -> bool: return s.begins_with(tr("Starter om %s") % "")), "nedtellingen: %s" % str(heads))
+	check(big.find_children("*", "Button", true, false).any(func(b: Button) -> bool: return b.text == "Start med dem som er her"),
+		"arrangøren kan starte med dem som er her")
+	everyone.here = true   # Dino kom: alle er her, og den private turneringen starter med en gang
+	check(await wait_until(func() -> bool: return big._t.get("status") == "running"), "storskjermen ser at den startet")
+	await _frames(2)
+	check(not big.find_children("*", "BracketView", true, false).is_empty(), "underveis: bare treet")
+	check(not app.board.visible, "brettet er skjult mens treet vises")
+	# Finalen: det eneste partiet som vises, med brettet synlig og navnene over
+	var final_t: Dictionary = big._t.duplicate(true)
+	var final_m: Dictionary = (final_t.rounds[0][0] as Dictionary).duplicate()
+	final_m.status = "waiting"
+	final_t.rounds.append([final_m])
+	final_t.current_round = 1
+	big._t = final_t
+	big._rebuild()
+	big._update_board()
+	await _frames(2)
+	check_eq(big._phase(), "final")
+	check(app.board.visible, "brettet vises i finalen")
+	check(big.find_children("*", "BracketView", true, false).is_empty(), "ikke treet i finalen")
+	var labels := big.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check("%s – %s" % [final_m.p1_name, final_m.p2_name] in labels, "navnene i finalen: %s" % str(labels))
+	big._on_back()
+	await _frames(2)
+	check(_screen() is TournamentScreen, "Lukk går til turneringssiden")
+	Net.logout()
+	await _frames(2)
+	Settings.session_token = old_session

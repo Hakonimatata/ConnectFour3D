@@ -45,8 +45,9 @@ func info_message(user_id: int, now_s: int) -> Dictionary:
 	for x in solvers:
 		solved = solved or (user_id != 0 and int(x.user) == user_id)
 		if top.size() < TOP:
-			top.append({ "username": x.username, "attempts": x.attempts,
-				"elo": int(store.users.get(int(x.user), {}).get("elo", -1)) })
+			var who: Dictionary = store.users.get(int(x.user), {})
+			top.append({ "username": str(who.get("username", x.username)), "attempts": x.attempts,   # navnet nå (kan være byttet)
+				"elo": int(who.get("elo", -1)) })
 	return { "t": Protocol.PUZZLE, "puzzle": d.puzzle, "solved": solved, "count": solvers.size(), "solvers": top }
 
 

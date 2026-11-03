@@ -307,7 +307,7 @@ func show_invite_list(data: Dictionary) -> void:
 
 
 func _on_back() -> void:
-	Net.send({ "t": Protocol.LEAVE_ROOM })
+	Net.send({ "t": Protocol.LEAVE_ROOM, "code": str(_room.get("code", "")) })
 	var tournament = _room.get("tournament")
 	if int(_room.get("you", 1)) == 0 and tournament is Dictionary:
 		app.show_tournament(int(tournament.id))

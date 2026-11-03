@@ -4,6 +4,7 @@ extends Screen
 ## Trykk på et navn for å se profilen.
 ## «Utfordre» åpner oppsettet for et privat rom, og vennen inviteres når rommet er laget.
 ## Spiller vennen nå, kan du se på partiet. Listen oppdateres av seg selv når noen kommer eller går.
+## En venn fjernes fra profilen hens (trykk på navnet), så ingen kommer bort i det ved et uhell her.
 
 var _add_edit: LineEdit
 var _status: Label
@@ -13,7 +14,6 @@ var _requests_title: Label
 var _requests_box: VBoxContainer
 var _friends_box: VBoxContainer
 var _back_to_menu := false
-var _confirm_remove := ""   ## brukernavnet som er trykket «Fjern» på én gang (trykk igjen for å fjerne)
 
 
 func _init(p_app: ClientRoot, back_to_menu := false) -> void:
@@ -125,15 +125,6 @@ func show_friends(data: Dictionary) -> void:
 			row.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
 		elif online:
 			row.add_child(UI.button("Utfordre", func() -> void: app.challenge(name), "PrimaryButton"))
-		var remove := UI.button("Sikker?" if _confirm_remove == name else "Fjern", func() -> void:
-			if _confirm_remove == name:
-				_confirm_remove = ""
-				_send("remove", name)
-			else:
-				_confirm_remove = name
-				show_friends(Net.friends)
-		, "GhostButton")
-		row.add_child(remove)
 		_friends_box.add_child(row)
 
 

@@ -118,6 +118,10 @@ func test_full_tournament_over_websockets() -> void:
 	for c in [ada, bob, cyd, dag]:
 		c.send({ "t": "tournament_join", "id": id })
 	check(await _pump(func() -> bool: return server.lobby.tournaments.get_t(id).players.size() == 4), "alle fire er påmeldt")
+	# Innsjekken (runde 18): starten er under 2 min unna, så den er i gang. Den som har siden oppe, er med.
+	for c in [ada, bob, cyd, dag]:
+		c.send({ "t": "view_tournament", "id": id })
+	check(await _pump(func() -> bool: return server.lobby.tournaments.get_t(id).checked_in.size() == 4), "alle fire sjekket inn")
 	guest.send({ "t": "list_tournaments" })
 	check(await _pump(func() -> bool: return not guest.last("tournament_list").is_empty()), "gjester ser listen")
 	check_eq(guest.last("tournament_list").tournaments[0].status, "open")

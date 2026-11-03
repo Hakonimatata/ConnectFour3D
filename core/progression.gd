@@ -10,7 +10,9 @@ extends RefCounted
 ##                             samme motstander per dag gir XP, og høyst DAILY_GAME_XP per dag fra partier
 ##                             (så to kontoer ikke kan «farme» hverandre).
 ##   dagens oppgave            25, pluss 5 per dag på rad (høyst +50): lange rekker lønner seg.
-##   rangert turnering         etter plassering: vinner 150, finalist 75, semifinale 40, ellers 20.
+##   turnering                 25 for å møte opp til start (urangerte, som alle kan lage: én per dag).
+##                             Rangert i tillegg etter plassering: vinner 150, finalist 75, semifinale 40,
+##                             ellers 20.
 ## Partier mot boten gir ingenting: de spilles uten server og kan ikke sjekkes (og å slå Lett-boten
 ## skal ikke gi noe uansett).
 ##
@@ -28,6 +30,8 @@ const PUZZLE_XP := 25
 const PUZZLE_STREAK_XP := 5
 const PUZZLE_STREAK_MAX := 10
 const TOURNAMENT_XP := { "winner": 150, "final": 75, "semi": 40, "played": 20 }
+const SHOW_UP_XP := 25              ## for å møte opp til start i en turnering (runde 18)
+const UNRANKED_SHOW_UP_DAILY := 1   ## urangerte turneringer per dag som gir SHOW_UP_XP
 const TOURNAMENT := "tournament"   ## prestasjon: har vunnet en rangert turnering
 const STREAK_7 := "streak7"        ## prestasjon: 7 dager på rad med dagens oppgave
 const LEVEL_EVENTS := [5, 10, 15, 20, 25, 30]   ## nivåene som kunngjøres i den globale chatten

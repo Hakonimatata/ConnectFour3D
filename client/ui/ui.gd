@@ -26,6 +26,7 @@ const RADIUS := 14
 static func build_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 18
+	t.default_font = emoji_font()
 
 	t.set_color("font_color", "Label", TEXT)
 	t.set_stylebox("panel", "PanelContainer", _box(PANEL, RADIUS, BORDER, 18, 18, 10))
@@ -59,6 +60,23 @@ static func build_theme() -> Theme:
 	t.set_color("font_color", "ChoiceButton", Color(TEXT, 0.85))
 	t.set_color("font_pressed_color", "ChoiceButton", Color.WHITE)
 	t.set_color("font_hover_pressed_color", "ChoiceButton", Color.WHITE)
+
+	# Små faner (kanalene i chatten): som ChoiceButton, med mindre luft rundt teksten
+	t.set_type_variation("TabButton", "ChoiceButton")
+	t.set_stylebox("normal", "TabButton", _box(BUTTON, 8, BUTTON_BORDER, 6, 3, 2))
+	t.set_stylebox("hover", "TabButton", _box(BUTTON_HOVER, 8, Color("4b5364"), 6, 3, 2))
+	t.set_stylebox("pressed", "TabButton", _box(Color("3c4a66"), 8, ACCENT_HOVER, 6, 3))
+	t.set_stylebox("hover_pressed", "TabButton", _box(Color("445373"), 8, ACCENT_HOVER, 6, 3))
+	t.set_stylebox("disabled", "TabButton", _box(Color("1b1e24"), 8, Color("262a32"), 6, 3))
+	t.set_stylebox("focus", "TabButton", _box(Color(0, 0, 0, 0), 8, Color(ACCENT, 0.6), 6, 3))
+
+	# Lav variant av vanlige knapper (turneringene i menyen): samme utseende, mindre luft over og under
+	t.set_type_variation("SlimButton", "Button")
+	t.set_stylebox("normal", "SlimButton", _box(BUTTON, 10, BUTTON_BORDER, 12, 4, 3))
+	t.set_stylebox("hover", "SlimButton", _box(BUTTON_HOVER, 10, Color("4b5364"), 12, 4, 4))
+	t.set_stylebox("pressed", "SlimButton", _box(BUTTON_PRESSED, 10, ACCENT, 12, 4))
+	t.set_stylebox("disabled", "SlimButton", _box(Color("1b1e24"), 10, Color("262a32"), 12, 4))
+	t.set_stylebox("focus", "SlimButton", _box(Color(0, 0, 0, 0), 10, Color(ACCENT, 0.6), 12, 4))
 
 	t.set_type_variation("GhostButton", "Button")
 	t.set_stylebox("normal", "GhostButton", _box(Color(0, 0, 0, 0), 10, Color(0, 0, 0, 0), 12, 8))
@@ -222,6 +240,15 @@ static func chat_input(placeholder: String) -> LineEdit:
 static func refocus_chat(e: LineEdit) -> void:
 	if not is_touch_device():
 		e.grab_focus()
+
+
+## Standardskriften med emojier som reserve (runde 18): Twemoji i farger, så emojier fra telefontastaturet
+## vises i chatten. Nettleseren har ikke systemets skrifter, så uten denne ble de til firkanter.
+static func emoji_font() -> Font:
+	var font := FontVariation.new()
+	font.base_font = ThemeDB.fallback_font
+	font.fallbacks = [preload("res://assets/fonts/Twemoji.Mozilla.ttf")]
+	return font
 
 
 static func is_touch_device() -> bool:

@@ -37,6 +37,7 @@ class Player:
 	var watching := ""             ## romkoden spilleren ser på som tilskuer
 	var last_global_ms := -100_000
 	var viewing_tournament := 0    ## turneringen spilleren har oppe (får endringer med en gang)
+	var codes := {}                ## private turneringer spilleren har åpnet med koden: id -> true
 
 
 class Room:
@@ -91,6 +92,8 @@ var _presence_sent_ms := -100_000
 var _tournaments_changed := {}   ## turnering-id -> true: sendes til dem som har siden oppe i neste tick
 var _tournament_chats := {}       ## turnering-id -> de siste meldingene [{ from, elo, text }] (bare i minnet)
 const TOURNAMENT_CHAT_KEEP := 60
+const MAX_ACTIVE_PRIVATE := 2      ## private turneringer hver bruker (ikke admin) kan ha som ikke er ferdige
+var _cleanup_at := 0               ## neste opprydding av gamle gjestekontoer (unix-s)
 ## Nedtelling før hvert parti (ms). Testene setter den til 0, så de kan spille med en gang.
 static var countdown_ms := Protocol.COUNTDOWN_MS
 
@@ -117,6 +120,7 @@ func _hook_tournaments() -> void:
 	tournaments.presence = _room_presence
 	tournaments.notify = _notify_user
 	tournaments.close_room = _close_room
+	tournaments.here = _views_tournament
 	tournaments.changed = func(id: int) -> void: _tournaments_changed[id] = true
 
 
@@ -152,6 +156,7 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.REGISTER, Protocol.LOGIN: _auth(p, t, msg, now)
 		Protocol.SET_LOOK: _set_look(p, msg)
 		Protocol.LOGOUT: _logout(p, msg)
+		Protocol.RENAME: _rename(p, msg)
 		Protocol.GET_STATS: _stats(p, str(msg.get("username", "")))
 		Protocol.GET_LEADERBOARD: send.call(peer, { "t": Protocol.LEADERBOARD, "boards": accounts.leaderboard() })
 		Protocol.LIST_TOURNAMENTS: _list_tournaments(p)
@@ -165,13 +170,18 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 		Protocol.TOURNAMENT_JOIN, Protocol.TOURNAMENT_LEAVE, Protocol.TOURNAMENT_CREATE, \
 		Protocol.TOURNAMENT_UPDATE, Protocol.TOURNAMENT_ACTION, Protocol.TOURNAMENT_READY:
 			_tournament_request(p, t, msg)
+		Protocol.TOURNAMENT_CODE: _tournament_code(p, msg)
 		Protocol.LIST_ROOMS: _list_rooms(p)
 		Protocol.CREATE_ROOM: _create_room(p, msg, now)
 		Protocol.JOIN_ROOM: _join_room(p, str(msg.get("code", "")), now)
 		Protocol.LEAVE_ROOM:
+			# code: rommet klienten vil ut av. Er vi alt i et annet rom (en gammel skjerm som lukkes etter at
+			# neste turneringskamp har startet), gjelder den ikke. Før ga det tap i den nye kampen.
+			var code := str(msg.get("code", ""))
 			if p.watching != "":
-				_unwatch(p)
-			else:
+				if code == "" or code == p.watching:
+					_unwatch(p)
+			elif code == "" or code == p.room_code:
 				_leave_room(p, now)
 		Protocol.WATCH: _watch(p, str(msg.get("code", "")), now)
 		Protocol.GLOBAL_CHAT: _global_chat(p, str(msg.get("text", "")), now, str(msg.get("channel", "")))
@@ -194,7 +204,11 @@ func on_message(peer: int, msg: Dictionary, now: int) -> void:
 ## Kalles jevnlig: tid ute, spillere som ikke kom tilbake, omspill og turneringer.
 func tick(now: int) -> void:
 	_last_ms = now
-	tournaments.tick(clock_s.call())
+	var now_s: int = clock_s.call()
+	tournaments.tick(now_s)
+	if now_s >= _cleanup_at:
+		_cleanup_at = now_s + 3600
+		accounts.remove_stale_guests(now_s, tournaments.active_players())
 	for room: Room in rooms.values():
 		if room.replay_at >= 0 and now >= room.replay_at:
 			room.replay_at = -1
@@ -286,6 +300,8 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 		if room.state != null:
 			_send_sync(room, p, now)
 		_notice_room(room, "%s er tilbake.", [p.name], p.id)
+	else:
+		_resume_tournaments(p)
 
 
 func _list_rooms(p: Player) -> void:
@@ -318,6 +334,9 @@ func live_games() -> Array:
 
 
 func _create_room(p: Player, msg: Dictionary, now: int) -> void:
+	if accounts.is_guest(p.user_id):
+		_error(p.peer, "guest", "Som gjest kan du bare spille i turneringen.")
+		return
 	_leave_room(p, now)
 	var room := Room.new()
 	room.code = _new_code()
@@ -339,6 +358,9 @@ func _join_room(p: Player, code: String, now: int) -> void:
 	if room.seat_of(p.id) > 0:
 		_broadcast_room_state(room)
 		return
+	if room.match_id == "" and accounts.is_guest(p.user_id):
+		_error(p.peer, "guest", "Som gjest kan du bare spille i turneringen.")
+		return
 	var seat := 1 if room.seats[1] == 0 else 2
 	if room.match_id != "":
 		# Turneringskamp: bare de to påmeldte, i hvert sitt faste sete.
@@ -353,6 +375,10 @@ func _join_room(p: Player, code: String, now: int) -> void:
 			room.seats[seat] = 0
 	elif room.seats[1] != 0 and room.seats[2] != 0:
 		_error(p.peer, "room_full", "Rommet er fullt.")
+		return
+	var other: int = room.seats[3 - seat]
+	if p.user_id != 0 and other != 0 and players.has(other) and (players[other] as Player).user_id == p.user_id:
+		_error(p.peer, "self_play", "Du kan ikke spille mot deg selv.")   # samme konto i to faner (se også _game_over)
 		return
 	_unwatch(p)
 	_leave_room(p, now)
@@ -568,6 +594,10 @@ func _game_over(room: Room, now: int) -> void:
 	room.clock.stop(now)
 	var s := room.state
 	var ids := [0, _user_in_seat(room, 1), _user_in_seat(room, 2)]
+	if ids[1] != 0 and ids[1] == ids[2]:
+		# Samme konto i begge setene (f.eks. to gjester som logget inn på samme konto i rommet): partiet
+		# teller ikke, så ingen kan skaffe seg statistikk, rekorder, XP eller hendelser i chatten mot seg selv.
+		ids = [0, 0, 0]
 	var moves := []
 	for m in s.history:
 		moves.append([m.x, m.y])
@@ -598,8 +628,11 @@ func _game_over(room: Room, now: int) -> void:
 	if room.match_id != "":
 		var draw := s.result == GameState.Result.DRAW
 		var winner_uid: int = 0 if draw else ids[s.winner()]
-		if tournaments.report(room.match_id, winner_uid, draw, clock_s.call()) == "replay":
-			_notice_room(room, "Uavgjort! Kampen spilles om om litt.", [], 0)
+		var second: int = ids[GameState.opponent(s.first_player)]   # den som ikke startet (avgjør tredje uavgjorte)
+		var res := tournaments.report(room.match_id, winner_uid, draw, clock_s.call(), second)
+		if res.begins_with("replay"):
+			_notice_room(room, "Uavgjort igjen! I neste parti går den som ikke starter, videre ved uavgjort." \
+				if res == "replay_last" else "Uavgjort! Kampen spilles om om litt.", [], 0)
 			room.replay_at = now + 4000
 		else:
 			room.match_done = true
@@ -712,6 +745,8 @@ func _auth(p: Player, t: String, msg: Dictionary, now: int) -> void:
 	var room := _room_of(p)
 	if room:
 		_broadcast_room_state(room)
+	else:
+		_resume_tournaments(p)
 
 
 ## Utseendet og profilbildet hører til kontoen: ved innlogging får enheten kontoens utseende.
@@ -720,6 +755,9 @@ func _sign_in(p: Player, user: Dictionary, new_account := false) -> void:
 	p.user_id = int(user.id)
 	p.name = str(user.username)
 	_presence_dirty = true   # nytt navn i «hvem er online»
+	if user.guest:
+		user.last_seen = clock_s.call()   # gjestekontoer som ikke brukes, slettes (Accounts.remove_stale_guests)
+		store.save_users()
 	if new_account or p.look_pending:
 		p.look_pending = false
 		accounts.update_profile(p.user_id, _look_of(p))
@@ -745,7 +783,7 @@ func _set_look(p: Player, msg: Dictionary) -> void:
 	p.win_fx = str(msg.get("win_fx", p.win_fx)).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", p.decal_color)).substr(0, 24)
 	p.away = bool(msg.get("away", p.away))
-	if msg.has("avatar"):   # nytt eller fjernet profilbilde
+	if msg.has("avatar") and not accounts.is_guest(p.user_id):   # nytt eller fjernet profilbilde (gjester har ikke)
 		var avatar = msg.avatar
 		if avatar == "" or AvatarData.is_valid(avatar):
 			p.avatar = avatar
@@ -766,8 +804,50 @@ func _logout(p: Player, msg: Dictionary) -> void:
 	send.call(p.peer, { "t": Protocol.LOGGED_OUT })
 
 
+## Nytt brukernavn (innlogget). Alle enhetene til brukeren får det nye navnet, og venterom de står i,
+## oppdateres. Partier som er spilt, beholder navnet de ble spilt med; turneringer, venner og topplister
+## slår opp navnet på bruker-id-en, så der står det nye navnet med en gang.
+func _rename(p: Player, msg: Dictionary) -> void:
+	if p.user_id == 0:
+		_error(p.peer, "login_required", "Du må logge inn først.")
+		return
+	var res := accounts.rename(p.user_id, str(msg.get("username", "")), clock_s.call())
+	if res.has("error"):
+		_error(p.peer, "rename", res.error, res.args)
+		return
+	_renamed(res.user)
+
+
+## Arrangøren retter kallenavnet til en gjest i sin egen turnering. Gir "" eller en feilmelding.
+func _rename_guest(t: Dictionary, uid: int, name: String) -> String:
+	if not uid in t.players or not accounts.is_guest(uid):
+		return "Bare kallenavnet til en gjest i turneringen kan endres."
+	var res := accounts.rename(uid, name.strip_edges().replace(" ", "_"), clock_s.call())
+	if res.has("error"):
+		return _fill(res.error, res.args)
+	t.names[str(uid)] = str(res.user.username)
+	_renamed(res.user)
+	tournaments.changed.call(int(t.id))
+	return ""
+
+
+## Brukeren har fått nytt navn: alle enhetene får det, og venterommet de står i, oppdateres.
+func _renamed(user: Dictionary) -> void:
+	var info := accounts.public_info(user)
+	for q: Player in players.values():
+		if q.user_id != int(user.id):
+			continue
+		q.name = str(user.username)
+		var room := _room_of(q)
+		if room and not room.in_game():
+			_broadcast_room_state(room)
+		if q.peer != 0:
+			send.call(q.peer, { "t": Protocol.RENAMED, "user": info })
+	_presence_dirty = true   # nytt navn i «hvem er online»
+
+
 func _stats(p: Player, username: String) -> void:
-	var u: Dictionary = store.find_user(username) if username != "" else store.users.get(p.user_id, {})
+	var u: Dictionary = store.find_user_or_former(username) if username != "" else store.users.get(p.user_id, {})
 	var info := accounts.public_info(u)
 	if not u.is_empty():
 		info.avatar = store.avatars.get(int(u.id), "")
@@ -801,30 +881,83 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 # ---------------------------------------------------------------- Turneringer
 
 func _list_tournaments(p: Player) -> void:
-	var list := store.tournaments.map(func(t: Dictionary) -> Dictionary:
-		var s := tournaments.summary(t)
-		s.joined = p.user_id != 0 and p.user_id in t.players   # så menyen kan si «Du er påmeldt»
-		return s
+	var list := store.tournaments.filter(func(t: Dictionary) -> bool: return _may_see(p, t)).map(
+		func(t: Dictionary) -> Dictionary:
+			var s := tournaments.summary(t)
+			s.joined = p.user_id != 0 and p.user_id in t.players   # så menyen kan si «Du er påmeldt»
+			return s
 	)
-	var admin := accounts.is_admin(p.user_id)
-	if not admin:
-		list = list.filter(func(t: Dictionary) -> bool: return t.status != "draft")
-	send.call(p.peer, { "t": Protocol.TOURNAMENT_LIST, "tournaments": list, "admin": admin })
+	send.call(p.peer, { "t": Protocol.TOURNAMENT_LIST, "tournaments": list, "admin": accounts.is_admin(p.user_id),
+		"create": accounts.can_create_tournament(p.user_id) })
+
+
+## Admin styrer alle turneringer, arrangøren (den som laget den) sin egen.
+func _can_manage(p: Player, t: Dictionary) -> bool:
+	return accounts.is_admin(p.user_id) or (not t.is_empty() and p.user_id != 0 and int(t.created_by) == p.user_id)
+
+
+## Utkast ser bare den som styrer turneringen. En privat turnering ser også de som er med, og de som har
+## åpnet den med koden.
+func _may_see(p: Player, t: Dictionary) -> bool:
+	if _can_manage(p, t):
+		return true
+	if t.status == "draft":
+		return false
+	return not t.private or p.codes.has(int(t.id)) or (p.user_id != 0 and p.user_id in t.players)
 
 
 func _send_tournament(p: Player, id: int) -> void:
 	var t := tournaments.get_t(id)
-	if t.is_empty() or (t.status == "draft" and not accounts.is_admin(p.user_id)):
+	if t.is_empty() or not _may_see(p, t):
 		_error(p.peer, "no_tournament", "Fant ikke turneringen.")
 		return
-	send.call(p.peer, { "t": Protocol.TOURNAMENT_STATE, "tournament": tournaments.public(t),
-		"admin": accounts.is_admin(p.user_id), "you": p.user_id, "now": clock_s.call() })
+	var pub := tournaments.public(t)
+	var manage := _can_manage(p, t)
+	if manage:
+		pub.code = t.code   # til lenken, QR-koden og storskjermen
+	send.call(p.peer, { "t": Protocol.TOURNAMENT_STATE, "tournament": pub, "admin": manage, "you": p.user_id,
+		"now": clock_s.call() })
+
+
+## Turneringen med koden (lenken ?t=KODE, storskjermen og «Har du en kode?»). Koden gir tilgang til en
+## privat turnering resten av tilkoblingen. join = meld deg på. Uten konto (bare i en privat turnering)
+## lages en gjestekonto med kallenavnet (name) først, og klienten får en økt (SESSION) som om den
+## hadde logget inn.
+func _tournament_code(p: Player, msg: Dictionary) -> void:
+	var code := str(msg.get("code", "")).strip_edges().to_upper()
+	var t := tournaments.find_by_code(code)
+	if t.is_empty() or (t.status == "draft" and not _can_manage(p, t)):
+		_error(p.peer, "no_tournament", "Fant ingen turnering med koden %s.", [code])
+		return
+	var id := int(t.id)
+	var now_s: int = clock_s.call()
+	p.codes[id] = true
+	p.viewing_tournament = id
+	if bool(msg.get("join", false)):
+		if p.user_id == 0:
+			var err := tournaments.join_error(t, 0, now_s) if t.private else "Du må logge inn først."
+			if err != "":
+				_error(p.peer, "tournament", err)
+				return
+			var res := accounts.create_guest(str(msg.get("name", "")), now_s)
+			if res.has("error"):
+				_error(p.peer, "guest", res.error)
+				return
+			_sign_in(p, res.user)
+			send.call(p.peer, { "t": Protocol.SESSION, "token": accounts.create_session(res.user.id, now_s),
+				"user": accounts.public_info(res.user), "avatar": "", "look": _look_of(p) })
+		var join_err := tournaments.join(id, p.user_id, now_s)
+		if join_err != "":
+			_error(p.peer, "tournament", join_err)
+			return
+	_send_tournament(p, id)
 
 
 ## Turneringschat: for alle som har turneringssiden oppe, spiller eller ser på en kamp i den.
 ## Tom tekst = send bare historikken (når siden eller kampen åpnes).
 func _tournament_chat(p: Player, id: int, text: String, now: int) -> void:
-	if tournaments.get_t(id).is_empty():
+	var tour := tournaments.get_t(id)
+	if tour.is_empty() or (tour.private and not _follows_tournament(p, tour) and not _can_manage(p, tour)):
 		return
 	var log: Array = _tournament_chats.get(id, [])
 	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
@@ -832,6 +965,9 @@ func _tournament_chat(p: Player, id: int, text: String, now: int) -> void:
 		send.call(p.peer, { "t": Protocol.TOURNAMENT_CHAT_MSG, "id": id, "history": true, "messages": log })
 		return
 	if now - p.last_global_ms < Social.CHAT_INTERVAL_MS:
+		return
+	if not tour.chat and not _can_manage(p, tour):
+		_error(p.peer, "chat_off", "Arrangøren har slått av chatten.")
 		return
 	p.last_global_ms = now
 	var entry := { "from": p.name, "elo": _elo_of(p), "text": text }
@@ -860,11 +996,37 @@ func web_page(path: String, host: String) -> Dictionary:
 	return { "type": "text/calendar; charset=utf-8", "body": Tournaments.ics(t, link) }
 
 
-## Får turneringschatten: alle når turneringen pågår (menyen har en turneringsfane), ellers de påmeldte,
+## Har brukeren turneringssiden oppe nå? (Innsjekken før start, se Tournaments._check_in.)
+func _views_tournament(t: Dictionary, uid: int) -> bool:
+	for q: Player in players.values():
+		if q.user_id == uid and q.peer != 0 and q.viewing_tournament == int(t.id):
+			return true
+	return false
+
+
+## En deltaker er tilbake (ny tilkobling eller innlogget igjen): kampen som venter på hen, eller innsjekken,
+## varsles på nytt, så klienten kaster hen rett inn igjen. Faller man ut underveis, kan man komme tilbake.
+func _resume_tournaments(p: Player) -> void:
+	if p.user_id == 0 or p.peer == 0:
+		return
+	for t in store.tournaments:
+		if not p.user_id in t.players:
+			continue
+		if t.status == "open" and int(t.checkin_at) > 0 and not p.user_id in t.checked_in:
+			send.call(p.peer, { "t": Protocol.TOURNAMENT_NOTICE, "key": "«%s» starter om litt! Bli med på nedtellingen.",
+				"args": [t.name], "tournament": t.id, "room": "", "open": true })
+		elif t.status == "running":
+			for m in t.rounds[int(t.current_round)]:
+				if m.status == "waiting" and p.user_id in [int(m.p1), int(m.p2)] and rooms.has(str(m.room)):
+					send.call(p.peer, { "t": Protocol.TOURNAMENT_NOTICE, "key": "Kampen din i «%s» starter nå!",
+						"args": [t.name], "tournament": t.id, "room": m.room })
+
+
+## Får turneringschatten: alle når turneringen pågår (menyen har en turneringsfane; ikke private turneringer), ellers de påmeldte,
 ## de som har siden oppe, og de som spiller eller ser på en kamp i den.
 func _follows_tournament(q: Player, t: Dictionary) -> bool:
 	var id := int(t.id)
-	if t.status == "running" or q.viewing_tournament == id or (q.user_id != 0 and q.user_id in t.players):
+	if (t.status == "running" and not t.private) or q.viewing_tournament == id or (q.user_id != 0 and q.user_id in t.players):
 		return true
 	var room: Room = rooms.get(q.watching if q.watching != "" else q.room_code)
 	return room != null and room.match_id != "" and room.tournament_id == id
@@ -881,18 +1043,35 @@ func _tournament_request(p: Player, t: String, msg: Dictionary) -> void:
 		Protocol.TOURNAMENT_JOIN: err = tournaments.join(id, p.user_id, now)
 		Protocol.TOURNAMENT_LEAVE: err = tournaments.leave(id, p.user_id)
 		Protocol.TOURNAMENT_READY: err = tournaments.ready(id, p.user_id, now)
-		_:
-			if not accounts.is_admin(p.user_id):
-				_error(p.peer, "admin_only", "Bare admin kan gjøre dette.")
+		Protocol.TOURNAMENT_CREATE:
+			var data: Dictionary = msg.get("data", {}) if msg.get("data") is Dictionary else {}
+			if not accounts.can_create_tournament(p.user_id):
+				_error(p.peer, "guest", "Som gjest kan du ikke lage turneringer.")
 				return
-			var data = msg.get("data", {})
-			if t == Protocol.TOURNAMENT_CREATE:
-				id = int(tournaments.create(p.user_id, data if data is Dictionary else {}, now).id)
-			elif t == Protocol.TOURNAMENT_UPDATE:
+			if not accounts.is_admin(p.user_id):
+				data.private = true   # alle kan lage private turneringer; offentlige lager bare admin
+				var active := store.tournaments.filter(func(x: Dictionary) -> bool:
+					return int(x.created_by) == p.user_id and x.status in ["draft", "open", "running"]).size()
+				if active >= MAX_ACTIVE_PRIVATE:
+					_error(p.peer, "tournament", "Du kan ha høyst %d turneringer som ikke er ferdige.", [MAX_ACTIVE_PRIVATE])
+					return
+			id = int(tournaments.create(p.user_id, data, now).id)
+		_:
+			var tour := tournaments.get_t(id)
+			if not _can_manage(p, tour):
+				_error(p.peer, "admin_only", "Bare arrangøren kan gjøre dette.")
+				return
+			var action := str(msg.get("action", ""))
+			if t == Protocol.TOURNAMENT_UPDATE:
+				var data = msg.get("data", {})
 				err = tournaments.update(id, data if data is Dictionary else {}, now)
+			elif action == "kick":
+				err = tournaments.kick(id, int(msg.get("user", 0)))
+			elif action == "rename":
+				err = _rename_guest(tour, int(msg.get("user", 0)), str(msg.get("name", "")))
 			else:
-				err = tournaments.action(id, str(msg.get("action", "")), now)
-				if err == "" and str(msg.get("action", "")) == "delete":
+				err = tournaments.action(id, action, now)
+				if err == "" and action == "delete":
 					_list_tournaments(p)
 					return
 	if err != "":
@@ -1180,6 +1359,11 @@ func _watch(p: Player, code: String, now: int) -> void:
 	if room == null:
 		_error(p.peer, "no_room", "Fant ikke rommet %s.", [code])
 		return
+	if p.user_id != 0 and (p.user_id in room.reserved or p.user_id in [_user_in_seat(room, 1), _user_in_seat(room, 2)]):
+		# Samme konto i en annen fane eller på en annen enhet: ellers kunne man se stillingsmåleren og
+		# «vinner om 3 trekk» for sitt eget parti mens man spiller.
+		_error(p.peer, "own_game", "Du kan ikke se på ditt eget parti.")
+		return
 	if room.match_id == "" and room.state == null:
 		_error(p.peer, "not_watchable", "Partiet har ikke startet ennå.")
 		return
@@ -1261,6 +1445,9 @@ func _global_chat(p: Player, text: String, now: int, channel: String) -> void:
 	text = text.strip_edges().substr(0, Protocol.MAX_CHAT)
 	if text == "" or now - p.last_global_ms < Social.CHAT_INTERVAL_MS:
 		return
+	if accounts.is_guest(p.user_id):
+		_error(p.peer, "guest", "Som gjest kan du bare skrive i turneringschatten.")
+		return
 	p.last_global_ms = now
 	social.chat(p.name, _elo_of(p), text, clock_s.call(), channel)
 
@@ -1327,7 +1514,8 @@ func _elo_of(p: Player) -> int:
 
 func _puzzle_solve(p: Player, msg: Dictionary) -> void:
 	var moves = msg.get("moves", [])
-	var res := puzzles.solve(p.user_id, str(msg.get("day", "")), moves if moves is Array else [],
+	var uid := 0 if accounts.is_guest(p.user_id) else p.user_id   # gjester kommer ikke på listen
+	var res := puzzles.solve(uid, str(msg.get("day", "")), moves if moves is Array else [],
 		int(msg.get("attempts", 1)), clock_s.call())
 	if res.has("error"):
 		send.call(p.peer, { "t": Protocol.PUZZLE_RESULT, "ok": false, "text": res.error, "key": res.error })
@@ -1345,7 +1533,7 @@ func _puzzle_solve(p: Player, msg: Dictionary) -> void:
 
 ## De siste partiene til en bruker (deg selv hvis username er tomt).
 func _list_games(p: Player, username: String) -> void:
-	var u: Dictionary = store.find_user(username) if username != "" else store.users.get(p.user_id, {})
+	var u: Dictionary = store.find_user_or_former(username) if username != "" else store.users.get(p.user_id, {})
 	var out := []
 	if not u.is_empty():
 		for g in store.games_of(int(u.id)):

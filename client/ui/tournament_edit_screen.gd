@@ -1,8 +1,10 @@
 class_name TournamentEditScreen
 extends Screen
-## Skjema for å lage en turnering (bare admin). Det viktigste står øverst: navn, dag og klokkeslett
-## (med piler), format, antall deltakere og pokalen. Resten (beskrivelse, regler, pauser,
+## Skjema for å lage en turnering (alle med konto; den som lager, er arrangøren). Det viktigste står
+## øverst: navn, dag og klokkeslett (med piler), format, antall deltakere og pokalen. Resten (beskrivelse, regler, pauser,
 ## møtefrist og publisering) ligger under «Flere valg».
+## Privat turnering (runde 18; alle andre enn admin lager bare slike, admin velger): ingen starttid (starter
+## når arrangøren trykker «Start nå»), uranket og uten premie, så de valgene skjules.
 ## Med en turnering (editing) endres den i stedet (runde 17): skjemaet fylles ut, og «Lagre» sender
 ## endringene. Har den startet, vises bare det som fortsatt kan endres (se Tournaments.update).
 
@@ -45,6 +47,8 @@ var _prize := ""                    ## premien vinneren låser opp (Progression)
 var editing: Dictionary = {}        ## turneringen som endres ({} = ny turnering)
 var _locked := false                ## turneringen har startet: bare noe kan endres
 var _saving := false
+var _private := false
+var _public_only: Array[Control] = []   ## valgene som ikke gjelder private turneringer (tid, rangert, premie, publiser)
 
 
 func _init(p_app: ClientRoot, p_tournament := {}) -> void:
@@ -62,6 +66,9 @@ func _ready() -> void:
 	var local := Time.get_datetime_dict_from_unix_time(now + bias)
 	_day = 0 if int(local.hour) < 19 else 1
 	_trophy = Trophy.generate(randi())
+	var admin := bool(Net.user.get("admin", false))
+	# Alle kan lage private turneringer; offentlige lager bare admin
+	_private = bool(editing.get("private", Net.is_logged_in() and not admin))
 	if not editing.is_empty():
 		_prefill(editing, now, bias)
 
@@ -73,9 +80,21 @@ func _ready() -> void:
 	v.add_child(UI.section("Navn"))
 	_name = UI.line_edit(str(editing.get("name", "")), "F.eks. Fredagscup", 40)
 	v.add_child(_name)
+	if editing.is_empty() and admin:
+		v.add_child(UI.toggle_row("Privat turnering",
+			"Bare de med koden eller lenken ser den, og de kan bli med uten konto. Starter når du trykker «Start nå».",
+			_private, func(on: bool) -> void:
+				_private = on
+				_update_private()))
+	elif _private and editing.is_empty():
+		v.add_child(UI.label("Turneringen blir privat: bare de med koden eller lenken ser den, og de kan bli med uten konto. Den starter når du trykker «Start nå».",
+			"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	if not _locked:
-		_add_when(v)
+		var when := UI.vbox(14)
+		_add_when(when)
+		v.add_child(when)
+		_public_only.append(when)
 		v.add_child(UI.section("Format"))
 		v.add_child(UI.choice(["Utslag", "Alle mot alle"], _format, func(i: int) -> void:
 			_format = i
@@ -94,7 +113,7 @@ func _ready() -> void:
 				_rounds = i
 				_update_estimate()
 		))
-		rounds.add_child(UI.label("Hver spiller spiller så mange partier (én færre ved fri runde). Flest poeng vinner.",
+		rounds.add_child(UI.label("Med færre runder enn alle mot alle settes hver runde opp etter tabellen (sveitsisk). Flest poeng vinner, og Elo teller ikke.",
 			"Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
 		_rounds_box = rounds
 		v.add_child(rounds)
@@ -103,8 +122,10 @@ func _ready() -> void:
 		v.add_child(_estimate)
 
 		# --- Rangert eller uranket. Uranket: ingen Elo, vises ikke i menyen og hedres ikke.
-		v.add_child(UI.toggle_row("Rangert", "Partiene teller på Elo, og turneringen vises i menyen og i hall of fame.", _ranked,
-			func(on: bool) -> void: _ranked = on))
+		var ranked := UI.toggle_row("Rangert", "Partiene teller på Elo, og turneringen vises i menyen og i hall of fame.", _ranked,
+			func(on: bool) -> void: _ranked = on)
+		v.add_child(ranked)
+		_public_only.append(ranked)
 
 	# --- Pokalen vinneren får (kan byttes til vinneren er kåret). En tilfeldig er valgt, og «Ny pokal» trekker en ny.
 	var running := str(editing.get("status", "")) == "running"
@@ -129,7 +150,9 @@ func _ready() -> void:
 		))
 		trophy_row.add_child(trophy_side)
 		v.add_child(trophy_row)
-		v.add_child(_prize_picker())
+		var prize := _prize_picker()
+		v.add_child(prize)
+		_public_only.append(prize)
 
 	# --- Flere valg (skjult til man trenger dem, men åpne når en turnering som har startet endres)
 	var more := UI.button("Flere valg", func() -> void: pass, "GhostButton")
@@ -157,8 +180,10 @@ func _ready() -> void:
 	if not _locked:
 		SetupScreen.add_option_fields(_advanced, options)
 	if editing.is_empty():
-		_advanced.add_child(UI.toggle_row("Publiser med en gang", "Ellers lagres den som utkast som bare admin ser.", _publish,
-			func(on: bool) -> void: _publish = on))
+		var publish := UI.toggle_row("Publiser med en gang", "Ellers lagres den som utkast som bare admin ser.", _publish,
+			func(on: bool) -> void: _publish = on)
+		_advanced.add_child(publish)
+		_public_only.append(publish)
 	v.add_child(_advanced)
 	if _locked:
 		more.button_pressed = true
@@ -174,7 +199,7 @@ func _ready() -> void:
 	buttons.add_child(_create_button)
 	UI.card_footer(v).add_child(buttons)
 	Net.message.connect(_on_message)
-	_update_when()
+	_update_private()
 	# Hold «om X min» og «har passert» oppdatert
 	var timer := Timer.new()
 	timer.wait_time = 20.0
@@ -244,6 +269,7 @@ func _prefill(t: Dictionary, now: int, bias: int) -> void:
 	if t.get("trophy") is Dictionary and not (t.trophy as Dictionary).is_empty():
 		_trophy = t.trophy
 	_publish = false
+	_private = bool(t.get("private", false))
 	_prize = str(t.get("prize", ""))
 	var start := int(t.get("start_time", now))
 	var local := Time.get_datetime_dict_from_unix_time(start + bias)
@@ -309,6 +335,13 @@ func _update_estimate() -> void:
 	_estimate.text = tr("Varighet med %d spillere: ca. %s (%d runder).") % [players, TournamentScreen.duration_text(minutes), n]
 
 
+## Privat turnering: skjul valgene som ikke gjelder (tid, rangert, premie, publiser).
+func _update_private() -> void:
+	for c in _public_only:
+		c.visible = not _private
+	_update_when()
+
+
 func _update_when() -> void:
 	_update_estimate()
 	if _locked:
@@ -317,7 +350,7 @@ func _update_when() -> void:
 	var start := start_time(now)
 	_day_label.text = UI.format_day(start)
 	_time_label.text = "%02d:%02d" % [_hour, _minute]
-	var past := start <= now
+	var past := start <= now and not _private
 	_when_label.text = tr("Tidspunktet har passert. Velg et senere klokkeslett.") if past \
 		else tr("Påmeldingen er åpen til start: %s (%s).") % [UI.format_when(start), UI.format_until(start, now)]
 	_when_label.add_theme_color_override("font_color", UI.DANGER if past else UI.MUTED)
@@ -333,12 +366,13 @@ func _on_create() -> void:
 	if not _locked:
 		var now := int(Time.get_unix_time_from_system())
 		var start := start_time(now)
-		if start <= now:
+		if start <= now and not _private:
 			_update_when()
 			return
 		data.merge({ "format": FORMATS[_format], "max_players": MAX_PLAYERS[_max],
 			"max_rounds": ROUND_LIMITS[_rounds] if _format == 1 else 0, "start_time": start, "signup_deadline": start,
-			"options": options.to_dict(), "ranked": _ranked })
+			"options": options.to_dict(), "ranked": _ranked and not _private, "private": _private })
+	_publish = _publish and not _private   # private turneringer er åpne med en gang
 	_status.text = tr("Lagrer…")
 	_saving = true
 	if editing.is_empty():

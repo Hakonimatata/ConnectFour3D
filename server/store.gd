@@ -94,6 +94,21 @@ func find_user(username: String) -> Dictionary:
 	return {}
 
 
+## Som find_user, men finner også en som har byttet bort navnet (nyeste først), så profillenker fra gamle
+## chatmeldinger og partier virker. Et navn noen har nå, går foran. Ikke for innlogging og registrering.
+func find_user_or_former(username: String) -> Dictionary:
+	var u := find_user(username)
+	if not u.is_empty():
+		return u
+	var key := username.strip_edges().to_lower()
+	var best := {}
+	for x in users.values():
+		if (x.old_names as Array).any(func(n: String) -> bool: return n.to_lower() == key) \
+				and (best.is_empty() or int(x.renamed_at) > int(best.renamed_at)):
+			best = x
+	return best
+
+
 func add_user(username: String, password_record: Dictionary) -> Dictionary:
 	var u := normalize_user({ "id": next_user_id, "username": username, "password": password_record,
 		"created": Time.get_datetime_string_from_system(false, true) })
@@ -128,7 +143,14 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 	return {
 		"id": int(d.get("id", 0)),
 		"username": str(d.get("username", "")),
+		"renamed_at": int(d.get("renamed_at", 0)),   # sist brukernavnet ble byttet (unix-sekunder, 0 = aldri)
+		"old_names": (d.get("old_names", []) as Array).map(func(v: Variant) -> String: return str(v)) \
+			if d.get("old_names") is Array else [],      # tidligere brukernavn, nyeste sist (gamle lenker i chatten virker)
 		"admin": bool(d.get("admin", false)),
+		# «organizer» (arrangørrettighet) fantes en kort stund i runde 18. Nå kan alle lage private turneringer,
+		# så feltet tas ikke med videre: det forsvinner fra users.json neste gang brukerne lagres.
+		"guest": bool(d.get("guest", false)),           # gjestekonto: bare kallenavn, til private turneringer
+		"last_seen": int(d.get("last_seen", 0)),        # sist logget inn (gjestekontoer slettes etter Accounts.GUEST_DAYS)
 		"banned": bool(d.get("banned", false)),
 		"ban_reason": str(d.get("ban_reason", "")),
 		"trophies": trophies,
@@ -141,6 +163,7 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"xp": xp,
 		"unlocks": unlocks,                              # låst opp uten nivå: premier og det de brukte før XP
 		"xp_day": { "day": str(xp_day.get("day", "")), "games": int(xp_day.get("games", 0)),
+			"show_ups": int(xp_day.get("show_ups", 0)),   # urangerte turneringer som har gitt oppmøte-XP i dag
 			"opponents": xp_day.get("opponents", {}) if xp_day.get("opponents") is Dictionary else {} },
 		"profile": { "skin": str(profile.get("skin", "ocean")), "decal": str(profile.get("decal", "none")),
 			"win_fx": str(profile.get("win_fx", "classic")), "decal_color": str(profile.get("decal_color", "auto")),
@@ -187,9 +210,11 @@ func _load_users() -> bool:
 	users.clear()
 	var max_id := 0
 	var reset := false
+	var cleaned := false
 	for raw in data.users:
 		if raw is Dictionary:
 			var u := normalize_user(raw)
+			cleaned = cleaned or raw.has("organizer")
 			if raw.get("reset_password") is String and str(raw.reset_password).length() >= Password.MIN_LENGTH:
 				u.password = Password.make(str(raw.reset_password))
 				reset = true
@@ -200,6 +225,9 @@ func _load_users() -> bool:
 	if reset:
 		save_users()   # skriv bare hashen tilbake, aldri klarteksten
 		print("Nytt passord satt fra users.json.")
+	elif cleaned:
+		save_users()   # trygt: skrives til en .tmp-fil som så erstatter den gamle (_write_json)
+		print("Fjernet det gamle arrangør-feltet fra users.json.")
 	return true
 
 

@@ -636,3 +636,161 @@ Banken har 30 «Vinn på N trekk» (16 på 3 trekk, 14 på 4 trekk) og 30 «Finn
   - **Nye tips når et trekk bruker opp en trussel og koster vinnersjanse:** «Tre på rad som kan blokkeres med en gang, gir deg ingenting: trusselen er brukt opp», og «Du la rett under din egen trussel, så motstanderen kunne blokkere den».
   - **Andre tips:** «Lager en trussel motstanderen må blokkere» heter nå «tvinger motstanderen til å blokkere, og det gir deg en bedre stilling». Tre på rad som ikke kan blokkeres ennå, nevnes før en vanlig trussel, med «spar den til den gir deg seier».
 - 191 tester, alle grønne.
+
+## Mer plass på mobil, og motstanderens siste trekk (01.11.2026)
+- **Lavere turneringsknapper i menyen.** Aktive turneringer har gått fra 72 til 52 punkter, påmeldingskortet fra 87 til 70 og kortet for siste vinner fra 90 til 72. Det er gjort med litt mindre luft, tekst og pokal (`SlimButton` i temaet).
+- **Lavere chatfaner.** Fanene har gått fra 36 til 26 punkter (`TabButton`, tekst 13). Den lengste teksten («Velkommen») får god plass. På en mobil på 400 × 820 har menykortet krympet fra 692 til 617, og chatloggen har vokst fra 117 til 202. Brettet får plassen mellom dem.
+- **Motstanderens siste trekk** markeres med en tynn, hvit ring rundt toppen av brikken:
+  - den står stille (pulserer ikke), toner inn når brikken har landet, og dekker ikke merket på toppen;
+  - mot boten og online vises den bare når det er motstanderen som har trukket sist, så den forsvinner når du trekker;
+  - to på samme enhet og tilskuere ser alltid det siste trekket;
+  - den vises ikke når partiet er slutt.
+- 193 tester, alle grønne. To er nye: menyen på mobil og ringen for siste trekk.
+
+## Bytte brukernavn (01.11.2026)
+- **Hvor:** «Bytt brukernavn» på din egen profil («Min profil»). Knappen folder ut et felt med «Lagre».
+- **Krav:** de samme som ved registrering (3–16 tegn, ledig). Du logger inn med det nye navnet etterpå.
+- **Grense:** høyst ett bytte per 7 dager (`Protocol.RENAME_DAYS`), så navn ikke byttes midt i en turnering for å forvirre. Det første byttet går alltid, og store og små bokstaver kan rettes når som helst.
+- **Alle enhetene dine** får det nye navnet med en gang, og det samme gjør venterommet du står i. Turneringer, venner, topplister og «Løst i dag» viser det nye navnet. De slår opp navnet på konto-id.
+- **Partier som er spilt,** beholder navnet de ble spilt med.
+- **De tidligere navnene huskes** (`old_names`, de 5 siste), så lenker til profilen fra gamle chatmeldinger og partier fortsatt virker. Et gammelt navn er ledig for andre. Tar noen det, går lenken til den nye eieren.
+- Ny test: hele byttet på serveren, og byttet fra profilskjermen. 194 tester, alle grønne.
+
+## Runde 18 – Alle mot alle uten Elo, og to uten motstander spiller mot hverandre (01.11.2026)
+**Alle mot alle avgjøres aldri av Elo:**
+- **Oppsett:** første runde trekkes tilfeldig (før: sortert etter Elo). Hvem som starter, fordeles jevnt, så ingen får forspranget med å begynne oftere. Før startet den første i listen alltid.
+- **Sveitsisk system ved begrenset antall runder:** hver runde settes opp etter tabellen, så like mange poeng møtes, og ingen møtes to ganger. Oppsettet søkes fram med minst mulig poengforskjell. Før var rundene trukket på forhånd, og med tre runder møtte toppseedet de tre svakeste. Uten grense er det fortsatt alle mot alle.
+- **Fri runde gir 1 poeng** (før 0, som var en ulempe med oddetall deltakere og få runder).
+- **Likt antall poeng:** innbyrdes oppgjør, så Buchholz (motstandernes poeng), så Sonneborn-Berger, så flest seire. Før var det flest seire og så Elo.
+- **Omkamp om seieren:** er det fortsatt helt likt om førsteplassen, spilles omkamp. Det er utslag mellom dem som står likt, med uavgjort som i utslag. «Se finalen» viser omkampen.
+
+**To uten motstander spiller mot hverandre.** Møter to spillere hver sin motstander som ikke kommer, spiller de mot hverandre i stedet for å vinne på walkover. De kastes rett inn i et nytt kamprom.
+- **Sveitsisk:** den nye kampen erstatter walkoverne. Den som ikke kom, får tap, og poengene kommer fra den nye kampen. De to kan ikke ha møtt hverandre før.
+- **Alle møter alle:** de spiller nå kampen de uansett skulle hatt mot hverandre senere, og vinner walkoveren, siden den kampen ikke kommer igjen. Da har de fri i runden der kampen sto.
+- **Ingen å spille mot:** står bare én uten motstander, og ingen annen kamp i runden kan gi en, er det walkover som før.
+
+**Utslag:** blir også tredje parti uavgjort, går den som ikke startet det, videre (som «Armageddon» i sjakk). Før gikk den med høyest Elo videre. Spillerne får beskjed før det siste partiet.
+
+**Turneringssiden:** reglene er skrevet om. Sveitsiske runder heter «Runde 2 av 4», omkampen «Omkamp om seieren», og kamptekstene viser «møtte ikke» og «ser etter en annen uten motstander».
+
+**Testet:** 199 tester, alle grønne. Nye tester for sveitsisk oppsett, likt uten Elo, fri runde, omkamp, spillere uten motstander i begge variantene og tredje uavgjorte i utslag.
+
+## Runde 18 (forts.) – Private turneringer, gjester med kallenavn og storskjerm (01.11.2026)
+Bygget etter planen i `claude tips/elevturnering.md`, men for en sosial samling (venner, jobb, klubb), ikke en skoletime. Det er laget med generelle deler, og resten av spillet er urørt. Offentlige turneringer virker som før.
+
+- **Arrangør-rettighet:**
+  - Admin gir den under *Admin → Arrangører*, og admin er alltid arrangør.
+  - En arrangør lager bare private turneringer og styrer bare sine egne. Høyst to kan være uferdige om gangen.
+  - Serveren sjekker alt: én sjekk av hvem som kan styre turneringen, i stedet for «bare admin».
+- **Private turneringer:**
+  - De er skjult i lister og i menyen for alle andre enn de som er med, arrangøren og admin. De er alltid urangerte og uten premie.
+  - De starter når arrangøren trykker «Start nå». «Start nå» krever minst to deltakere, så en turnering ikke blir avlyst ved et uhell.
+  - Alle turneringer har nå en kode på fem bokstaver, også de gamle.
+- **Bli med uten konto:**
+  - Lenken `?t=KODE`, eller «Har du en kode?» i turneringslisten, åpner turneringssiden med et felt for kallenavn.
+  - «Bli med» lager en gjestekonto og melder deg på. Nettleseren husker økten, så man er samme gjest etter omlasting.
+  - Kallenavnet følger reglene for brukernavn: 3–14 tegn, og mellomrom blir _. Er navnet tatt, får det et tall bak.
+- **Gjestekontoer:**
+  - De har ikke passord, bilde, venner eller XP, og kommer ikke på topplister. De kan bare spille i turneringen og bare skrive i turneringschatten, men kan lese all chat.
+  - De slettes etter 14 dager uten bruk, men ikke mens turneringen deres pågår. Navnet blir stående i turneringen (`names`).
+  - Det er ingen grense per IP, så mange på samme nett kan bli med. Det kan lages høyst 200 nye gjestekontoer i timen totalt.
+- **Arrangørens knapper:**
+  - koden og lenken, «Kopier lenke»;
+  - «Vis på storskjerm» og «Lenke til storskjermen»;
+  - «Chat for deltakerne» av eller på;
+  - «Endre» kallenavnet til en gjest og «Fjern» en deltaker, begge før start.
+- **Storskjermen** (`client/ui/tournament_display.gd`):
+  - Den åpnes med `?vis=KODE` uten innlogging, og alt skaleres fra 1280 × 720 til skjermen.
+  - **Før start:** stor QR-kode og lenke, og deltakerne toner inn etter hvert som de kommer.
+  - **Underveis:** treet eller tabellen og rundens kamper, og en liten QR-kode for å følge med. Brettet ser på et parti som spilles nå (tilskuermodus), med stillingsmåleren, og bytter hvert minutt når flere spilles.
+  - **Til slutt:** vinneren med pokalen og pallen. Når ingen partier spilles, går det siste partiet i reprise (finalen til slutt).
+  - Skjermen holdes våken i nettleseren, og den har knapper for fullskjerm og «Lukk».
+- **QR-koden** (`core/qr_code.gd`, ca. 300 linjer):
+  - Den er skrevet fra standarden: byte-modus, feilretting M og versjon 1–10, med mask-valg.
+  - Den er testet mot Reed-Solomon-eksempelet og formattabellen fra standarden.
+  - **Ikke skannet med telefon her:** ingen telefon var tilgjengelig. Test det før første kveld. Lenken og koden står uansett med stor tekst ved siden av.
+- **Rettet underveis:** storskjermen mistet oppdateringer når den ble åpnet fra turneringssiden, fordi «siden er lukket» kom etter. Det sendes ikke lenger når neste skjerm også viser en turnering.
+- **Bevisst utelatt:**
+  - QR-koden som bilde fra serveren til utskrift;
+  - å gjøre en gjestekonto om til vanlig bruker;
+  - å fjerne deltakere etter start.
+- **Testet:** 209 tester, alle grønne. Nye tester:
+  - arrangører og private turneringer, gjester med kallenavn, begrensningene for gjester, arrangørens knapper, storskjermen uten konto og oppryddingen (`tests/test_private_tournaments.gd`);
+  - QR-koden (`tests/test_qr.gd`);
+  - hele flyten i klienten, fra lenke og kallenavn til storskjermen før og etter start.
+- **Etterpå:**
+  - **«Logg ut» på din egen profil:** knappen står ved siden av «Tilbake» (før fantes den bare i lobbyen). En gjest må trykke to ganger, fordi en gjestekonto ikke kan logges inn igjen.
+  - **«Start nå» på storskjermen:** knappen står under deltakerne, bare når arrangøren eller admin er logget inn på den skjermen. En TV uten innlogging får den ikke.
+  - **Storskjermen underveis:** den viser bare turneringstreet (eller tabellen og rundens kamper i alle mot alle) over hele skjermen, uten brett. Treet forstørres så det fyller bredden.
+  - **Finalen** (og omkampen om seieren) er det eneste partiet som vises. Brettet står midt på skjermen, helt synlig, med navnene og stillingsmåleren over og statuslinjen under. Byttingen mellom partier i tidligere runder er fjernet.
+  - **Etter finalen** står vinneren med pokalen over brettet, som spiller av finalen, og pallen under.
+  - **Ikke mot seg selv:** samme konto kan ikke sette seg i begge setene, for eksempel fra to faner («Du kan ikke spille mot deg selv»). Kommer den seg likevel i begge, fordi to gjester logget inn på samme konto i rommet, teller ikke partiet. Det gir da ingen statistikk, rekorder, XP, Elo eller hendelser i chatten. Før kunne «Lengste tvungne seier», «raskeste seier» og chathendelsen farmes slik.
+
+## Runde 18 – Punktene i Description.md (01.11.2026)
+
+- **Stor bug: tap rett etter «Bli med»** (`client/client_root.gd`, `client/match/online_match.gd`, `server/lobby.gd`):
+  - **Årsaken:** etter en kamp sto man på resultatet. Trykket man «Se» i banneret («Bob er klar for neste kamp»), ble turneringssiden vist, men partiet fra forrige kamp hang igjen usynlig. Når neste kamp startet, ble det gamle partiet avsluttet og sendte «forlat rommet». Serveren tok det som at man forlot den nye kampen, og man tapte med en gang.
+  - Samme feil kunne komme fra et vanlig parti: «Gå til kamp» koblet fra nettet før man kom inn i rommet, og så tapte man på walkover.
+  - **Rettet i tre lag:**
+    - Et parti avsluttes når spillskjermen byttes ut med noe annet.
+    - «Gå til kamp» går via lobbyen uten å sende «forlat rommet» og uten å koble fra (serveren flytter en selv ut av det gamle rommet).
+    - «Forlat rommet» har nå med romkoden, og serveren overser den hvis man er i et annet rom. Et parti tar heller ikke over et parti som starter i et annet rom.
+- **Turneringssiden: det som skjer nå står øverst** (`client/ui/tournament_screen.gd`):
+  - **Øverst:** navnet og én linje med format, status, deltakere og start. Så nedtellingen eller innsjekken, påmeldingen, din kamp med «Klar» og «Gå til kamp», og treet eller tabellen. Arrangøren har «Start nå», «Vis på storskjerm», «Kopier lenke» og koden her.
+  - **Så:** turneringschatten.
+  - **Under chatten:** kampene, med runden som pågår først (i utslag bare den, treet viser resten), og deltakerne som små merker i stedet for én linje hver. Så «Regler», kalender og deling, og arrangørens øvrige knapper nederst.
+  - **Reglene** står bak knappen «Regler» og er skrevet om til korte linjer, omtrent halvparten så mye tekst. Linjene om status, start og antall deltakere er slått sammen i infolinjen.
+- **Chatten på telefon** (`client/ui/web_text_field.gd`):
+  - I nettleseren på berøringsskjerm ligger et ekte HTML-tekstfelt over chatfeltet. Trykket treffer det direkte, så tastaturet alltid kommer opp (iPhone åpner det bare for et ekte trykk). Markering, autokorrektur, lim inn og emojier virker som på vanlige nettsider.
+  - Enter og «Send» sender uten at feltet mister fokus, så tastaturet blir stående. Et usynlig HTML-felt over «Send» tar trykket.
+  - Feltet følger chatfeltet når siden rulles eller tastaturet skyver UI-et. Det klippes av rullelister, og det skjules når noe annet ligger over (f.eks. resultatet etter et parti).
+  - Gjelder chatten i menyen, på turneringssiden, i venterommet og i partiet. PC og andre felt bruker Godots felt som før.
+  - **Ikke testet på en ekte telefon her:** logikken i Godot er testet, og JavaScript-koden er syntakssjekket. Test chatten på iPhone og Android før neste turnering.
+- **Emojier:** fargeemojier vises i chatten og overalt ellers med fonten Twemoji (1,5 MB, `assets/fonts/`). Nettleseren har ikke systemets skrifter, så før ble de til firkanter. Grafikken er CC BY 4.0 og kreditert i `assets/fonts/LICENSE-Twemoji.txt` og README.
+- **Arrangørrettigheten er fjernet:**
+  - Alle med konto kan lage private turneringer. Den som lager en, er arrangøren og styrer den. Gjester kan ikke lage turneringer.
+  - Høyst to uferdige turneringer per bruker. Bare admin lager offentlige turneringer.
+  - *Admin → Arrangører* er borte.
+  - **Ryddingen i users.json:** feltet `organizer` tas ikke med når brukerne leses, og filen skrives en gang uten det, trygt via en .tmp-fil som erstatter den gamle. Ingen hadde `"organizer": true` i `data/users.json` (alle 16 hadde `false`), så ingen mister noe.
+- **Innsjekk før start** (`server/tournaments.gd`, `server/lobby.gd`):
+  - **Når:** de siste 2 minuttene før start, eller når arrangøren trykker «Start nå» i en privat turnering.
+  - **Varsel:** de påmeldte får beskjed, og turneringssiden åpnes av seg selv, med stor nedtelling og chatten. Er man midt i et parti, kommer et banner med «Se» i stedet.
+  - **Hvem er med:** den som har siden oppe, er sjekket inn. Bare de er med når oppsettet trekkes. De andre er ute før start, får beskjed («Du møtte ikke til start …») og står som «Møtte ikke til start» på siden. Ingen vinner lenger på walkover mot folk som aldri kom.
+  - **Private turneringer** starter så snart alle er der, og arrangøren kan trykke «Start med dem som er her».
+  - **Offentlige turneringer** starter fortsatt på klokkeslettet.
+  - **Etter en omstart:** begynner innsjekken for sent (serveren var nede over starttiden), flyttes starten, så alle får hele tiden.
+  - **Storskjermen** viser nedtellingen og hvem som er her.
+  - **Faller man ut underveis**, kan man komme tilbake. Kobler man til igjen eller logger inn, sender serveren varselet på nytt, og man kastes rett inn i kampen som venter (eller tilbake til innsjekken).
+- **Ikke se på sitt eget parti:** serveren avviser «Se på» for et parti der samme konto er spiller, også før partiet har startet. Da kan man ikke åpne en ny fane og se stillingsmåleren og «vinner om 3 trekk» for sin egen kamp.
+  - Det stopper det vanlige tilfellet, fordi en ny fane i samme nettleser er logget inn på samme konto.
+  - Det stopper ikke en annen nettleser uten innlogging. Å sperre etter IP ville stengt ute alle på samme wifi, også storskjermen. Stillingen kan også legges inn mot AI-en for hånd.
+- **Testet:** 218 tester, alle grønne. Nye tester:
+  - innsjekken i offentlige og private turneringer, at de som ikke møter er ute, «Start med dem som er her», og starten som flyttes etter en omstart;
+  - at man kastes inn igjen etter frakobling, og at «forlat rommet» for et gammelt rom overses;
+  - at man ikke kan se på sitt eget parti;
+  - at `organizer` ryddes bort fra users.json;
+  - i klienten: at det gamle partiet ikke henger igjen, turneringssiden med innsjekk og «Regler», storskjermen under innsjekken, og plasseringen og klippingen av HTML-feltet.
+
+## Runde 18 (forts.) – XP for å møte opp, og «Fjern venn» på profilen (02.11.2026)
+
+- **XP for å møte opp:** alle med konto som er sjekket inn når turneringen starter, får 25 XP med en gang, med beskjed («Du fikk 25 XP for å møte opp til …»). Plasserings-XP-en i rangerte turneringer kommer i tillegg, som før.
+  - **Urangerte (private) turneringer** gir det også, men høyst én gang per dag per konto. Alle med konto kan lage dem, så det kan ikke farmes med to kontoer. Gjester får ikke XP.
+  - Nedtellingen før en rangert turnering viser «Møt opp og få 25 XP», og «Regler» sier hva man får.
+  - Tellingen ligger i `xp_day.show_ups` på kontoen (`Accounts.award_show_up_xp`, `Progression.SHOW_UP_XP`).
+- **«Fjern venn» er flyttet til profilen:** knappen «Fjern» på vennelisten var lett å komme bort i. Nå trykker man på vennen, og på profilen står «Fjern venn», som må trykkes to ganger («Sikker?»).
+- **Testet:** 220 tester, alle grønne. Nye tester: oppmøte-XP i rangerte og private turneringer (én per dag, ingen til gjester), og at «Fjern venn» på profilen må bekreftes.
+
+## Runde 18 (forts.) – Chatten på iPhone, andre forsøk (02.11.2026)
+
+Chatten var fortsatt ustabil på iPhone. Dette var galt, og slik er det rettet (`client/ui/web_text_field.gd`, `client/client_root.gd`):
+
+- **Siden rullet opp når tastaturet kom.** Feltet lå nederst, der tastaturet kommer, så Safari rullet hele siden opp for å vise det. Samtidig la spillet seg over tastaturet, så alt hoppet to ganger.
+  - Rettet med samme grep som Flutter bruker på nett: idet du trykker på feltet, flyttes det ut av skjermen og får fokus i selve trykket, så tastaturet kommer. Det settes tilbake når spillet har lagt seg over tastaturet.
+  - Med fokus ligger feltet aldri under tastaturet. Rekker ikke spillet å flytte seg, legges feltet rett over tastaturet, med bakgrunn.
+  - Er siden likevel rullet når ingen skriver, rulles den tilbake. Det hjelper også mot iOS 26-feilen der siden blir hengende litt forskjøvet etter at tastaturet er lukket.
+- **Markering og markøren:** drar man i markøren eller markeringen, mister feltet fokus et øyeblikk på iPhone og får det tilbake. Før trodde spillet da at man var ferdig å skrive, la om skjermen og flyttet feltet midt i markeringen. Nå teller bare et fokustap som varer over 150 ms. Går fokuset til noe annet (spillflaten, et trykk på en knapp), er man ferdig med en gang, som i Flutter.
+- **Tastaturet lukket seg av seg selv:** kom et banner (f.eks. XP eller en venneforespørsel) over feltet mens man skrev, ble feltet skjult, og da lukker iPhone tastaturet. Nå blir feltet liggende så lenge man skriver.
+- **Godots eget skjermtastatur** kunne få fokus samtidig og slåss med HTML-feltet. Får spillets felt fokus, slippes det nå med en gang.
+- **Raskere omlegging:** nettleseren sier fra med en gang tastaturet kommer eller går (visualViewport), i stedet for at spillet sjekker hvert 0,15 sekund.
+- **«Lukk» i chatten på hovedmenyen virket ikke** etter første versjon av rettingen: menyen trodde man fortsatt skrev (de 150 ms), og holdt chatten åpen for tastaturet. Nå avslutter et fokus som går til spillflaten skrivingen med en gang, og «Lukk» avslutter skrivingen uansett (`WebTextField.stop`).
+- **Testet:** 220 Godot-tester, alle grønne. JavaScript-koden er testet i Edge (headless) med falske berøringer og et falskt tastatur: flytting bort og tilbake, kort og varig fokustap, feltet over tastaturet, tidsfristen uten tastatur, sveip, og at Send holder fokuset, at et trykk på spillflaten avslutter skrivingen med en gang, og at «Lukk» lukker chatten mens man skriver. Safari på iPhone oppfører seg annerledes enn Edge, så det må prøves på en ekte iPhone.

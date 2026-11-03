@@ -122,6 +122,23 @@ func test_normalize_fills_missing_fields() -> void:
 	check_eq(u.admin, false)
 
 
+## Arrangørrettigheten fra tidligere i runde 18 er borte (alle kan lage private turneringer): feltet ryddes
+## bort fra users.json når filen leses, og alt annet blir som før.
+func test_old_organizer_field_is_cleaned_up() -> void:
+	var st := _temp_store()
+	st.add_user("arran", Password.make("hemmelig123", 5))
+	var path := _dir.path_join("users.json")
+	var text := FileAccess.get_file_as_string(path)
+	FileAccess.open(path, FileAccess.WRITE).store_string(text.replace("\"admin\": false,",
+		"\"admin\": false,\n      \"organizer\": true,"))
+	check(FileAccess.get_file_as_string(path).contains("organizer"), "som en gammel users.json")
+	var again := Store.new()
+	again.open(_dir)
+	check(not again.find_user("arran").has("organizer"), "ikke i minnet")
+	check(not FileAccess.get_file_as_string(path).contains("organizer"), "og fjernet fra filen")
+	check(Password.verify("hemmelig123", again.find_user("arran").password), "resten er som før")
+
+
 # ---------------------------------------------------------------- Kontoer
 
 func test_register_login_logout_and_session() -> void:
@@ -144,6 +161,81 @@ func test_register_login_logout_and_session() -> void:
 	check(not _last(3, "logged_out").is_empty())
 	_hello(4, "Gjest", token)
 	check_eq(_last(4, "welcome").get("user"), null, "utlogget økt virker ikke lenger")
+
+
+## Bytte brukernavn: samme krav som ved registrering, alle enhetene får det nye navnet, innloggingen
+## følger med, gamle profillenker virker, og det går høyst ett bytte per Protocol.RENAME_DAYS dager.
+func test_change_username() -> void:
+	var token := _register(1, "Ada")
+	_register(2, "Bobo")
+	_hello(3, "Gjest", token)   # Ada på en annen enhet
+	_hello(5, "Gjest")
+	_msg(5, { "t": "rename", "username": "Hacker" })
+	check_eq(_last(5, "error").code, "login_required", "gjester kan ikke")
+	for bad in [["bobo", "Brukernavnet er tatt."], ["a", "Brukernavnet må være 3–16 tegn (bokstaver, tall, - og _)."],
+			["Ada", "Det er allerede brukernavnet ditt."]]:
+		_msg(1, { "t": "rename", "username": bad[0] })
+		check_eq(_last(1, "error").key, bad[1], "%s:" % bad[0])
+	_msg(1, { "t": "rename", "username": "Adelheid" })
+	check_eq(_last(1, "renamed").user.username, "Adelheid", "byttet:")
+	check_eq(_last(3, "renamed").user.username, "Adelheid", "den andre enheten får også det nye navnet:")
+	_msg(2, { "t": "get_stats", "username": "Ada" })
+	check_eq(_last(2, "stats").user.username, "Adelheid", "gamle lenker til profilen virker:")
+	_hello(6, "Gjest")
+	_msg(6, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+	check_eq(_last(6, "auth_error").key, "Feil brukernavn eller passord.", "det gamle navnet logger ikke inn:")
+	_msg(6, { "t": "login", "username": "adelheid", "password": "hemmelig123" })
+	check(not _last(6, "session").is_empty(), "det nye navnet logger inn")
+	# Høyst ett bytte per uke, men store og små bokstaver kan rettes
+	_msg(1, { "t": "rename", "username": "Adele" })
+	check_eq(_last(1, "error").key, "Du kan bytte brukernavn igjen om %d dager.")
+	check_eq(int(_last(1, "error").args[0]), Protocol.RENAME_DAYS)
+	_msg(1, { "t": "rename", "username": "ADELHEID" })
+	check_eq(_last(1, "renamed").user.username, "ADELHEID", "bare store bokstaver:")
+	unix += Protocol.RENAME_DAYS * 86400 + 1
+	_msg(1, { "t": "rename", "username": "Adele" })
+	check_eq(_last(1, "renamed").user.username, "Adele", "etter en uke går det igjen:")
+	# Det gamle navnet er ledig for andre, og da går lenken til den nye eieren
+	_msg(5, { "t": "register", "username": "Ada", "password": "annetpassord" })
+	check(not _last(5, "session").is_empty(), "det gamle navnet er ledig")
+	_msg(2, { "t": "get_stats", "username": "Ada" })
+	check(int(_last(2, "stats").user.id) != int(lobby.store.find_user("Adele").id), "et navn noen har nå, går foran")
+	check_eq(lobby.store.find_user("Adele").old_names, ["Ada", "ADELHEID"], "tidligere navn huskes (slik de var sist):")
+
+
+## Samme konto i to faner kan ikke spille mot seg selv: den andre fanen får ikke sette seg, og kommer
+## de seg likevel i begge setene (logget inn i rommet), teller ikke partiet.
+func test_no_games_against_yourself() -> void:
+	var token := _register(1, "Ada")
+	_hello(2, "Gjest", token)   # samme konto i en annen fane
+	_msg(1, { "t": "create_room", "options": { "must_block": false, "no_gift": false } })
+	var code := str(_last(1, "room_state").code)
+	_msg(2, { "t": "join_room", "code": code })
+	check_eq(_last(2, "error").code, "self_play", "den andre fanen får ikke sette seg:")
+	# Omvei: to gjester setter seg, og logger så inn på samme konto i rommet
+	_msg(1, { "t": "leave_room" })
+	_hello(3, "Gjest3")
+	_hello(4, "Gjest4")
+	_msg(3, { "t": "create_room", "options": { "must_block": false, "no_gift": false } })
+	_msg(4, { "t": "join_room", "code": str(_last(3, "room_state").code) })
+	for peer in [3, 4]:
+		_msg(peer, { "t": "login", "username": "Ada", "password": "hemmelig123" })
+		_msg(peer, { "t": "ready", "ready": true })
+	_inbox.clear()
+	var a := [[0, 0], [1, 0], [2, 0], [3, 0]]
+	var b := [[0, 1], [1, 1], [2, 1]]
+	var first := 3 if lobby.rooms.values().any(func(r: Lobby.Room) -> bool: return r.state != null and r.state.first_player == 1) else 4
+	var second := 7 - first
+	for i in 4:
+		_msg(first, { "t": "move", "x": a[i][0], "y": a[i][1], "ply": i * 2 })
+		if i < 3:
+			_msg(second, { "t": "move", "x": b[i][0], "y": b[i][1], "ply": i * 2 + 1 })
+	check(not _last(first, "game_over").is_empty(), "partiet ble spilt")
+	var u := lobby.store.find_user("Ada")
+	check_eq(int(u.stats.games), 0, "partiet teller ikke i statistikken:")
+	check_eq(int(u.stats.best_forced_win), 0, "og gir ingen rekorder")
+	check(lobby.social.history_message().messages.all(func(m: Dictionary) -> bool:
+		return not str(m.get("text", "")).contains("tvungne trekk")), "og ingen hendelse i chatten")
 
 
 func test_login_is_rate_limited() -> void:

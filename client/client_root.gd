@@ -107,10 +107,13 @@ func set_background(id: String) -> void:
 ## tastaturet, vindusstørrelsen eller feltet med fokus endrer seg.
 func _process(delta: float) -> void:
 	_keyboard_check -= delta
-	if _keyboard_check > 0.0:
+	if _keyboard_check > 0.0 and not WebTextField.viewport_changed:   # nettleseren sier fra når tastaturet kommer
 		return
+	WebTextField.viewport_changed = false
 	_keyboard_check = 0.15
 	var focus := get_viewport().gui_get_focus_owner()
+	if WebTextField.editing != null and is_instance_valid(WebTextField.editing):
+		focus = WebTextField.editing   # chatfeltet på mobil er et HTML-felt (se WebTextField)
 	var editing := focus is LineEdit
 	var hidden := _hidden_pixels() if editing else Vector2.ZERO
 	var scale := maxf(get_window().content_scale_factor, 0.01)
@@ -204,7 +207,12 @@ func _update_ui_scale() -> void:
 
 # ---------------------------------------------------------------- Navigasjon
 
+## Et parti hører til spillskjermen: byttes den ut med noe annet (f.eks. «Se» i et banner), avsluttes
+## partiet. Før hang det igjen usynlig, og når neste turneringskamp startet, sendte det «forlat rommet»
+## og ga tap i den nye kampen.
 func show_screen(screen: Control) -> void:
+	if current_match != null and not screen is GameScreen:
+		_end_match()
 	if _screen:
 		_screen.queue_free()
 	camera.view_offset = Vector2.ZERO
@@ -251,6 +259,18 @@ func show_tournament(id: int, back_to_menu := false) -> void:
 	show_screen(TournamentScreen.new(self, id, back_to_menu))
 
 
+## Turneringen med en kode (lenken ?t=KODE eller «Har du en kode?»). I en privat turnering kan man
+## bli med der med bare et kallenavn.
+func show_tournament_code(code: String) -> void:
+	show_screen(TournamentScreen.new(self, 0, false, code))
+
+
+## Storskjermen for turneringen (lenken ?vis=KODE eller «Vis på storskjerm»).
+func show_tournament_display(code: String) -> void:
+	_end_match()
+	show_screen(TournamentDisplay.new(self, code))
+
+
 func show_tournament_edit(tournament := {}) -> void:
 	show_screen(TournamentEditScreen.new(self, tournament))
 
@@ -289,8 +309,15 @@ func end_match() -> void:
 	_end_match()
 
 
+## Går inn i et rom. Vises et parti (f.eks. forrige kamp i turneringen) eller oppsettet, byttes det ut med
+## lobbyen til venterommet kommer. Serveren tar oss selv ut av det gamle rommet, så partiet avsluttes uten
+## «forlat rommet» (og uten å koble fra, som et vanlig parti ellers gjør når man går til menyen).
 func join_room(code: String) -> void:
 	_hide_banner()
+	if current_match != null or _screen is SetupScreen:
+		if current_match is OnlineMatch:
+			(current_match as OnlineMatch).keep_room = true
+		show_online()
 	Net.send({ "t": Protocol.JOIN_ROOM, "code": code })
 
 
@@ -303,8 +330,9 @@ func _on_net_message(msg: Dictionary) -> void:
 			if pending_invite != "" and int(msg.get("you", 0)) == 1:
 				Net.send({ "t": Protocol.FRIEND, "action": "invite", "username": pending_invite })
 				pending_invite = ""
-			# Ble med i et rom (fra lobbyen, en lenke eller «Gå til kamp»): vis venterommet.
-			if not (_screen is RoomScreen or _screen is GameScreen or _screen is SetupScreen):
+			# Ble med i et rom (fra lobbyen, en lenke eller «Gå til kamp»): vis venterommet. Storskjermen
+			# ser på partier selv og skal ikke byttes ut.
+			if not (_screen is RoomScreen or _screen is GameScreen or _screen is SetupScreen or _screen is TournamentDisplay):
 				show_room(msg)
 		Protocol.FRIEND_NOTICE:
 			match str(msg.get("kind", "")):
@@ -317,12 +345,14 @@ func _on_net_message(msg: Dictionary) -> void:
 			var code := str(msg.get("room", ""))
 			var tour := int(msg.get("tournament", 0))
 			if code != "" and not _busy_online():
-				if _screen is GameScreen or _screen is SetupScreen:
-					_end_match()   # ser på et annet parti eller spiller mot boten
-					show_online()
-				join_room(code)
+				join_room(code)   # avslutter et annet parti som vises (tilskuer, mot boten, eller forrige kamp)
 			elif code != "":
 				_show_banner(I18n.server_text(msg), code)
+			elif tour != 0 and bool(msg.get("open", false)) and not _busy_online() \
+					and not (_screen is GameScreen or _screen is RoomScreen or _screen is SetupScreen or _screen is TournamentDisplay):
+				# Innsjekken før start: turneringssiden (nedtellingen og chatten) åpnes, så er du med
+				if not (_screen is TournamentScreen and (_screen as TournamentScreen).tournament_id == tour):
+					show_tournament(tour)
 			elif tour != 0:
 				# F.eks. «Bob er klar for neste kamp»: «Se» åpner turneringssiden med Klar-knappen
 				_show_banner(I18n.server_text(msg), "", tr("Se"), func() -> void: show_tournament(tour))
@@ -364,25 +394,43 @@ func _on_net_connected(_resumed: bool) -> void:
 		_pending_tournament = 0
 
 
-## Lenker som https://…/?rom=KXRTA eller ?turnering=3 åpner rommet/turneringen direkte.
+## Lenker som https://…/?rom=KXRTA eller ?turnering=3 åpner rommet/turneringen direkte. ?t=KODE åpner
+## turneringen med koden (bli med), og ?vis=KODE storskjermen for den.
 func _read_link() -> void:
 	if not OS.has_feature("web"):
 		return
-	var room = JavaScriptBridge.eval("new URLSearchParams(location.search).get('rom') || ''")
-	var tour = JavaScriptBridge.eval("new URLSearchParams(location.search).get('turnering') || ''")
-	if room is String and room != "":
+	var param := func(name: String) -> String:
+		return str(JavaScriptBridge.eval("new URLSearchParams(location.search).get('%s') || ''" % name))
+	var room: String = param.call("rom")
+	var tour: String = param.call("turnering")
+	if room != "":
 		_pending_join = room.to_upper()
 		show_online()
-	elif tour is String and tour.is_valid_int():
+	elif tour.is_valid_int():
 		_pending_tournament = int(tour)
 		show_online()
+	elif param.call("vis") != "":
+		show_tournament_display(param.call("vis"))
+	elif param.call("t") != "":
+		show_tournament_code(param.call("t"))
+
+
+## Lenken til nettversjonen med ?param=value. Utenfor nettleseren lages den fra serveradressen
+## (wss://vert/ws blir https://vert/).
+func link_for(param: String, value: String) -> String:
+	var base := ""
+	if OS.has_feature("web"):
+		base = str(JavaScriptBridge.eval("location.origin + location.pathname"))
+	else:
+		var url := Settings.resolved_server_url()
+		base = ("https://" if url.begins_with("wss") else "http://") + url.get_slice("://", 1).get_slice("/", 0) + "/"
+	return "%s?%s=%s" % [base, param, value]
 
 
 ## Lager en delbar lenke (web) eller gir koden (PC), og deler/kopierer den. Gir en statustekst.
 func share_link(param: String, value: String, title: String) -> String:
 	if OS.has_feature("web"):
-		var base = JavaScriptBridge.eval("location.origin + location.pathname")
-		var link := "%s?%s=%s" % [base, param, value]
+		var link := link_for(param, value)
 		var shared = JavaScriptBridge.eval("(function(){ if (navigator.share) { navigator.share({ title: %s, url: %s }); return true; } return false; })()" \
 			% [JSON.stringify(title), JSON.stringify(link)], true)
 		if shared == true:

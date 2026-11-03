@@ -44,11 +44,13 @@ func _ready() -> void:
 	_input = UI.chat_input(placeholder)
 	_input.text_submitted.connect(func(_t: String) -> void: _send())
 	row.add_child(_input)
-	row.add_child(UI.button("Send", func() -> void:
+	var send := UI.button("Send", func() -> void:
 		_send()
 		UI.refocus_chat(_input)
-	))
+	)
+	row.add_child(send)
 	v.add_child(row)
+	WebTextField.attach(_input, send)   # mobil i nettleseren: ekte tekstfelt (tastatur, markering, emojier)
 
 
 func add_message(from_name: String, text: String, color := UI.ACCENT) -> void:

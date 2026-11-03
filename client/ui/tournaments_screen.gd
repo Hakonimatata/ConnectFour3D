@@ -1,6 +1,7 @@
 class_name TournamentsScreen
 extends Screen
-## Liste over turneringer og hall of fame (vinnerne av rangerte turneringer). Admin kan lage nye.
+## Liste over turneringer og hall of fame (vinnerne av rangerte turneringer). Alle med konto kan lage
+## private turneringer (admin også offentlige), og en privat turnering åpnes med koden.
 
 var _list_box: VBoxContainer
 var _new_button: Button
@@ -13,6 +14,17 @@ func _ready() -> void:
 	_new_button = UI.button("Ny turnering", func() -> void: app.show_tournament_edit(), "PrimaryButton")
 	_new_button.visible = false
 	v.add_child(_new_button)
+	# Private turneringer finnes ikke i listen: man kommer inn med koden (eller lenken med koden)
+	var code_row := UI.hbox(8)
+	var code := UI.line_edit("", "Har du en kode?", 5)
+	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var open_code := func() -> void:
+		if code.text.strip_edges().length() == 5:
+			app.show_tournament_code(code.text)
+	code.text_submitted.connect(func(_t: String) -> void: open_code.call())
+	code_row.add_child(code)
+	code_row.add_child(UI.button("Åpne", open_code))
+	v.add_child(code_row)
 	_list_box = UI.vbox(8)
 	v.add_child(_list_box)
 	_list_box.add_child(UI.label("Henter…", "Muted"))
@@ -34,7 +46,7 @@ func _refresh() -> void:
 func _on_message(msg: Dictionary) -> void:
 	if msg.t != Protocol.TOURNAMENT_LIST:
 		return
-	_new_button.visible = bool(msg.get("admin", false))
+	_new_button.visible = bool(msg.get("admin", false)) or bool(msg.get("create", false))
 	for c in _list_box.get_children():
 		c.queue_free()
 	var list: Array = msg.get("tournaments", [])
@@ -72,11 +84,16 @@ func _entry(t: Dictionary) -> Control:
 	name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	texts.add_child(name)
+	var private := bool(t.get("private", false))
 	var info := [tr(TournamentScreen.format_name(t.format)), tr(TournamentScreen.status_name(t.status)),
-		"%d/%d" % [int(t.players), int(t.max_players)], UI.format_time(int(t.start_time))]
+		"%d/%d" % [int(t.players), int(t.max_players)]]
+	if not private:
+		info.append(UI.format_time(int(t.start_time)))
 	if str(t.get("winner", "")) != "":
 		info.append(tr("Vinner: %s") % str(t.winner))
-	if not bool(t.get("ranked", true)):
+	if private:
+		info.append(tr("Privat"))
+	elif not bool(t.get("ranked", true)):
 		info.append(tr("Uranket"))
 	var line := " · ".join(info)
 	var sub := UI.label(line, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)

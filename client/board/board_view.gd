@@ -20,6 +20,8 @@ const SPACING := 1.0          ## Avstand mellom kolonner
 const LAYER := 0.52           ## Høyde per brikke
 const PIECE_SCALE := 4.0      ## piece.obj er 0,17 bred, 0,126 høy
 const PIECE_RADIUS := 0.35    ## Radius etter skalering
+const PIECE_TOP := 0.504      ## Høyden på toppen av brikken (0,126 × PIECE_SCALE)
+const LAST_ALPHA := 0.5       ## Ringen rundt siste trekk: tydelig nok, men ikke forstyrrende
 const BOARD_MARGIN := 0.4     ## Kant utenfor rutenettet
 const BOARD_THICKNESS := 0.22
 const DRAG_THRESHOLD := 10.0  ## Piksler før et trykk regnes som dra (roter)
@@ -43,6 +45,9 @@ var _slots: Dictionary = {}     ## Vector2i -> StaticBody3D (klikkflaten der nes
 var _heights: Dictionary = {}   ## Vector2i -> antall brikker i kolonnen
 var _marker: MeshInstance3D     ## Ring som viser hvor man peker
 var _ghost: MeshInstance3D      ## Gjennomsiktig brikke (valgt kolonne på touch)
+var _last_ring: MeshInstance3D  ## Tynn ring rundt toppen av brikken i siste trekk (show_last_move)
+var _last_pos := Vector3i(-1, -1, -1)
+var _last_tween: Tween
 var _target_col := NO_COLUMN
 var _hover_col := NO_COLUMN
 
@@ -86,6 +91,20 @@ func _ready() -> void:
 	var pulse := _marker.create_tween().set_loops()
 	pulse.tween_method(_set_marker_alpha, 0.35, 0.7, 0.7).set_trans(Tween.TRANS_SINE)
 	pulse.tween_method(_set_marker_alpha, 0.7, 0.35, 0.7).set_trans(Tween.TRANS_SINE)
+
+	# Siste trekk: en rolig ring rett utenfor kanten på toppen av brikken (ikke over merket på toppen)
+	var halo := TorusMesh.new()
+	halo.inner_radius = PIECE_RADIUS * 1.03
+	halo.outer_radius = PIECE_RADIUS * 1.15
+	halo.rings = 48
+	halo.ring_segments = 6
+	_last_ring = MeshInstance3D.new()
+	_last_ring.mesh = halo
+	_last_ring.scale = Vector3(1, 0.5, 1)
+	_last_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_last_ring.material_override = _transparent(Color(1, 1, 1, 0.0))
+	_last_ring.visible = false
+	add_child(_last_ring)
 
 
 # ---------------------------------------------------------------- Oppsett
@@ -176,6 +195,7 @@ func clear_pieces() -> void:
 		_place_slot(col)
 	clear_hints()
 	hide_target()
+	hide_last_move()
 
 
 ## Legger til en brikke. Med animate faller den ned og spretter.
@@ -292,6 +312,36 @@ func ghost_visible() -> bool:
 
 func _marker_alpha() -> float:
 	return (_marker.material_override as StandardMaterial3D).albedo_color.a
+
+
+## Markerer siste trekk med en tynn, hvit ring rundt toppen av brikken. Den står stille (pulserer
+## ikke) og toner inn etter delay sekunder, når brikken har landet.
+func show_last_move(pos: Vector3i, delay := 0.35) -> void:
+	if pos == _last_pos and _last_ring.visible:
+		return
+	_last_pos = pos
+	_last_ring.position = grid_to_world(pos) + Vector3(0, PIECE_TOP - 0.035, 0)
+	var m := _last_ring.material_override as StandardMaterial3D
+	m.albedo_color.a = 0.0
+	_last_ring.visible = true
+	if _last_tween:
+		_last_tween.kill()
+	_last_tween = _last_ring.create_tween()
+	_last_tween.tween_interval(delay)
+	_last_tween.tween_property(m, "albedo_color:a", LAST_ALPHA, 0.3)
+
+
+func hide_last_move() -> void:
+	_last_pos = Vector3i(-1, -1, -1)
+	if _last_tween:
+		_last_tween.kill()
+	if _last_ring:
+		_last_ring.visible = false
+
+
+## Brikken som er markert som siste trekk, eller (-1, -1, -1).
+func last_move_shown() -> Vector3i:
+	return _last_pos if _last_ring != null and _last_ring.visible else Vector3i(-1, -1, -1)
 
 
 func _set_marker_alpha(a: float) -> void:

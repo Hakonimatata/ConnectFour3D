@@ -243,7 +243,24 @@
 - Mer "spennende" dagnes utfordringer. Må ikke være kun tvungede trekk, men kan være "garantert seier på x antall trekk". Bare det er umulig å forsvare. Gjerne også hvor ting går litt på kryss og tvers. Dagens kan kan også være finn beste trekk.
 
 
+## Runde 18
+
+- Stor bug: Når jeg klikker på "bli med" popupen når motstander har trykket klar så går jeg inn og taper umiddelbart! Taper på walkover selv om jeg møter opp. Fiks slike tilfeller. 
+
+- Viktig informasjon står langt nede i turneringer. Ekstremt mye tekst som kan kortes ned. Kanskje en egen knapp for regler. Det som skjer nå bør være øverst ikke nederst. 
+
+- Chat for telefon er ekstremt buggy nå. Noen ganger kan jeg ikke skrive i det hele tatt. Kan ikke markere tekst og ting hopper. Gjør det smooth slik man forventer. Feks tastaturet forsvinner hver gang noe sendes osv. Skal fungere som alle ordentlige nettsider/apper helst.
+
+- Fjern hele ideen med at man må ha arrangør rettighet. Gjør en trygg rydding i users.json angående dette. Alle skal kunne opprette private turneringer.
+
+- Folk som ikke dukker opp i turneringer bør kastes ut. Hva om vi heller har en stor countdown side og en chat hvor alle dukker inn i. De får derfor 2 min på seg å gjøre seg klar og kan chatte i turneringschaten. De som ikke dukker opp initielt får ikke delta, men hvis du faller ut underveis bør man kunne komme tilbake.
+
+- Hvis det er enkelt å få inn emojies fra telefontatsaturet i chaten så få gjerne med det.
+
+- Hvis det finnes et tiltak for å hinde en maskin i å åpne en ny fane i turnering for å se på "sjakkpila" og hint om seier innen 3 trekk så bør det gjøres.
+
+- Til slutt, Gi meg tips til å få folk til å møte opp til turneringer
 
 ## Senere (ikke gjennomtenkt nok)
 
-- 
+- Custom reactions. 

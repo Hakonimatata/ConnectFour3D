@@ -2,7 +2,8 @@ class_name ProfileScreen
 extends Screen
 ## Statistikk for en spiller (deg selv som standard), pokalene, de siste partiene (med reprise) og topplister.
 ## Er det en annen spiller, står venneknappen øverst: «Legg til venn», «Godta», «Forespørsel sendt» eller
-## «Utfordre» / «Se på» når dere er venner. Navnene i topplisten kan trykkes på for å se profilen deres.
+## «Utfordre» / «Se på» og «Fjern venn» (trykk to ganger) når dere er venner. Navnene i topplisten kan
+## trykkes på for å se profilen deres.
 
 var username := ""          ## tom = deg selv
 var _stats_box: VBoxContainer
@@ -12,7 +13,12 @@ var _boards: Dictionary = {}
 var _games_box: VBoxContainer
 var _back_to_menu := false
 var _actions: HBoxContainer   ## venneknappene (bare på andres profil)
+var _confirm_remove := false  ## «Fjern venn» er trykket én gang (trykk igjen for å fjerne)
 var _user: Dictionary = {}
+var _rename_form: Control     ## «Bytt brukernavn» (bare på din egen profil)
+var _rename_edit: LineEdit
+var _rename_status: Label
+var _rename_note := ""        ## «Brukernavnet er byttet til …», vises etter at profilen er hentet på nytt
 
 
 func _init(p_app: ClientRoot, p_username := "", back_to_menu := false) -> void:
@@ -41,7 +47,13 @@ func _ready() -> void:
 	))
 	_board_box = UI.vbox(4)
 	v.add_child(_board_box)
-	UI.card_footer(v).add_child(UI.button("Tilbake", _on_back))
+	var buttons := UI.hbox(10)
+	var back := UI.button("Tilbake", _on_back)
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	buttons.add_child(back)
+	if not is_other() and Net.is_logged_in():
+		buttons.add_child(_logout_button())
+	UI.card_footer(v).add_child(buttons)
 
 	Net.message.connect(_on_message)
 	Net.send({ "t": Protocol.GET_STATS, "username": username })
@@ -66,6 +78,15 @@ func _on_message(msg: Dictionary) -> void:
 		Protocol.GAME_RECORD:
 			if msg.get("game") is Dictionary:
 				app.show_replay(msg.game, app.show_profile.bind(username, _back_to_menu))
+		Protocol.RENAMED:
+			if not is_other() and msg.get("user") is Dictionary:
+				_rename_note = tr("Brukernavnet er byttet til %s.") % str(msg.user.username)
+				Net.send({ "t": Protocol.GET_STATS, "username": "" })   # hent profilen på nytt (med bildet)
+				Net.send({ "t": Protocol.GET_LEADERBOARD })
+		Protocol.ERROR:
+			if str(msg.get("code", "")) == "rename" and _rename_status != null:
+				_rename_status.text = I18n.server_text(msg)
+				_rename_status.add_theme_color_override("font_color", UI.DANGER)
 
 
 func _show_stats(u: Variant) -> void:
@@ -102,6 +123,8 @@ func _show_stats(u: Variant) -> void:
 	_actions = UI.hbox(8)
 	_stats_box.add_child(_actions)
 	_update_actions()
+	if not is_other() and Net.is_logged_in():
+		_stats_box.add_child(_rename_section(str(u.username)))
 	var rows := [
 		["Elo", str(int(u.elo))],
 		["Partier", str(games)],
@@ -126,6 +149,51 @@ func _show_stats(u: Variant) -> void:
 		row.add_child(value)
 		_stats_box.add_child(row)
 	_stats_box.add_child(_trophy_shelf(u.get("trophies", [])))
+
+
+## «Bytt brukernavn» på din egen profil: knappen folder ut et felt med «Lagre». Serveren sjekker at
+## navnet er gyldig og ledig, og at det har gått Protocol.RENAME_DAYS dager siden forrige bytte.
+func _rename_section(current: String) -> Control:
+	var box := UI.vbox(6)
+	_rename_form = UI.vbox(6)
+	_rename_form.visible = false
+	var toggle := UI.button("Bytt brukernavn", func() -> void:
+		_rename_form.visible = not _rename_form.visible
+		if _rename_form.visible:
+			_rename_edit.grab_focus()
+	, "GhostButton")
+	toggle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	box.add_child(toggle)
+	var row := UI.hbox(8)
+	_rename_edit = UI.line_edit(current, "Nytt brukernavn", Protocol.MAX_NAME)
+	_rename_edit.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_rename_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_rename_edit.text_submitted.connect(func(_t: String) -> void: _send_rename())
+	row.add_child(_rename_edit)
+	row.add_child(UI.button("Lagre", _send_rename, "PrimaryButton"))
+	_rename_form.add_child(row)
+	_rename_status = UI.label(tr("Du logger inn med det nye navnet. Etter et bytte må det gå %d dager før neste.")
+		% Protocol.RENAME_DAYS, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+	_rename_status.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_rename_form.add_child(_rename_status)
+	box.add_child(_rename_form)
+	if _rename_note != "":
+		var note := UI.label(_rename_note, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
+		note.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		note.add_theme_color_override("font_color", UI.SUCCESS)
+		box.add_child(note)
+		_rename_note = ""
+	return box
+
+
+func _send_rename() -> void:
+	var name := _rename_edit.text.strip_edges()
+	if name == "" or name == str(_user.get("username", "")):
+		_rename_form.visible = false
+		return
+	_rename_status.remove_theme_color_override("font_color")
+	_rename_status.text = tr("Lagrer…")
+	Net.send({ "t": Protocol.RENAME, "username": name })
 
 
 ## Er dette en annen spillers profil (ikke din egen)?
@@ -161,6 +229,12 @@ func _update_actions() -> void:
 			_actions.add_child(UI.button("Se på", func() -> void: Net.send({ "t": Protocol.WATCH, "code": code })))
 		elif bool(friend.get("online", false)):
 			_actions.add_child(UI.button("Utfordre", func() -> void: app.challenge(name), "PrimaryButton"))
+		_actions.add_child(UI.button("Sikker?" if _confirm_remove else "Fjern venn", func() -> void:
+			if _confirm_remove:
+				friend_request.call("remove")
+			_confirm_remove = not _confirm_remove
+			_update_actions()
+		, "GhostButton"))
 	elif asked:
 		var ask := UI.label(tr("%s vil bli venn med deg.") % name, "Muted", HORIZONTAL_ALIGNMENT_LEFT, true)
 		ask.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -272,6 +346,23 @@ func show_games(games: Array) -> void:
 			Net.send({ "t": Protocol.GET_GAME, "id": id })
 		)
 		_games_box.add_child(b)
+
+
+## «Logg ut» på din egen profil. En gjest (bare kallenavn) kan ikke logge inn igjen, så da må man
+## trykke to ganger.
+func _logout_button() -> Button:
+	var b := UI.button("Logg ut", func() -> void: pass, "GhostButton")
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var guest := bool(Net.user.get("guest", false))
+	b.pressed.connect(func() -> void:
+		if guest and not b.has_meta("sure"):
+			b.set_meta("sure", true)
+			b.text = tr("Sikker? Gjesten kan ikke logges inn igjen")
+			return
+		Net.logout()
+		app.show_menu()
+	)
+	return b
 
 
 func _on_back() -> void:

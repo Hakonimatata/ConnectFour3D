@@ -10,10 +10,14 @@ const MAX_FAILURES := 5            ## feilede innlogginger før pause
 const FAILURE_WINDOW_S := 600      ## ... innenfor 10 minutter
 const MAX_FRIENDS := 200
 const USERNAME_RE :="^[A-Za-z0-9_æøåÆØÅ-]{3,16}$"
+const GUEST_DAYS := 14             ## gjestekontoer som ikke er brukt så lenge, slettes
+const GUEST_PER_HOUR := 200        ## nye gjestekontoer i timen, totalt (ikke per IP: mange deler nett)
+const GUEST_NAME_MAX := 14         ## kallenavnet til en gjest (plass til et tall bak hvis det er tatt)
 
 var store: Store
 var iterations := Password.ITERATIONS   ## testene bruker færre runder for fart
 var _failures: Dictionary = {}          ## brukernavn (små bokstaver) -> [tidspunkter]
+var _guest_times: Array = []            ## når de siste gjestekontoene ble laget (unix-s)
 var _username_re := RegEx.create_from_string(USERNAME_RE)
 var _crypto := Crypto.new()
 
@@ -50,6 +54,38 @@ func login(username: String, password: String, now_s: int) -> Dictionary:
 	_failures.erase(key)
 	if u.banned:
 		return banned_error(u)
+	return { "user": u }
+
+
+## Bytter brukernavn (det man logger inn med og vises med). Samme krav som ved registrering, og høyst
+## ett bytte per Protocol.RENAME_DAYS dager (det første byttet går alltid). Store bokstaver kan rettes
+## når som helst. Det gamle navnet huskes (old_names), men er ledig for andre. Gir { user } eller
+## { error, args }.
+func rename(user_id: int, username: String, now_s: int) -> Dictionary:
+	var u: Dictionary = store.users.get(user_id, {})
+	if u.is_empty():
+		return { "error": "Du må logge inn først.", "args": [] }
+	username = username.strip_edges()
+	if _username_re.search(username) == null:
+		return { "error": "Brukernavnet må være 3–16 tegn (bokstaver, tall, - og _).", "args": [] }
+	if username == str(u.username):
+		return { "error": "Det er allerede brukernavnet ditt.", "args": [] }
+	var other := store.find_user(username)
+	if not other.is_empty() and int(other.id) != user_id:
+		return { "error": "Brukernavnet er tatt.", "args": [] }
+	var only_case := username.to_lower() == str(u.username).to_lower()
+	var wait_s := int(u.renamed_at) + Protocol.RENAME_DAYS * 86400 - now_s
+	if not only_case and not u.guest and int(u.renamed_at) > 0 and wait_s > 0:   # gjester kan rette kallenavnet fritt
+		return { "error": "Du kan bytte brukernavn igjen om %d dager.", "args": [ceili(wait_s / 86400.0)] }
+	if not only_case:
+		var now_name := str(u.username)
+		var old: Array = (u.old_names as Array).filter(func(n: String) -> bool:
+			return n.to_lower() != now_name.to_lower() and n.to_lower() != username.to_lower())
+		old.append(now_name)
+		u.old_names = old.slice(maxi(0, old.size() - 5))
+		u.renamed_at = now_s
+	u.username = username
+	store.save_users()
 	return { "user": u }
 
 
@@ -95,6 +131,55 @@ func is_admin(user_id: int) -> bool:
 	return user_id != 0 and bool(store.users.get(user_id, {}).get("admin", false))
 
 
+## Alle med konto (ikke gjester) kan lage private turneringer og styre sine egne. Admin lager også offentlige.
+func can_create_tournament(user_id: int) -> bool:
+	var u: Dictionary = store.users.get(user_id, {})
+	return not u.is_empty() and not bool(u.guest)
+
+
+func is_guest(user_id: int) -> bool:
+	return bool(store.users.get(user_id, {}).get("guest", false))
+
+
+## Gjestekonto til en privat turnering: bare et kallenavn, uten passord. Er navnet tatt, får det et tall
+## bak («Ada2»). Gjestekontoer kan ikke logge inn med passord, får ikke bilde, venner eller XP, kommer
+## ikke på topplister, og slettes når de ikke har vært brukt på GUEST_DAYS dager (remove_stale_guests).
+## Gir { user } eller { error }.
+func create_guest(nickname: String, now_s: int) -> Dictionary:
+	var base := nickname.strip_edges().replace(" ", "_")
+	if base.length() > GUEST_NAME_MAX or _username_re.search(base) == null:
+		return { "error": "Kallenavnet må være 3–14 tegn (bokstaver, tall, - og _)." }
+	_guest_times = _guest_times.filter(func(t: int) -> bool: return now_s - t < 3600)
+	if _guest_times.size() >= GUEST_PER_HOUR:
+		return { "error": "For mange nye gjester akkurat nå. Prøv igjen om litt." }
+	_guest_times.append(now_s)
+	var name := base
+	var n := 2
+	while not store.find_user(name).is_empty():
+		name = "%s%d" % [base, n]
+		n += 1
+	var u := store.add_user(name, {})
+	u.guest = true
+	u.last_seen = now_s
+	store.save_users()
+	return { "user": u }
+
+
+## Sletter gjestekontoer som ikke har vært brukt på GUEST_DAYS dager, unntatt dem i keep (id -> true:
+## med i en turnering som ikke er ferdig). Gir antallet.
+func remove_stale_guests(now_s: int, keep: Dictionary) -> int:
+	var gone := []
+	for u: Dictionary in store.users.values():
+		if u.guest and now_s - int(u.last_seen) > GUEST_DAYS * 86400 and not keep.has(int(u.id)):
+			gone.append(int(u.id))
+	for id in gone:
+		store.users.erase(id)
+		end_sessions_of(id)
+	if not gone.is_empty():
+		store.save_users()
+	return gone.size()
+
+
 # ---------------------------------------------------------------- Venner
 
 ## Venneforespørsel fra en bruker til en annen. Har den andre allerede spurt deg, blir dere venner.
@@ -104,6 +189,8 @@ func friend_request(from_id: int, to_username: String) -> Dictionary:
 	var other := store.find_user(to_username)
 	if me.is_empty() or other.is_empty():
 		return { "error": "Fant ikke brukeren %s." }
+	if me.guest or other.guest:
+		return { "error": "Gjester kan ikke ha venner." }
 	if int(other.id) == from_id:
 		return { "error": "Du kan ikke legge til deg selv." }
 	if int(other.id) in me.friends:
@@ -236,7 +323,7 @@ func update_profile(user_id: int, look: Dictionary) -> void:
 ## Profilbildet hører til kontoen, så det er det samme på alle enheter. "" = fjernet.
 func set_avatar(user_id: int, avatar: String) -> void:
 	var u: Dictionary = store.users.get(user_id, {})
-	if u.is_empty():
+	if u.is_empty() or u.guest:   # gjester har ikke bilde
 		return
 	if bool(u.profile.get("avatar_removed", false)) != (avatar == ""):
 		u.profile.avatar_removed = avatar == ""
@@ -252,6 +339,8 @@ func set_avatar(user_id: int, avatar: String) -> void:
 ## Bildet etter innlogging. Har kontoen et bilde, vinner det (samme bilde på alle enheter).
 ## Har den ikke, tas enhetens bilde (første gang), med mindre brukeren har fjernet bildet sitt.
 func avatar_on_sign_in(user_id: int, device_avatar: String) -> String:
+	if is_guest(user_id):
+		return ""
 	var stored: String = store.avatars.get(user_id, "")
 	if stored != "":
 		return stored
@@ -270,7 +359,7 @@ func search(query: String, limit := 10) -> Array:
 		return []
 	var hits := []
 	for u: Dictionary in store.users.values():
-		if not u.banned and str(u.username).to_lower().contains(q):
+		if not u.banned and not u.guest and str(u.username).to_lower().contains(q):
 			hits.append(u)
 	hits.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		var pa := str(a.username).to_lower().begins_with(q)
@@ -292,7 +381,7 @@ func public_info(u: Dictionary) -> Dictionary:
 		return {}
 	return { "id": u.id, "username": u.username, "admin": u.admin, "elo": u.elo, "stats": u.stats,
 		"trophies": u.trophies, "xp": int(u.get("xp", 0)), "level": Progression.level_for(int(u.get("xp", 0))),
-		"unlocks": u.get("unlocks", []) }
+		"unlocks": u.get("unlocks", []), "guest": bool(u.get("guest", false)) }
 
 
 # ---------------------------------------------------------------- XP (runde 17, se core/progression.gd)
@@ -324,9 +413,9 @@ func unlock(u: Dictionary, item: String) -> bool:
 func award_game_xp(ids: Array, result: int, move_count: int, elo: Dictionary, now_s: int) -> Dictionary:
 	var out := {}
 	var users := [{}, store.users.get(int(ids[1]), {}), store.users.get(int(ids[2]), {})]
-	if users[1].is_empty() or users[2].is_empty() or int(ids[1]) == int(ids[2]) or move_count < Progression.MIN_MOVES:
+	if users[1].is_empty() or users[2].is_empty() or int(ids[1]) == int(ids[2]) or move_count < Progression.MIN_MOVES \
+			or users[1].guest or users[2].guest:   # gjestekontoer er lette å lage, så ingen XP mot dem
 		return out
-	var day := Puzzles.day_of(now_s)
 	for seat in [1, 2]:
 		var me: Dictionary = users[seat]
 		var opp: Dictionary = users[3 - seat]
@@ -334,11 +423,7 @@ func award_game_xp(ids: Array, result: int, move_count: int, elo: Dictionary, no
 		var opp_elo := int(elo[3 - seat].before) if elo.has(3 - seat) else int(opp.elo)
 		var score := 0.5 if result == 0 else (1.0 if result == seat else 0.0)
 		var gained := Progression.game_xp(score, my_elo, opp_elo)
-		var d: Dictionary = me.xp_day
-		if d.day != day:
-			d.day = day
-			d.games = 0
-			d.opponents = {}
+		var d := _xp_day(me, now_s)
 		var key := str(opp.id)
 		var played := int(d.opponents.get(key, 0))
 		d.opponents[key] = played + 1
@@ -349,6 +434,33 @@ func award_game_xp(ids: Array, result: int, move_count: int, elo: Dictionary, no
 		out[seat] = add_xp(me, gained)
 	store.save_users()
 	return out
+
+
+## XP for å møte opp til start i en turnering (Progression.SHOW_UP_XP). Ikke til gjester, og fra
+## urangerte turneringer (som alle med konto kan lage) høyst UNRANKED_SHOW_UP_DAILY per dag.
+## Gir add_xp-resultatet, eller {} hvis hen ikke fikk noe. Den som kaller, lagrer.
+func award_show_up_xp(user_id: int, ranked: bool, now_s: int) -> Dictionary:
+	var u: Dictionary = store.users.get(user_id, {})
+	if u.is_empty() or u.guest:
+		return {}
+	if not ranked:
+		var d := _xp_day(u, now_s)
+		if int(d.show_ups) >= Progression.UNRANKED_SHOW_UP_DAILY:
+			return {}
+		d.show_ups = int(d.show_ups) + 1
+	return add_xp(u, Progression.SHOW_UP_XP)
+
+
+## Dagens XP-tellere på kontoen (xp_day), nullstilt når det har blitt en ny dag.
+func _xp_day(u: Dictionary, now_s: int) -> Dictionary:
+	var d: Dictionary = u.xp_day
+	var day := Puzzles.day_of(now_s)
+	if d.day != day:
+		d.day = day
+		d.games = 0
+		d.show_ups = 0
+		d.opponents = {}
+	return d
 
 
 # ---------------------------------------------------------------- Statistikk og Elo
@@ -411,7 +523,7 @@ static func expected(rating: int, opponent: int) -> float:
 
 ## Topplister: Elo (minst ett parti), flest seire og lengste tvungne seier. Utestengte vises ikke.
 func leaderboard(limit := 20) -> Dictionary:
-	var listed: Array = store.users.values().filter(func(u: Dictionary) -> bool: return not u.banned)
+	var listed: Array = store.users.values().filter(func(u: Dictionary) -> bool: return not u.banned and not u.guest)
 	var solvers: Array = listed.filter(func(u: Dictionary) -> bool: return u.stats.puzzles_solved > 0)
 	solvers.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		if a.stats.puzzles_solved != b.stats.puzzles_solved:

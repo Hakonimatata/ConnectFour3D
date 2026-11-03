@@ -53,7 +53,6 @@ static func _load() -> void:
 const EN := {
 	# --- Meny og felles
 	"Fire på rad": "Four in a Row",
-	"i 3D · mot AI, lokalt eller online": "in 3D · vs AI, local or online",
 	"Spill mot AI": "Play vs AI",
 	"To spillere på samme enhet": "Two players, one device",
 	"To spillere": "Two players",
@@ -316,7 +315,6 @@ const EN := {
 	"Pågår": "In progress",
 	"Ferdig": "Finished",
 	"Avlyst": "Cancelled",
-	"Status: %s": "Status: %s",
 	"Start: %s": "Start: %s",
 	"Deltakere: %d av %d": "Players: %d of %d",
 	"Møt opp innen %d min, pause mellom rundene %d min.": "Show up within %d min, %d min break between rounds.",
@@ -325,7 +323,6 @@ const EN := {
 	"Meld meg av": "Withdraw",
 	"Meld meg på": "Sign me up",
 	"Del lenke til turneringen": "Share tournament link",
-	"Deltakere": "Players",
 	"Ingen påmeldte ennå.": "Nobody has signed up yet.",
 	"Tabell": "Standings",
 	"%d. %s – %s poeng (%d–%d–%d)": "%d. %s – %s points (%d–%d–%d)",
@@ -483,12 +480,9 @@ const EN := {
 	"Ekspert": "Expert",
 	"Alle": "All",
 	"Antall runder": "Number of rounds",
-	"Hver spiller spiller så mange partier (én færre ved fri runde). Flest poeng vinner.":
-		"Each player plays this many games (one fewer with a bye). Most points wins.",
+	"Med færre runder enn alle mot alle settes hver runde opp etter tabellen (sveitsisk). Flest poeng vinner, og Elo teller ikke.":
+		"With fewer rounds than a full round robin, each round is paired by the standings (Swiss). Most points wins, and Elo doesn't count.",
 	"Varighet med %d spillere: ca. %s (%d runder).": "Duration with %d players: about %s (%d rounds).",
-	"Alle mot alle, men høyst %d runder: hver spiller spiller %d partier (én færre ved fri runde). Seier gir 1 poeng, uavgjort ½.":
-		"Round robin, but at most %d rounds: each player plays %d games (one fewer with a bye). A win gives 1 point, a draw ½.",
-	"Varighet: ca. %s (%d runder med %d spillere).": "Duration: about %s (%d rounds with %d players).",
 	"Dagens": "Today's",
 	"Oppgaver": "Puzzles",
 	"Neste oppgave": "Next puzzle",
@@ -606,6 +600,7 @@ const EN := {
 	"Utfordre": "Challenge",
 	"Sikker?": "Sure?",
 	"Fjern": "Remove",
+	"Fjern venn": "Remove friend",
 	"Inviter en venn": "Invite a friend",
 	"Ingen venner er ledige akkurat nå. Legg til venner under «Spill online» → «Venner».":
 		"No friends are free right now. Add friends under «Play online» → «Friends».",
@@ -672,20 +667,19 @@ const EN := {
 	"Starter om": "Starts in",
 	"Din kamp starter om %s.": "Your match starts in %s.",
 	"Legg i kalender": "Add to calendar",
-	"Alle mot alle: alle møter alle én gang. Seier gir 1 poeng, uavgjort ½.":
-		"Round robin: everyone plays everyone once. A win gives 1 point, a draw ½.",
-	"Utslag: taperen er ute, vinneren går videre til neste runde.":
-		"Knockout: the loser is out, the winner goes on to the next round.",
-	"Uavgjort spilles om (inntil 3 ganger). Blir det fortsatt uavgjort, går den med høyest Elo videre.":
-		"Draws are replayed (up to 3 times). If it's still a draw, the player with the higher Elo goes on.",
+	"Omkamp om seieren": "Playoff for first place",
+	"Runde %d av %d": "Round %d of %d",
+	"%s · %s møtte ikke": "%s · %s didn't show up",
+	"%s · %s gikk videre etter tre uavgjorte": "%s · %s went on after three draws",
+	"%s · motstanderen møtte ikke, ser etter en annen uten motstander":
+		"%s · opponent didn't show up, looking for someone else without an opponent",
+	"Motstanderen din møtte ikke. Står en annen også uten motstander, spiller dere mot hverandre; ellers vinner du på walkover.":
+		"Your opponent didn't show up. If someone else is also without an opponent, you'll play each other; otherwise you win by walkover.",
+	"Motstanderen møtte ikke. Du spiller mot %s i stedet.": "Your opponent didn't show up. You'll play %s instead.",
+	"Helt likt øverst i «%s»: det spilles omkamp om seieren.": "Exactly tied at the top of «%s»: there will be a playoff for first place.",
+	"Uavgjort igjen! I neste parti går den som ikke starter, videre ved uavgjort.":
+		"A draw again! In the next game, the player who doesn't start goes on if it's a draw.",
 	"Spill: %s": "Game: %s",
-	"Tid: %d min hver, pluss %d s per trekk. Går tiden ut, taper du.":
-		"Time: %d min each, plus %d s per move. If your time runs out, you lose.",
-	"Hvem som starter, byttes for hvert parti.": "Who starts alternates every game.",
-	"Du kastes rett inn når kampen din begynner. Den starter når begge er i rommet.":
-		"You're taken straight in when your match begins. It starts when both are in the room.",
-	"Møt opp innen %d min, ellers taper du på walkover. Pause mellom rundene: %d min.":
-		"Show up within %d min, or you lose by walkover. Break between rounds: %d min.",
 	"Rangert: partiene teller på Elo.": "Ranked: the games count for Elo.",
 	"Uranket: partiene endrer ikke Elo.": "Unranked: the games don't change Elo.",
 	"Vinneren får pokalen på profilen sin.": "The winner gets the trophy on their profile.",
@@ -801,8 +795,6 @@ const EN := {
 	"Premie": "Prize",
 	"Vinneren låser opp premien med en gang, uansett nivå.": "The winner unlocks the prize right away, whatever their level.",
 	"Premie: vinneren låser opp «%s» (ellers %s).": "Prize: the winner unlocks «%s» (otherwise %s).",
-	"XP etter plassering: vinneren 150, finalisten 75, semifinalistene 40, alle andre som spilte 20.":
-		"XP by placing: the winner 150, the finalist 75, the semifinalists 40, everyone else who played 20.",
 	# Runde 17: endre turneringer og se finalen
 	"Endre": "Edit",
 	"Endre turnering": "Edit tournament",
@@ -827,4 +819,96 @@ const EN := {
 	"Ikke det trekket. Prøv igjen!": "Not that move. Try again!",
 	"Riktig! Det var det eneste trekket som redder deg. Løst på %d forsøk.":
 		"Correct! That was the only move that saves you. Solved in %d tries.",
+	# Runde 18: private turneringer, arrangører, gjester og storskjermen
+	"Kallenavnet må være 3–14 tegn (bokstaver, tall, - og _).": "Nicknames must be 3–14 characters (letters, digits, - and _).",
+	"For mange nye gjester akkurat nå. Prøv igjen om litt.": "Too many new guests right now. Try again in a moment.",
+	"Gjester kan ikke ha venner.": "Guests can't have friends.",
+	"Som gjest kan du bare skrive i turneringschatten.": "As a guest you can only write in the tournament chat.",
+	"Som gjest kan du bare spille i turneringen.": "As a guest you can only play in the tournament.",
+	"Fant ingen turnering med koden %s.": "No tournament has the code %s.",
+	"Du kan ha høyst %d turneringer som ikke er ferdige.": "You can have at most %d tournaments that aren't finished.",
+	"Bare arrangøren kan gjøre dette.": "Only the organizer can do this.",
+	"Bare kallenavnet til en gjest i turneringen kan endres.": "Only the nickname of a guest in the tournament can be changed.",
+	"Arrangøren har slått av chatten.": "The organizer has turned off the chat.",
+	"Det trengs minst to deltakere.": "At least two players are needed.",
+	"Deltakere kan bare fjernes før start.": "Players can only be removed before the start.",
+	"Starter når arrangøren trykker «Start nå».": "Starts when the organizer presses «Start now».",
+	"Kode: %s  ·  %s": "Code: %s  ·  %s",
+	"Kopier lenke": "Copy link",
+	"Vis på storskjerm": "Show on big screen",
+	"Lenke til storskjermen": "Big screen link",
+	"Chat for deltakerne": "Chat for players",
+	"Av: bare du kan skrive i turneringschatten.": "Off: only you can write in the tournament chat.",
+	"Ingen konto trengs. Vi lagrer bare kallenavnet, og sletter det etter 14 dager uten bruk.":
+		"No account needed. We only store your nickname, and delete it after 14 days without use.",
+	"Melder deg på…": "Signing you up…",
+	"Har du en kode?": "Have a code?",
+	"Åpne": "Open",
+	"Privat": "Private",
+	"Privat turnering": "Private tournament",
+	"Bare de med koden eller lenken ser den, og de kan bli med uten konto. Starter når du trykker «Start nå».":
+		"Only people with the code or link can see it, and they can join without an account. Starts when you press «Start now».",
+	"Turneringen blir privat: bare de med koden eller lenken ser den, og de kan bli med uten konto. Den starter når du trykker «Start nå».":
+		"The tournament will be private: only people with the code or link can see it, and they can join without an account. It starts when you press «Start now».",
+	"Som gjest kan du skrive i turneringschatten": "As a guest you can write in the tournament chat",
+	"Fullskjerm": "Full screen",
+	"Henter turneringen…": "Fetching the tournament…",
+	"Bli med nå! Vi starter snart.": "Join now! We're starting soon.",
+	"Skann for å bli med, eller gå til": "Scan to join, or go to",
+	"Deltakere (%d)": "Players (%d)",
+	"Venter på de første…": "Waiting for the first players…",
+	"Kampene nå": "Matches now",
+	"Følg med på mobilen:": "Follow along on your phone:",
+	"Starter %s": "Starts %s",
+	"Sikker? Gjesten kan ikke logges inn igjen": "Sure? The guest can't log in again",
+	"Du kan ikke spille mot deg selv.": "You can't play against yourself.",
+	# Runde 18: innsjekk før start, kortere turneringsside og regler bak en knapp
+	"Her nå: %d av %d": "Here now: %d of %d",
+	"Venter på: %s": "Waiting for: %s",
+	"Start med dem som er her": "Start with those here",
+	"Ha denne siden oppe til start. De som ikke er her, er ikke med.":
+		"Keep this page open until the start. Those who aren't here won't take part.",
+	"Du er med! Kampen din starter av seg selv.": "You're in! Your match starts by itself.",
+	"Sjekker deg inn…": "Checking you in…",
+	"Møtte ikke til start: %s": "Didn't show up for the start: %s",
+	"Skjul reglene": "Hide rules",
+	"Arrangør": "Organizer",
+	"Privat: bare de med koden eller lenken ser den. Ingen konto trengs.":
+		"Private: only people with the code or link can see it. No account needed.",
+	"Sveitsisk, %d runder: du møter en med like mange poeng, aldri den samme to ganger.":
+		"Swiss, %d rounds: you meet someone with the same points, never the same player twice.",
+	"Alle mot alle: alle møter alle én gang.": "Round robin: everyone plays everyone once.",
+	"Utslag: taperen er ute. Uavgjort spilles om; blir tredje parti uavgjort, går den som ikke startet, videre.":
+		"Knockout: the loser is out. Draws are replayed; if the third game is a draw too, the player who didn't start goes through.",
+	"Seier 1 poeng, uavgjort ½, fri runde 1. Likt: innbyrdes, Buchholz, Sonneborn-Berger, seire, så omkamp.":
+		"Win 1 point, draw ½, bye 1. Ties: head-to-head, Buchholz, Sonneborn-Berger, wins, then a playoff.",
+	"Møter ikke motstanderen din, spiller du mot en annen uten motstander, om det finnes.":
+		"If your opponent doesn't show up, you play someone else without an opponent, if there is one.",
+	"Tid: %d min + %d s per trekk.": "Time: %d min + %d s per move.",
+	"Varighet: ca. %s (%d runder).": "Duration: about %s (%d rounds).",
+	"Innsjekk: ha turneringssiden oppe de siste 2 minuttene før start, ellers er du ikke med.":
+		"Check-in: keep the tournament page open for the last 2 minutes before the start, or you won't take part.",
+	"Du kastes inn når kampen din starter. Møt opp innen %d min, ellers taper du på walkover.":
+		"You're taken to your match when it starts. Show up within %d min, or you lose by walkover.",
+	"XP: %d for å møte opp. Etter plassering: vinneren 150, finalisten 75, semifinalistene 40, andre som spilte 20.":
+		"XP: %d for showing up. By placing: winner 150, finalist 75, semifinalists 40, others who played 20.",
+	"XP: %d for å møte opp (med konto, én urangert turnering per dag).":
+		"XP: %d for showing up (with an account, one unranked tournament per day).",
+	"Møt opp og få %d XP": "Show up and get %d XP",
+	"Du fikk %d XP for å møte opp til «%s».": "You got %d XP for showing up to «%s».",
+	"Du fikk %d XP for å møte opp til «%s». Låst opp: %s!": "You got %d XP for showing up to «%s». Unlocked: %s!",
+	"«%s» starter om 2 minutter! Bli med på nedtellingen.": "«%s» starts in 2 minutes! Join the countdown.",
+	"«%s» starter om litt! Bli med på nedtellingen.": "«%s» starts soon! Join the countdown.",
+	"Du møtte ikke til start, så du er ikke med i «%s».": "You didn't show up for the start, so you're not in «%s».",
+	"Det trengs minst to som har møtt opp.": "At least two players must have shown up.",
+	"Som gjest kan du ikke lage turneringer.": "As a guest you can't create tournaments.",
+	"Du kan ikke se på ditt eget parti.": "You can't watch your own game.",
+	# Bytte brukernavn
+	"Bytt brukernavn": "Change username",
+	"Nytt brukernavn": "New username",
+	"Du logger inn med det nye navnet. Etter et bytte må det gå %d dager før neste.":
+		"You'll log in with the new name. After a change, you have to wait %d days before the next one.",
+	"Brukernavnet er byttet til %s.": "Your username is now %s.",
+	"Det er allerede brukernavnet ditt.": "That's already your username.",
+	"Du kan bytte brukernavn igjen om %d dager.": "You can change your username again in %d days.",
 }

@@ -10,13 +10,14 @@ const MAX_NAME := 16
 const MAX_CHAT := 200
 const MAX_ANNOUNCEMENT := 300
 const COUNTDOWN_MS := 3000   ## nedtelling (3, 2, 1) før hvert parti: klokken og trekkene venter så lenge
+const RENAME_DAYS := 7       ## så lenge det må gå mellom to bytter av brukernavn
 
 # Klient -> server
 const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, look_pending?, version, token?, session? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }
-const LEAVE_ROOM := "leave_room"
+const LEAVE_ROOM := "leave_room"     ## { code? }  (rommet man vil ut av: er man i et annet rom nå, gjelder den ikke)
 const SET_OPTIONS := "set_options"   ## { options }  (kun verten)
 const READY := "ready"               ## { ready }
 const MOVE := "move"                 ## { x, y, ply }
@@ -28,15 +29,17 @@ const PING := "ping"
 const REGISTER := "register"         ## { username, password }
 const LOGIN := "login"               ## { username, password }
 const LOGOUT := "logout"             ## { session }
+const RENAME := "rename"             ## { username }  (innlogget: nytt brukernavn, høyst ett bytte per RENAME_DAYS dager)
 const GET_STATS := "get_stats"       ## { username? }  (tom = deg selv)
 const GET_LEADERBOARD := "get_leaderboard"
 const LIST_TOURNAMENTS := "list_tournaments"
 const GET_TOURNAMENT := "get_tournament"       ## { id }  (følger også siden: endringer sendes med en gang)
 const TOURNAMENT_JOIN := "tournament_join"     ## { id }
 const TOURNAMENT_LEAVE := "tournament_leave"   ## { id }
-const TOURNAMENT_CREATE := "tournament_create" ## { data }        (admin)
-const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (admin)
-const TOURNAMENT_ACTION := "tournament_action" ## { id, action }  (admin: publish, start, cancel, delete)
+const TOURNAMENT_CREATE := "tournament_create" ## { data }        (alle med konto lager private; offentlige bare admin)
+const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (arrangøren eller admin)
+const TOURNAMENT_ACTION := "tournament_action" ## { id, action, user?, name? }  (arrangøren: publish, start, cancel, delete, kick, rename)
+const TOURNAMENT_CODE := "tournament_code"     ## { code, join?, name? }  (turneringen med koden; join + name uten konto: lager en gjestekonto i en privat turnering, og SESSION kommer først)
 const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away, avatar? }  (f.eks. byttet skin i venterommet; avatar bare når bildet er byttet)
 # Runde 9: tilskuere, global chat, dagens oppgave og repriser
 const WATCH := "watch"               ## { code }  (se på et parti som spilles, eller en turneringskamp)
@@ -72,11 +75,12 @@ const PONG := "pong"
 const SESSION := "session"           ## { token, user, avatar, look }  (innlogget. Kontoens profilbilde ("" = ingen) og utseende { skin, decal, win_fx, decal_color, away })
 const AUTH_ERROR := "auth_error"     ## { key, text }
 const LOGGED_OUT := "logged_out"
+const RENAMED := "renamed"           ## { user }  (brukernavnet er byttet; feil kommer som ERROR med code "rename")
 const STATS := "stats"               ## { user }  (user har også avatar, og xp, level og unlocks fra runde 17. Sendes også av seg selv når XP-en endres)
 const LEADERBOARD := "leaderboard"   ## { elo: [...], wins: [...], forced: [...] }
-const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin }
+const TOURNAMENT_LIST := "tournament_list"     ## { tournaments: [...], admin, create }  (create: kan lage turneringer)
 const TOURNAMENT_STATE := "tournament_state"   ## { tournament }
-const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room }  («Gå til kamp»)
+const TOURNAMENT_NOTICE := "tournament_notice" ## { key, args, tournament, room, open? }  («Gå til kamp»; open: innsjekken, åpne turneringssiden)
 const ROOM_CLOSED := "room_closed"   ## { key, args, tournament? }  (turnering-id når det var en turneringskamp)
 const PRESENCE := "presence"         ## { online, playing, users: [{ name, elo, playing }] }
 const LAST_GAME := "last_game"       ## { game, games }  (siste ferdige parti og de tre siste, nyeste først. Vises i hovedmenyen. Etter hello og etter hvert parti)
