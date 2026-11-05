@@ -444,7 +444,7 @@ func _start_replay(game: Dictionary) -> void:
 	var recs: Array = game.get("players", [])
 	var look := func(i: int) -> Dictionary:
 		var r: Dictionary = recs[i] if i < recs.size() and recs[i] is Dictionary else {}
-		return Skins.look(str(r.get("skin", "")), str(r.get("decal", "none")))
+		return Skins.look_of(r, "")
 	var pair := Skins.resolve_pair(look.call(0), look.call(1))
 	app.board.setup(o.size)
 	app.board.set_looks(pair[0], pair[1])

@@ -13,7 +13,7 @@ const COUNTDOWN_MS := 3000   ## nedtelling (3, 2, 1) før hvert parti: klokken o
 const RENAME_DAYS := 7       ## så lenge det må gå mellom to bytter av brukernavn
 
 # Klient -> server
-const HELLO := "hello"               ## { name, skin, decal?, win_fx?, avatar?, look_pending?, version, token?, session? }
+const HELLO := "hello"               ## { name, skin, decal?, win_fx?, effect?, avatar?, look_pending?, version, token?, session? }
 const LIST_ROOMS := "list_rooms"
 const CREATE_ROOM := "create_room"   ## { options, private }
 const JOIN_ROOM := "join_room"       ## { code }
@@ -40,7 +40,7 @@ const TOURNAMENT_CREATE := "tournament_create" ## { data }        (alle med kont
 const TOURNAMENT_UPDATE := "tournament_update" ## { id, data }    (arrangøren eller admin)
 const TOURNAMENT_ACTION := "tournament_action" ## { id, action, user?, name? }  (arrangøren: publish, start, cancel, delete, kick, rename)
 const TOURNAMENT_CODE := "tournament_code"     ## { code, join?, name? }  (turneringen med koden; join + name uten konto: lager en gjestekonto i en privat turnering, og SESSION kommer først)
-const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away, avatar? }  (f.eks. byttet skin i venterommet; avatar bare når bildet er byttet)
+const SET_LOOK := "set_look"         ## { skin, decal, win_fx, decal_color, away, effect, avatar? }  (f.eks. byttet skin i venterommet; avatar bare når bildet er byttet)
 # Runde 9: tilskuere, global chat, dagens oppgave og repriser
 const WATCH := "watch"               ## { code }  (se på et parti som spilles, eller en turneringskamp)
 const GLOBAL_CHAT := "global_chat"   ## { text, channel }  (generelt | velkommen | tilbakemelding)
@@ -72,7 +72,7 @@ const CHAT_MSG := "chat"             ## { from, seat, text }
 const NOTICE := "notice"             ## { text }  (statusmeldinger)
 const ERROR := "error"               ## { code, text }
 const PONG := "pong"
-const SESSION := "session"           ## { token, user, avatar, look }  (innlogget. Kontoens profilbilde ("" = ingen) og utseende { skin, decal, win_fx, decal_color, away })
+const SESSION := "session"           ## { token, user, avatar, look }  (innlogget. Kontoens profilbilde ("" = ingen) og utseende { skin, decal, win_fx, decal_color, away, effect })
 const AUTH_ERROR := "auth_error"     ## { key, text }
 const LOGGED_OUT := "logged_out"
 const RENAMED := "renamed"           ## { user }  (brukernavnet er byttet; feil kommer som ERROR med code "rename")

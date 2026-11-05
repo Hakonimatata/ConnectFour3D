@@ -137,18 +137,21 @@ func test_set_look_is_shown_to_the_other_player_before_start() -> void:
 	_msg(1, { "t": "create_room", "options": {}, "private": true })
 	check_eq(_last(1, "room_state").players[0].skin, "ice")
 	_msg(2, { "t": "join_room", "code": _last(1, "room_state").code })
-	_msg(2, { "t": "set_look", "skin": "sunset", "decal": "heart", "win_fx": "confetti", "decal_color": "gold" })
+	_msg(2, { "t": "set_look", "skin": "sunset", "decal": "heart", "win_fx": "confetti", "decal_color": "gold",
+		"effect": "comic" })
 	var bo: Dictionary = _last(1, "room_state").players[1]
 	check_eq(bo.skin, "sunset", "verten ser den nye skinen:")
 	check_eq(bo.decal, "heart")
 	check_eq(bo.win_fx, "confetti")
 	check_eq(bo.decal_color, "gold")
+	check_eq(bo.effect, "comic", "effekten (runde 19):")
 	check_eq(_last(2, "room_state").players[1].skin, "sunset")
 	# Runde 17: låste skins og seiersanimasjoner (nivå) vises ikke for andre: en gjest får standard
-	_msg(2, { "t": "set_look", "skin": "blackhole", "win_fx": "chaos" })
+	_msg(2, { "t": "set_look", "skin": "blackhole", "win_fx": "chaos", "effect": "glitch" })
 	bo = _last(1, "room_state").players[1]
 	check_eq(bo.skin, Skins.DEFAULT_P1, "låst skin:")
 	check_eq(bo.win_fx, "classic", "låst seiersanimasjon:")
+	check_eq(bo.effect, "none", "låst effekt:")
 
 
 func test_game_starts_when_both_ready() -> void:

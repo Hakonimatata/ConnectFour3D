@@ -22,13 +22,28 @@ extends RefCounted
 ##           trekk (answer) redder deg.
 ## win og defend er tunge å lage (eksakt søk med stille trekk), så de lages på forhånd av
 ## tools/make_daily_bank.gd og ligger i DailyBank. Serveren sjekker bare løsningen mot dem.
+##
+## Runde 19: to av tre oppgaver var et vanlig firepårad i én høyde, og mange «Vinn på N trekk» endte
+## med samme triks (tre trekk i samme kolonne). Nå må oppgavene gå i flere plan (is_3d), se shape.
+## Da tar det mye lenger tid å finne en «Tving frem seier» (opptil 8 s), så også de ligger nå ferdige i
+## DailyBank. generate lager dem fortsatt fra en nøkkel som ikke er en dato (verktøyene bruker det).
+##
+## Runde 19 (forts.): oppgaven spilles ut som et parti. Et feil trekk stopper deg ikke: motstanderen
+## svarer (reply), vinner selv hvis den kan, og du ser hvordan det går. Alle seire innen move_limit
+## godtas, også andre løsninger og seire på flere trekk enn den raskeste (depth).
 
 const MIN_DEPTH := 3
 const MAX_DEPTH := 4
 const ATTEMPTS := 400
 const KINDS := ["forced", "win", "defend"]
+const EXTRA_MOVES := 3     ## så mange egne trekk mer enn den raskeste seieren du får bruke
+const QUIET_SIGHT := 3     ## hvor mange trekk frem motstanderen ser seire med stille trekk (eksakt søk, dyrt)
+const THREAT_SIGHT := 6    ## … og seire med bare trusler (billig)
+const COUNTER_SIGHT := 4   ## hvor langt frem motstanderen ser sin egen tvungne seier med trusler
+const THREAT_STEPS := 800   ## steg trusselsøket får i et svar (fast antall, så svaret blir det samme overalt)
 
 static var _exact: SearchBot    ## eksakt søk til oppgavene med stille trekk (lages første gang)
+static var _steps := -1        ## steg igjen i trusselsøket (known_win), -1 = ubegrenset
 
 
 ## Typen oppgave en dag får (forced, win, defend etter tur). Andre nøkler enn datoer gir forced.
@@ -45,10 +60,12 @@ static func _day_number(day: String) -> int:
 
 
 ## Lager oppgaven for en dag (f.eks. "2026-10-21"). Gir {} hvis ingen ble funnet (skjer ikke i praksis).
-## Dager med win eller defend tar en oppgave fra DailyBank (hver brukes én gang per runde gjennom banken).
+## En dato tar oppgaven av dagens type fra DailyBank (hver brukes én gang per runde gjennom banken).
+## Andre nøkler (eller en bank uten typen) lager en «Tving frem seier» som går i flere plan (is_3d):
+## en stilling som bare har en flat løsning, spilles videre.
 static func generate(day: String, min_depth := MIN_DEPTH, max_depth := MAX_DEPTH) -> Dictionary:
 	var kind := kind_for(day)
-	if kind != "forced":
+	if _day_number(day) >= 0:
 		var bank := DailyBank.PUZZLES.filter(func(p: Dictionary) -> bool: return p.get("kind") == kind)
 		if not bank.is_empty():
 			var p: Dictionary = (bank[(_day_number(day) / KINDS.size()) % bank.size()] as Dictionary).duplicate(true)
@@ -78,8 +95,10 @@ static func generate(day: String, min_depth := MIN_DEPTH, max_depth := MAX_DEPTH
 				var moves := []
 				for m in s.history:
 					moves.append([m.x, m.y])
-				return { "day": day, "options": options.to_dict(), "first": s.first_player, "moves": moves,
+				var p := { "day": day, "options": options.to_dict(), "first": s.first_player, "moves": moves,
 					"player": s.current_player, "depth": d }
+				if is_3d(p):
+					return p
 	return {}
 
 
@@ -104,6 +123,10 @@ static func can_win(s: GameState, n: int) -> bool:
 
 ## Et trekk som holder på en tvungen seier med høyst n egne trekk, eller (-1, -1).
 static func best_move(s: GameState, n: int) -> Vector2i:
+	if _steps == 0:
+		return Vector2i(-1, -1)   # known_win har brukt opp stegene: ingen seier funnet
+	if _steps > 0:
+		_steps -= 1
 	var me := s.current_player
 	var legal := s.legal_moves()
 	for col in legal:
@@ -122,76 +145,132 @@ static func best_move(s: GameState, n: int) -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-## Forsvarerens svar: unngå tapet hvis det går, ellers utsett det så lenge som mulig.
+## Hvor mange egne trekk du får bruke på oppgaven (defend: ett, svaret).
+static func move_limit(puzzle: Dictionary) -> int:
+	if str(puzzle.get("kind", "forced")) == "defend":
+		return 1
+	return int(puzzle.get("depth", MIN_DEPTH)) + EXTRA_MOVES
+
+
+## Motstanderens svar i oppgaven. s: stillingen etter angriperens siste trekk; attacker_moves: alle
+## angriperens trekk så langt. Deterministisk, så serveren kan spille det samme som klienten.
+## win: følger du løsningen (line), svarer motstanderen som i den. Ellers respond.
+static func reply(puzzle: Dictionary, s: GameState, attacker_moves: Array) -> Vector2i:
+	var i := attacker_moves.size()
+	if str(puzzle.get("kind", "forced")) == "win":
+		var line: Array = puzzle.get("line", [])
+		var on_line := 2 * i - 1 < line.size()
+		for j in i:
+			on_line = on_line and _vec(attacker_moves[j]) == _vec(line[2 * j])
+		if on_line:
+			return _vec(line[2 * i - 1])
+	return respond(s, move_limit(puzzle) - i)
+
+
+## Motstanderen har tur, og du har left trekk igjen. Den
+##   1. vinner med en gang hvis det går;
+##   2. har den selv en tvungen seier med trusler, spiller den den (da får du aldri et fritt trekk);
+##   3. ellers spiller den trekket som stopper seieren din (står flere likt: det som bygger mest på egne
+##      linjer og stenger dine, _move_value), eller som utsetter den lengst (slik known_win ser den; står
+##      flere likt: det første, slik løsningene i bankene er laget).
 ## Rekkefølgen er fast (legal_moves), så svaret er alltid det samme for samme stilling.
-static func defend(s: GameState, max_n: int) -> Vector2i:
+## Trekkene prøves etter _move_value, så det første som stopper deg er svaret, og et trekk som ikke
+## stopper deg, søkes bare helt hvis det kan utsette seieren lenger enn det beste så langt (sparer tid).
+static func respond(s: GameState, left: int) -> Vector2i:
 	var me := s.current_player
 	var legal := s.legal_moves()
-	var best := legal[0] if not legal.is_empty() else Vector2i(-1, -1)
-	var best_score := -1
+	if legal.is_empty():
+		return Vector2i(-1, -1)
 	for col in legal:
 		if s.wins_by(col, me):
 			return col
-		s.play(col, false)
-		var score := 100   # angriperen kan ikke lenger tvinge frem seier
+	if legal.size() == 1:
+		return legal[0]
+	var own := win_depth(s, COUNTER_SIGHT)
+	if own > 0:
+		return best_move(s, own)
+	var values := legal.map(func(c: Vector2i) -> int: return _move_value(s, c, me))
+	var order := range(legal.size())
+	order.sort_custom(func(a: int, b: int) -> bool: return values[a] > values[b] or (values[a] == values[b] and a < b))
+	var best_i := -1
+	var longest := 0
+	_steps = THREAT_STEPS   # alle trusselsøkene i svaret deler på stegene
+	for i in order:
+		s.play(legal[i], false)
+		var d := 0
 		if not s.is_over():
-			var d := win_depth(s, max_n)
-			if d > 0:
-				score = d
+			var need := longest if i > best_i else longest - 1   # så lenge holder det beste så langt
+			d = -1 if need > 0 and known_win(s, need) > 0 else known_win(s, left)
 		s.undo()
-		if score > best_score:
-			best_score = score
-			best = col
-	return best
+		if d == 0:
+			best_i = i
+			break
+		if d > longest or (d == longest and i < best_i):
+			longest = d
+			best_i = i
+	_steps = -1
+	return legal[best_i]
 
 
-## Sjekker en løsning (angriperens trekk) ved å spille den mot forsvareren. Gir true ved seier
-## innen oppgavens antall trekk. win: trekkene må følge line (siste trekk: et hvilket som helst
-## vinnertrekk). defend: ett trekk, answer.
+## Korteste seier spilleren som har tur kan tvinge frem innen left egne trekk, slik motstanderen i
+## oppgaven ser det: med stille trekk inntil QUIET_SIGHT trekk frem, og med bare trusler inntil
+## THREAT_SIGHT. 0 = ingen funnet.
+static func known_win(s: GameState, left: int) -> int:
+	if left <= 0 or s.is_over():
+		return 0
+	var q := quiet_win_depth(s, mini(left, QUIET_SIGHT))
+	if q > 0:
+		return q
+	# Trusselsøket kan vokse mye i stillinger med mange trusler, så det får THREAT_STEPS steg (i respond:
+	# til sammen for alle svarene). Er de brukt opp, er ingen seier funnet.
+	var own_steps := _steps < 0
+	if own_steps:
+		_steps = THREAT_STEPS
+	var found := 0
+	for n in range(QUIET_SIGHT + 1, mini(left, THREAT_SIGHT) + 1):
+		if can_win(s, n):
+			found = n
+			break
+	if own_steps:
+		_steps = -1
+	return found
+
+
+## Hvor nyttig et trekk er i seg selv: linjer gjennom plassen der egne brikker kan bli fire på rad (jo
+## flere egne, jo mer), og linjer det stenger for motstanderen (jo flere av hans, jo mer).
+static func _move_value(s: GameState, col: Vector2i, me: int) -> int:
+	var own := me * s.n_lines
+	var opp := GameState.opponent(me) * s.n_lines
+	var v := 0
+	for li in s.lines.cell_lines[s.lines.index_of(s.landing_pos(col))]:
+		var a := int(s.counts[own + li])
+		var b := int(s.counts[opp + li])
+		if b == 0:
+			v += 1 << (2 * a)
+		if a == 0:
+			v += (1 << (2 * b)) - 1
+	return v
+
+
+## Sjekker en løsning (angriperens trekk) ved å spille den mot motstanderen (reply). Gir true ved
+## seier innen move_limit egne trekk. defend: ett trekk, answer.
 static func verify(puzzle: Dictionary, attacker_moves: Array) -> bool:
-	match str(puzzle.get("kind", "forced")):
-		"win":
-			return _verify_line(puzzle, attacker_moves)
-		"defend":
-			return attacker_moves.size() == 1 and _vec(attacker_moves[0]) == _vec(puzzle.get("answer", []))
+	if str(puzzle.get("kind", "forced")) == "defend":
+		return attacker_moves.size() == 1 and _vec(attacker_moves[0]) == _vec(puzzle.get("answer", []))
 	var s := start_state(puzzle)
-	var depth := int(puzzle.get("depth", MIN_DEPTH))
-	if s.current_player != int(puzzle.get("player", 0)):
+	if s.current_player != int(puzzle.get("player", 0)) or attacker_moves.size() > move_limit(puzzle):
 		return false
-	for i in attacker_moves.size():
-		if i >= depth:
+	var played := []
+	for m in attacker_moves:
+		var col := _vec(m)
+		if s.is_over() or s.check_move(col) != GameState.MoveError.OK:
 			return false
-		var m = attacker_moves[i]
-		if not (m is Array and m.size() == 2):
-			return false
-		var col := Vector2i(int(m[0]), int(m[1]))
-		if s.check_move(col) != GameState.MoveError.OK:
-			return false
-		var r := s.play(col)
-		if r.won:
-			return true
-		if s.is_over():
-			return false
-		s.play(defend(s, depth - i - 1), false)
-		if s.is_over():
-			return false
-	return false
-
-
-static func _verify_line(puzzle: Dictionary, attacker_moves: Array) -> bool:
-	var s := start_state(puzzle)
-	var line: Array = puzzle.get("line", [])
-	if s.current_player != int(puzzle.get("player", 0)):
-		return false
-	for i in attacker_moves.size():
-		var col := _vec(attacker_moves[i])
-		if 2 * i >= line.size() or s.check_move(col) != GameState.MoveError.OK:
-			return false
+		played.append(col)
 		if s.play(col).won:
 			return true
-		if col != _vec(line[2 * i]) or s.is_over() or 2 * i + 1 >= line.size():
+		if s.is_over():
 			return false
-		s.play(_vec(line[2 * i + 1]), false)
+		s.play(reply(puzzle, s, played), false)
 	return false
 
 
@@ -223,18 +302,20 @@ static func _forced_solution(puzzle: Dictionary) -> Array[Vector2i]:
 	var s := start_state(puzzle)
 	var left := int(puzzle.get("depth", MIN_DEPTH))
 	var out: Array[Vector2i] = []
+	var played := []
 	while left > 0 and not s.is_over():
 		var col := best_move(s, left)
 		if col == Vector2i(-1, -1):
 			break
 		out.append(col)
+		played.append(col)
 		s.play(col, false)
 		left -= 1
 		if s.is_over():
 			break
-		var reply := defend(s, left)
-		out.append(reply)
-		s.play(reply, false)
+		var answer := reply(puzzle, s, played)
+		out.append(answer)
+		s.play(answer, false)
 	return out
 
 
@@ -248,6 +329,90 @@ static func _creates_threat(s: GameState, col: Vector2i, me: int) -> bool:
 			break
 	s.unplace(col)
 	return found
+
+
+# ---------------------------------------------------------------- Variasjon (runde 19)
+
+## Retningen til en linje fra a til b (to celler etter hverandre i linjen):
+##   straight  rett bortover i én høyde     flat   diagonalt i én høyde
+##   vertical  rett opp                     slant  diagonalt oppover langs en vegg
+##   space     romdiagonal (gjennom høydene og på skrå)
+static func line_kind(a: Vector3i, b: Vector3i) -> String:
+	var d := b - a
+	var axes := int(d.x != 0) + int(d.y != 0) + int(d.z != 0)
+	if axes == 3:
+		return "space"
+	if axes == 1:
+		return "vertical" if d.z != 0 else "straight"
+	return "flat" if d.z == 0 else "slant"
+
+
+## Hvordan løsningen ligger på brettet (forced og win; defend gir {}):
+##   lines    retningene til truslene angriperen lager underveis, og vinnerlinjen
+##   final    vinnerlinjens retning
+##   levels   hvor mange høyder angriperens brikker havner i
+##   stacked  slutten er tre trekk i samme kolonne (legg under, motstanderen må ta trusselen, vinn oppå)
+static func shape(puzzle: Dictionary) -> Dictionary:
+	if str(puzzle.get("kind", "forced")) == "defend":
+		return {}
+	var sol := solution(puzzle)
+	var s := start_state(puzzle)
+	var me := s.current_player
+	var own := me * s.n_lines
+	var opp := GameState.opponent(me) * s.n_lines
+	var kinds := {}
+	var levels := {}
+	for i in sol.size():
+		var pos: Vector3i = s.play(sol[i], false).pos
+		if i % 2 == 1:
+			continue
+		levels[pos.z] = true
+		for li in s.lines.cell_lines[s.lines.index_of(pos)]:
+			if s.counts[own + li] >= s.win_length - 1 and s.counts[opp + li] == 0:
+				var cells: PackedInt32Array = s.lines.cells[li]
+				kinds[line_kind(s.lines.pos_of(cells[0]), s.lines.pos_of(cells[1]))] = true
+	var n := sol.size()
+	return {
+		"lines": kinds.keys(),
+		"final": line_kind(s.winning_line[0], s.winning_line[1]) if s.winning_line.size() > 1 else "",
+		"levels": levels.size(),
+		"stacked": n >= 3 and sol[n - 1] == sol[n - 2] and sol[n - 2] == sol[n - 3],
+	}
+
+
+## Går oppgaven i flere plan? Angriperens brikker havner i minst to høyder, og minst én trussel går
+## oppover (rett opp, skrått eller på romdiagonalen). Ikke bare et vanlig firepårad i én høyde.
+static func is_3d(puzzle: Dictionary) -> bool:
+	var sh := shape(puzzle)
+	if sh.is_empty():
+		return true
+	return int(sh.levels) >= 2 and (sh.lines as Array).any(func(k: String) -> bool: return k in ["vertical", "slant", "space"])
+
+
+## Spiller løsningen som en spiller ville gjort, og gir det tregeste svaret fra motstanderen (svar og
+## sjekk, som i oppgaveskjermen) i ms. Verktøyene hopper over oppgaver der det tar for lang tid.
+static func slowest_reply_ms(puzzle: Dictionary) -> int:
+	var s := start_state(puzzle)
+	var left := int(puzzle.depth)
+	var worst := 0
+	var played := []
+	while left > 0:
+		var col := best_move(s, left)
+		played.append(col)
+		if s.play(col).won:
+			break
+		left -= 1
+		var t := Time.get_ticks_msec()
+		s.play(reply(puzzle, s, played), false)
+		known_win(s, move_limit(puzzle) - played.size())
+		worst = maxi(worst, Time.get_ticks_msec() - t)
+	return worst
+
+
+## Taper spilleren som har tur uansett, mot en tvungen seier med trusler innen n av motstanderens trekk?
+## (Oppgaveskjermen: da spilles partiet ut, selv om trekkene dine er brukt opp.)
+static func loses_to_threats(s: GameState, n: int) -> bool:
+	return _defender_loses(s, n)
 
 
 ## Forsvareren har tur. Taper alle svarene innen n angrepstrekk?
@@ -322,6 +487,7 @@ static func _exact_mate(s: GameState, plies: int) -> int:
 
 ## «Vinn på N trekk» fra en tilfeldig stilling (seed): seier på nøyaktig n trekk med stille trekk, ingen
 ## tvungen seier med bare trusler, og entydig løsning. Gir {} hvis stillingen ikke passer.
+## Runde 19: løsningen må gå i flere plan (is_3d).
 static func make_win(seed_key: String, n: int) -> Dictionary:
 	var s := _random_position(seed_key)
 	if s == null or win_depth(s, n) > 0 or quiet_win_depth(s, n) != n:
@@ -331,6 +497,8 @@ static func make_win(seed_key: String, n: int) -> Dictionary:
 		return {}
 	var out := _record(s, "win", n)
 	out.line = line.map(func(c: Vector2i) -> Array: return [c.x, c.y])
+	if not is_3d(out):
+		return {}
 	out.cross = _crosses_levels(s, line)
 	return out
 

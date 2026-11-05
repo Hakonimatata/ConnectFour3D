@@ -1,15 +1,20 @@
-shader_type canvas_item;
-// Bakgrunnen bak 3D-verdenen. Alt tegnes med kode (ingen bilder), så nedlastingen ikke blir større.
+shader_type spatial;
+render_mode unshaded, cull_front, depth_draw_never, shadows_disabled, fog_disabled;
+// Bakgrunnen bak brettet. Alt tegnes med kode (ingen bilder), så nedlastingen ikke blir større.
 //   style 0  Standard: rolig gradient, lysere oppe, en svak lysflekk i midten
 //   style 1  Nebula: gass-skyer i lilla og blått med stjerner
 //   style 2  Stjernehimmel: mørk himmel med blinkende stjerner
 //   style 3  Kaffebar: varm brun gradient med uskarpe lys (bokeh)
 // Litt støy (dithering) til slutt, så gradientene ikke får synlige striper.
+// Tegnes på innsiden av en stor kule rundt brettet (ClientRoot), i skjermkoordinater, så den ser lik ut
+// uansett hvor kameraet står. Til runde 19 lå den på et eget 2D-lag bak 3D-verdenen (BG_CANVAS). På iPhone
+// ble det laget noen ganger helt hvitt under et parti, mens brettet ble tegnet som vanlig.
+// Fargene går rett inn, som fra 2D-laget, så bakgrunnen ser ut som før.
 
 uniform int style = 0;
-uniform vec4 top_color : source_color = vec4(0.11, 0.125, 0.16, 1.0);
-uniform vec4 bottom_color : source_color = vec4(0.05, 0.06, 0.075, 1.0);
-uniform vec4 glow_color : source_color = vec4(0.165, 0.185, 0.23, 1.0);
+uniform vec4 top_color = vec4(0.11, 0.125, 0.16, 1.0);
+uniform vec4 bottom_color = vec4(0.05, 0.06, 0.075, 1.0);
+uniform vec4 glow_color = vec4(0.165, 0.185, 0.23, 1.0);
 uniform vec2 glow_center = vec2(0.55, 0.42);
 uniform float glow_strength = 0.6;
 
@@ -50,11 +55,12 @@ float stars(vec2 p, float density, float t) {
 }
 
 void fragment() {
-	float aspect = SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
-	vec2 uv = vec2(UV.x * aspect, UV.y);   // kvadratiske ruter uansett skjermform
+	vec2 suv = SCREEN_UV;   // 0..1 over skjermen, y nedover
+	float aspect = VIEWPORT_SIZE.x / VIEWPORT_SIZE.y;
+	vec2 uv = vec2(suv.x * aspect, suv.y);   // kvadratiske ruter uansett skjermform
 	vec3 c;
 	if (style == 1) {
-		vec3 deep = mix(vec3(0.03, 0.02, 0.07), vec3(0.01, 0.015, 0.04), UV.y);
+		vec3 deep = mix(vec3(0.03, 0.02, 0.07), vec3(0.01, 0.015, 0.04), suv.y);
 		vec2 q = uv * 2.2 + vec2(TIME * 0.006, 0.0);
 		float n = fbm(q + fbm(q * 0.8 + TIME * 0.01));
 		float m = fbm(q * 1.6 - 4.0);
@@ -65,14 +71,14 @@ void fragment() {
 		c += vec3(1.0) * stars(uv * 90.0, 0.10, TIME) * 0.8;
 		c += vec3(0.8, 0.9, 1.0) * stars(uv * 40.0 + 13.0, 0.05, TIME * 0.7);
 	} else if (style == 2) {
-		c = mix(vec3(0.03, 0.05, 0.11), vec3(0.005, 0.01, 0.03), smoothstep(0.0, 1.0, UV.y));
-		c += vec3(0.05, 0.08, 0.14) * (1.0 - smoothstep(0.0, 0.6, abs(UV.y - 0.75)));   // svak horisont
+		c = mix(vec3(0.03, 0.05, 0.11), vec3(0.005, 0.01, 0.03), smoothstep(0.0, 1.0, suv.y));
+		c += vec3(0.05, 0.08, 0.14) * (1.0 - smoothstep(0.0, 0.6, abs(suv.y - 0.75)));   // svak horisont
 		c += vec3(1.0) * stars(uv * 120.0, 0.12, TIME) * 0.7;
 		c += vec3(0.85, 0.9, 1.0) * stars(uv * 55.0 + 5.0, 0.07, TIME * 0.8);
 		c += vec3(1.0, 0.95, 0.85) * stars(uv * 22.0 + 2.0, 0.04, TIME * 0.5) * 1.2;
 	} else if (style == 3) {
-		c = mix(vec3(0.20, 0.12, 0.07), vec3(0.07, 0.04, 0.025), smoothstep(0.0, 1.0, UV.y));
-		vec2 d0 = (UV - vec2(0.5, 0.3)) * vec2(1.0, aspect);
+		c = mix(vec3(0.20, 0.12, 0.07), vec3(0.07, 0.04, 0.025), smoothstep(0.0, 1.0, suv.y));
+		vec2 d0 = (suv - vec2(0.5, 0.3)) * vec2(1.0, aspect);
 		c += vec3(0.25, 0.14, 0.05) * (1.0 - smoothstep(0.0, 0.9, length(d0)));
 		// Uskarpe lys i bakgrunnen: noen runde lysflekker per rute, som puster sakte
 		vec2 g = uv * 5.0;
@@ -86,17 +92,17 @@ void fragment() {
 				float b = smoothstep(r, r * 0.6, length(f - o * 0.5));
 				float breathe = 0.7 + 0.3 * sin(TIME * 0.6 + h * 30.0);
 				vec3 tint = mix(vec3(1.0, 0.65, 0.3), vec3(1.0, 0.85, 0.55), hash(cell + 2.0));
-				c += tint * b * 0.10 * breathe * (1.0 - UV.y * 0.6);
+				c += tint * b * 0.10 * breathe * (1.0 - suv.y * 0.6);
 			}
 			g = g * 0.55 + 3.7;
 		}
 	} else {
-		c = mix(top_color.rgb, bottom_color.rgb, smoothstep(0.0, 1.0, UV.y));
-		vec2 d = (UV - glow_center) * vec2(1.0, aspect);
+		c = mix(top_color.rgb, bottom_color.rgb, smoothstep(0.0, 1.0, suv.y));
+		vec2 d = (suv - glow_center) * vec2(1.0, aspect);
 		float glow = 1.0 - smoothstep(0.0, 0.85, length(d));
 		c = mix(c, glow_color.rgb, glow * glow_strength);
 	}
 	float dither = fract(sin(dot(FRAGCOORD.xy, vec2(12.9898, 78.233))) * 43758.5453);
 	c += (dither - 0.5) / 255.0;
-	COLOR = vec4(c, 1.0);
+	ALBEDO = c;
 }

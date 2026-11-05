@@ -87,8 +87,7 @@ func color_of(player: int) -> Color:
 
 func look_of(player: int) -> Dictionary:
 	var p: Dictionary = players[player]
-	return Skins.look(str(p.get("skin", "")), str(p.get("decal", "none")), str(p.get("win_fx", "classic")),
-		bool(p.get("away", false)), str(p.get("decal_color", "auto")))
+	return Skins.look_of(p, "")
 
 
 ## Gjør spillernes utseende lett å skille (bortedrakt for spiller 2 ved lik skin).

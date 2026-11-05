@@ -425,10 +425,10 @@ const EN := {
 	"Løst! Du er nr. %d i dag.": "Solved! You're number %d today.",
 	"Løst! Logg inn for å komme på listen.": "Solved! Log in to get on the list.",
 	"Ingen oppgave i dag.": "No puzzle today.",
-	"Du har tur. Finn den tvungne seieren med %d trekk – motstanderen forsvarer seg så godt den kan.": "Your move. Find the forced win in %d moves – your opponent defends as well as it can.",
+	"Du har tur og kan tvinge frem seier på %d trekk. Motstanderen forsvarer seg så godt den kan, og du får bruke opptil %d trekk.":
+		"Your move, and you can force a win in %d moves. Your opponent defends as well as it can, and you may use up to %d moves.",
 	"Forsøk: %d": "Attempts: %d",
 	"Brettet ble fullt.": "The board is full.",
-	"Motstanderen slapp unna. Den tvungne seieren glapp.": "Your opponent got away. The forced win slipped.",
 	"Bra! %d trekk igjen.": "Good! %d moves left.",
 	"Slik løses den. Prøv selv neste gang!": "That's how it's solved. Try it yourself next time!",
 	"Løst på %d forsøk!": "Solved in %d attempts!",
@@ -487,7 +487,6 @@ const EN := {
 	"Oppgaver": "Puzzles",
 	"Neste oppgave": "Next puzzle",
 	"Oppgave %d av %d · %d løst": "Puzzle %d of %d · %d solved",
-	"Det trekket truet ingenting, så motstanderen fikk et fritt trekk.": "That move threatened nothing, so your opponent got a free move.",
 	"Du spiller som %s.": "You play as %s.",
 	"Navnet kommer fra kontoen din.": "The name comes from your account.",
 	"Lag en konto under «Spill online» for å få eget navn.": "Create an account under «Play online» to get your own name.",
@@ -788,6 +787,14 @@ const EN := {
 	"7 på rad": "7 in a row",
 	"Gullmester": "Champion",
 	"Morgengry": "Dawn",
+	"Cel-shading": "Cel shading",
+	"Tegneserie": "Comic",
+	"CMYK": "CMYK",
+	"Skisse": "Sketch",
+	"Glitch": "Glitch",
+	"Akvarell": "Watercolor",
+	"Effekt": "Effect",
+	"Effekten legges oppå skinnet, så den passer med alle.": "The effect goes on top of your skin, so it works with all of them.",
 	"Dagens oppgave på rad (nå / beste)": "Daily puzzle streak (now / best)",
 	"%s nådde nivå %d!": "%s reached level %d!",
 	"Du fikk %d XP for «%s».": "You got %d XP for «%s».",
@@ -805,17 +812,31 @@ const EN := {
 	"Reprise": "Replay",
 	"Henter partiet…": "Loading the game…",
 	# Runde 17: nye typer dagens oppgave
-	"Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan.":
-		"Win in %d moves! Threats alone won't do it here: you need a quiet move. Your opponent defends as well as it can.",
+	"Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan, og du får bruke opptil %d trekk.":
+		"Win in %d moves! Threats alone won't do it here: you need a quiet move. Your opponent defends as well as it can, and you may use up to %d moves.",
 	"Tips: let etter et trekk som forbereder to trusler samtidig, gjerne på kryss og tvers gjennom flere høyder.":
 		"Tip: look for a move that prepares two threats at once, maybe criss-crossing through several levels.",
-	"Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg.":
-		"Find the best move! Your opponent threatens to force a win, and only one move saves you.",
+	"Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg. Bommer du, ser du hvordan den vinner.":
+		"Find the best move! Your opponent threatens to force a win, and only one move saves you. If you miss, you will see how it wins.",
 	"Tips: se etter plassen motstanderen trenger for å lage to trusler samtidig, og ta den først.":
 		"Tip: look for the spot your opponent needs to make two threats at once, and take it first.",
-	"Ikke det trekket – nå slipper motstanderen unna. Prøv igjen!": "Not that move – now your opponent gets away. Try again!",
-	"Da kan motstanderen tvinge frem seier, og slik begynner den. Prøv igjen!":
-		"Then your opponent can force a win, and this is how it starts. Try again!",
+	# Runde 19 (forts.): oppgaven spilles ut etter et feil trekk
+	"Forsøk: %d · Trekk: %d av %d": "Attempts: %d · Moves: %d of %d",
+	"Motstanderen fikk fire på rad.": "Your opponent got four in a row.",
+	"Det trekket redder deg ikke: nå kan motstanderen tvinge frem seier. Forsvar deg, og se hvordan den gjør det.":
+		"That move doesn't save you: now your opponent can force a win. Defend yourself and see how it does it.",
+	"Du kan fortsatt vinne, men det tar %d trekk til.": "You can still win, but it takes %d more moves.",
+	"Nå kan motstanderen tvinge frem seier selv. Se hvordan den gjør det.": "Now your opponent can force a win itself. See how it does it.",
+	"Motstanderen truer, og du må blokkere.": "Your opponent threatens, and you have to block.",
+	"Trekkene dine er brukt opp.": "You have used all your moves.",
+	"Nå har du ikke lenger noen tvungen seier. Spill videre og se hvordan det går, eller prøv igjen.":
+		"You no longer have a forced win. Play on and see how it goes, or try again.",
+	"Du vant, men brukte mer enn %d trekk.": "You won, but used more than %d moves.",
+	"Slik vinner motstanderen etter det trekket.": "This is how your opponent wins after that move.",
+	"Seieren glapp med trekk %d.": "The win slipped away with move %d.",
+	"Prøv igjen, eller se løsningen.": "Try again, or see the solution.",
+	"Du brukte %d trekk. Den raskeste seieren tar %d: se den med «Vis løsning».":
+		"You used %d moves. The fastest win takes %d: see it with «Show solution».",
 	"Ikke det trekket. Prøv igjen!": "Not that move. Try again!",
 	"Riktig! Det var det eneste trekket som redder deg. Løst på %d forsøk.":
 		"Correct! That was the only move that saves you. Solved in %d tries.",

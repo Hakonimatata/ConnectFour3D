@@ -43,19 +43,30 @@ func _ready() -> void:
 	Net.connected.connect(_on_net_connected)
 	show_menu()
 	_read_link()
+	_load_emoji_font()
+
+
+## På web ligger emojiskriften ved siden av spillet (emoji.ttf, se UI.emoji_font) og hentes nå.
+func _load_emoji_font() -> void:
+	if not OS.has_feature("web") or UI.has_emoji_font():
+		return
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(func(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+			UI.add_emoji_font(body)
+		http.queue_free()
+	)
+	http.request(str(JavaScriptBridge.eval("new URL('emoji.ttf', location.href).href", true)))
 
 
 func _build_world() -> void:
 	world = Node3D.new()
 	add_child(world)
 
-	# Bakgrunn: en gradient tegnet på et eget lag bak 3D-verdenen (BG_CANVAS).
-	var bg_layer := CanvasLayer.new()
-	bg_layer.layer = -10
-	add_child(bg_layer)
-	var bg := ColorRect.new()
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Bakgrunn: en gradient på innsiden av en stor kule rundt brettet, tegnet i skjermkoordinater
+	# (background.gdshader). Til runde 19 lå den på et eget 2D-lag bak 3D-verdenen (BG_CANVAS). På iPhone
+	# ble det laget noen ganger helt hvitt under et parti, mens brettet ble tegnet som vanlig.
 	var bg_mat := ShaderMaterial.new()
 	bg_mat.shader = preload("res://assets/shaders/background.gdshader")
 	bg_mat.set_shader_parameter("top_color", UI.BG_TOP)
@@ -63,12 +74,20 @@ func _build_world() -> void:
 	bg_mat.set_shader_parameter("glow_color", UI.BG_GLOW)
 	bg_mat.set_shader_parameter("style", Skins.background_style(Settings.background))
 	_background = bg_mat
-	bg.material = bg_mat
-	bg_layer.add_child(bg)
+	var sphere := SphereMesh.new()
+	sphere.radius = 400.0   # langt utenfor kameraet (høyst noen titalls enheter unna brettet)
+	sphere.height = 800.0
+	sphere.radial_segments = 16
+	sphere.rings = 8
+	var bg := MeshInstance3D.new()
+	bg.mesh = sphere
+	bg.material_override = bg_mat
+	bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	world.add_child(bg)
 
 	var env := Environment.new()
-	env.background_mode = Environment.BG_CANVAS
-	env.background_canvas_max_layer = -1
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = UI.BG_BOTTOM
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("9aa1ae")
 	env.ambient_light_energy = 0.85

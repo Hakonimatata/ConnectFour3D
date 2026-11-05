@@ -140,6 +140,8 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 			if not Progression.is_unlocked(item, progress):
 				unlocks.append(item)
 	var xp_day: Dictionary = d.get("xp_day", {}) if d.get("xp_day") is Dictionary else {}
+	# Runde 19: effektene var skins en kort stund. Den som valgte et av dem, får standard-skinnet med effekten.
+	var split := Skins.split_old_effect_skin(str(profile.get("skin", "ocean")), str(profile.get("effect", "none")))
 	return {
 		"id": int(d.get("id", 0)),
 		"username": str(d.get("username", "")),
@@ -165,9 +167,9 @@ static func normalize_user(d: Dictionary) -> Dictionary:
 		"xp_day": { "day": str(xp_day.get("day", "")), "games": int(xp_day.get("games", 0)),
 			"show_ups": int(xp_day.get("show_ups", 0)),   # urangerte turneringer som har gitt oppmøte-XP i dag
 			"opponents": xp_day.get("opponents", {}) if xp_day.get("opponents") is Dictionary else {} },
-		"profile": { "skin": str(profile.get("skin", "ocean")), "decal": str(profile.get("decal", "none")),
+		"profile": { "skin": str(split.skin), "decal": str(profile.get("decal", "none")),
 			"win_fx": str(profile.get("win_fx", "classic")), "decal_color": str(profile.get("decal_color", "auto")),
-			"away": bool(profile.get("away", false)),
+			"away": bool(profile.get("away", false)), "effect": str(split.effect),
 			"avatar_removed": bool(profile.get("avatar_removed", false)) },   # fjernet bildet: ikke hent det fra en annen enhet
 		"password": d.get("password", {}),
 	}

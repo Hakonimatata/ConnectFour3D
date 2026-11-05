@@ -104,7 +104,7 @@ func show_friends(data: Dictionary) -> void:
 	var requests: Array = data.get("requests", [])
 	_requests_title.visible = not requests.is_empty()
 	for r in requests:
-		var row := _name_row(str(r.username), int(r.get("elo", -1)), tr("vil bli venn med deg"), UI.ACCENT)
+		var row := _name_row(str(r.username), int(r.get("elo", -1)), tr("vil bli venn med deg"), UI.NOTIFY)
 		var name := str(r.username)
 		row.add_child(UI.button("Godta", func() -> void: _send("accept", name), "PrimaryButton"))
 		row.add_child(UI.button("Avslå", func() -> void: _send("decline", name), "GhostButton"))

@@ -341,18 +341,30 @@ func test_puzzle_screen_can_be_solved() -> void:
 		check_eq(Settings.puzzle_day, day)
 		ps._retry()
 		check(not ps._solved and ps._attempts == 2, "nytt forsøk")
-		# Et trekk som ikke er løsningen (tvungen seier: som ikke truer noe), slipper motstanderen unna
+		# Et trekk som ikke er løsningen (tvungen seier: som ikke truer noe) stopper ikke oppgaven (runde 19
+		# forts.): motstanderen svarer, og du spiller videre til den vinner eller trekkene er brukt opp
 		var s := Puzzle.start_state(p)
 		for col in s.legal_moves():
 			if col != sol[0] and (kind != "forced" or not Puzzle._creates_threat(s, col, s.current_player)):
 				ps.play(col)
 				break
-		await tree.create_timer(PuzzleScreen.REPLY_DELAY_S + 0.2, true, false, true).timeout
-		check(ps._retry_button.visible, "%s: feil trekk gir «Prøv igjen»" % kind)
+		check(await wait_until(func() -> bool: return ps._state.current_player == ps._me, 3.0), "%s: motstanderen svarer" % kind)
+		check(not ps._busy and not ps._solved, "%s: feil trekk stopper ikke oppgaven: %s" % [kind, ps._status.text])
+		check(ps._retry_button.visible, "%s: «Prøv igjen» kan brukes underveis" % kind)
+		if kind != "defend":
+			check(ps._attempts_label.text.contains("1 av %d" % Puzzle.move_limit(p)), "trekkene telles: " + ps._attempts_label.text)
+		for i in 12:
+			if ps._busy or ps._solved:
+				break
+			ps.play(ps._state.legal_moves()[0])
+			await wait_until(func() -> bool: return ps._state.is_over() or ps._state.current_player == ps._me, 3.0)
+		check(ps._busy or ps._solved, "%s: partiet er avgjort: %s" % [kind, ps._status.text])
+		if not ps._solved:
+			check(ps._status.text.contains("Prøv igjen, eller se løsningen."), "%s: hva som skjedde: %s" % [kind, ps._status.text])
 	# Oppgavebanken: «Vanskelig» laster en oppgave med fem trekk
 	ps.set_mode(3)
 	check_eq(int(ps._puzzle.depth), 5)
-	check(ps._progress.text.contains("15"), "fremdriften vises")
+	check(ps._progress.text.contains("av 20"), "fremdriften vises: " + ps._progress.text)
 	ps.set_mode(0)
 	Engine.time_scale = 1.0
 
@@ -418,6 +430,43 @@ func test_chat_stays_open_while_typing_on_phone() -> void:
 	check(not chat.is_typing(), "ferdig å skrive")
 	check(not chat.open and not chat._log.visible, "chatten er lukket")
 	app.get_window().size = old_size
+
+
+## Runde 19: chatten i partiet på mobil. Med tastaturet oppe får den hele plassen over tastaturet (under
+## spillerkortene), uten hurtigmeldingene og bunnlinjen, og oppsettet byttes ikke til liggende. Før ble
+## panelet lavere enn innholdet, så feltet havnet under tastaturet.
+func test_game_chat_fits_above_the_keyboard_on_phone() -> void:
+	var old_size := app.get_window().size
+	app.get_window().size = Vector2i(400, 820)
+	app._keyboard_check = 100.0   # ClientRoot skal ikke måle tastaturet selv (det finnes ikke her)
+	app.start_match(OfflineMatch.new(GameOptions.from_dict({ "must_block": false, "no_gift": false })))
+	await _frames(3)
+	var gs := _screen() as GameScreen
+	gs._toggle_chat()
+	await _frames(2)
+	check(not gs._typing_layout and gs._chat._quick.visible, "før man skriver: vanlig oppsett")
+	var input: LineEdit = gs._chat._input
+	WebTextField.editing = input   # som i nettleseren på mobil: HTML-feltet over har fokus
+	app.keyboard_height = 600.0
+	app.ui.offset_bottom = -600.0   # tastaturet kommer opp: resten er lavere enn den er bred
+	await _frames(3)
+	check(gs.size.x > gs.size.y, "plassen over tastaturet er liggende (%s)" % gs.size)
+	check(gs._typing_layout, "lagt ut for skriving")
+	check(not gs._bottom.visible and not gs._chat._quick.visible, "uten bunnlinjen og hurtigmeldingene")
+	var drawer := gs._chat_drawer.get_global_rect()
+	var screen := gs.get_global_rect()
+	check(drawer.position.x < screen.size.x * 0.2, "stående oppsett beholdes (ikke panelet til høyre)")
+	check(drawer.position.y >= gs._top.get_global_rect().end.y, "under spillerkortene")
+	check(input.get_global_rect().end.y <= screen.end.y, "feltet er over tastaturet: %s i %s" % [input.get_global_rect(), screen])
+	WebTextField.editing = null
+	app.keyboard_height = 0.0
+	app.ui.offset_bottom = 0.0
+	await _frames(3)
+	check(not gs._typing_layout and gs._bottom.visible and gs._chat._quick.visible, "tilbake når tastaturet er borte")
+	app._keyboard_check = 0.0
+	app.get_window().size = old_size
+	app.show_menu()
+	await _frames(2)
 
 
 func test_global_chat_in_menu_and_locked_decals() -> void:
@@ -617,6 +666,19 @@ func test_friends_screen_chat_channels_and_invites() -> void:
 	check(not chat._tabs[1].text.contains("•"), "prikken er borte")
 	chat.add_entry({ "kind": "announcement", "channel": "*", "from": "Admin", "text": "Til alle" })
 	check(chat._log.get_parsed_text().contains("Til alle"), "kunngjøringer vises i alle kanaler")
+
+	# Rød prikk med antallet nye venneforespørsler på «Venner» (runde 19)
+	var menu := _screen() as MainMenu
+	var old_friends := Net.friends
+	Net.friends = { "friends": [], "requests": [{ "username": "Cyan" }, { "username": "Di" }], "sent": [] }
+	menu._update_friends_button()
+	check(menu._request_badge.visible, "rød prikk ved forespørsler")
+	check_eq((menu._request_badge.get_child(0) as Label).text, "2", "med antallet:")
+	check_eq(menu._friends_button.text, "Venner", "ingen prikk i teksten:")
+	Net.friends = { "friends": [], "requests": [], "sent": [] }
+	menu._update_friends_button()
+	check(not menu._request_badge.visible, "ingen prikk uten forespørsler")
+	Net.friends = old_friends
 
 	# Vennesiden (innlogget)
 	var old_user := Net.user
@@ -1038,15 +1100,17 @@ func test_names_open_profiles_with_friend_button() -> void:
 
 func test_login_adopts_the_account_look_and_avatar() -> void:
 	var old := [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away,
-		Settings.avatar, Settings.look_pending]
+		Settings.avatar, Settings.look_pending, Settings.effect_id]
 	Settings.skin_id = "ocean"
 	Settings.look_pending = true
 	var synced := []
 	var on_sync := func() -> void: synced.append(true)
 	Net.profile_synced.connect(on_sync)
 	Net._adopt_profile({ "user": { "username": "Ada" }, "avatar": "",
-		"look": { "skin": "lava", "decal": "finnes-ikke", "win_fx": Settings.win_fx_id, "decal_color": "auto", "away": true } })
+		"look": { "skin": "lava", "decal": "finnes-ikke", "win_fx": Settings.win_fx_id, "decal_color": "auto", "away": true,
+			"effect": "cmyk" } })
 	check_eq(Settings.skin_id, "lava", "kontoens skin:")
+	check_eq(Settings.effect_id, "cmyk", "kontoens effekt:")
 	check(Settings.decal_id != "finnes-ikke", "ukjent merke hoppes over")
 	check(Settings.kit_away, "bortedrakt")
 	check(not Settings.look_pending, "innlogget: utseendet er levert")
@@ -1059,6 +1123,7 @@ func test_login_adopts_the_account_look_and_avatar() -> void:
 	Settings.kit_away = old[4]
 	Settings.avatar = old[5]
 	Settings.look_pending = old[6]
+	Settings.effect_id = old[7]
 
 
 ## Nedtelling (3, 2, 1) før hvert parti, også mot boten: brikkene kan ikke legges, og klokken står.
@@ -1565,3 +1630,14 @@ func test_private_tournament_with_nickname_and_big_screen() -> void:
 	Net.logout()
 	await _frames(2)
 	Settings.session_token = old_session
+
+
+## Runde 19: på web hentes emojiskriften (emoji.ttf) etter start og blir reserveskriften.
+func test_emoji_font_from_downloaded_bytes() -> void:
+	var font := UI.emoji_font() as FontVariation
+	var before: Array = font.fallbacks
+	check(UI.has_emoji_font(), "utenfor web er skriften med i prosjektet")
+	UI.add_emoji_font(FileAccess.get_file_as_bytes(UI.EMOJI_FONT))
+	check_eq(font.fallbacks.size(), 1)
+	check((font.fallbacks[0] as FontFile).has_char(0x1F600), "😀 finnes i skriften fra fila")
+	font.fallbacks = before

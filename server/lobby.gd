@@ -24,6 +24,7 @@ class Player:
 	var decal := "none"
 	var win_fx := "classic"
 	var decal_color := "auto"
+	var effect := "none"           ## effekt oppå skinnet (Skins.EFFECTS, runde 19)
 	var away := false              ## valgt drakt (bortedrakt)
 	var avatar := ""               ## base64-JPEG, sjekket med AvatarData.is_valid
 	var look_pending := false      ## utseendet ble endret uten nett: enhetens utseende vinner ved innlogging
@@ -266,6 +267,7 @@ func _hello(peer: int, msg: Dictionary, now: int) -> void:
 	p.decal = str(msg.get("decal", "none")).substr(0, 24)
 	p.win_fx = str(msg.get("win_fx", "classic")).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", "auto")).substr(0, 24)
+	p.effect = str(msg.get("effect", "none")).substr(0, 24)
 	p.away = bool(msg.get("away", false))
 	p.look_pending = bool(msg.get("look_pending", false))
 	var avatar = msg.get("avatar", "")
@@ -663,7 +665,7 @@ func _players_info(room: Room) -> Array:
 		var user: Dictionary = store.users.get(p.user_id, {}) if p.user_id != 0 else {}
 		var look := _allowed_look(p)
 		out.append({ "seat": seat, "name": p.name, "skin": look.skin, "decal": _decal_for(p), "win_fx": look.win_fx,
-			"decal_color": p.decal_color, "away": p.away, "avatar": p.avatar,
+			"decal_color": p.decal_color, "effect": look.effect, "away": p.away, "avatar": p.avatar,
 			"ready": room.ready[seat], "connected": p.peer != 0, "account": p.user_id != 0,
 			"elo": user.get("elo") if not user.is_empty() else null })
 	return out
@@ -767,21 +769,24 @@ func _sign_in(p: Player, user: Dictionary, new_account := false) -> void:
 		p.decal = look.decal
 		p.win_fx = look.win_fx
 		p.decal_color = look.decal_color
+		p.effect = str(look.get("effect", "none"))
 		p.away = look.away
 	p.avatar = accounts.avatar_on_sign_in(p.user_id, p.avatar)   # samme bilde på alle enheter
 
 
 ## Utseendet slik klienten lagrer det (sendes ved innlogging, så enheten får kontoens utseende).
 func _look_of(p: Player) -> Dictionary:
-	return { "skin": p.skin, "decal": p.decal, "win_fx": p.win_fx, "decal_color": p.decal_color, "away": p.away }
+	return { "skin": p.skin, "decal": p.decal, "win_fx": p.win_fx, "decal_color": p.decal_color, "away": p.away,
+		"effect": p.effect }
 
 
-## Byttet utseende (skin, merke, seiersanimasjon). Rommet får beskjed, så motstanderen ser det før start.
+## Byttet utseende (skin, merke, effekt, seiersanimasjon). Rommet får beskjed, så motstanderen ser det før start.
 func _set_look(p: Player, msg: Dictionary) -> void:
 	p.skin = str(msg.get("skin", p.skin)).substr(0, 24)
 	p.decal = str(msg.get("decal", p.decal)).substr(0, 24)
 	p.win_fx = str(msg.get("win_fx", p.win_fx)).substr(0, 24)
 	p.decal_color = str(msg.get("decal_color", p.decal_color)).substr(0, 24)
+	p.effect = str(msg.get("effect", p.effect)).substr(0, 24)
 	p.away = bool(msg.get("away", p.away))
 	if msg.has("avatar") and not accounts.is_guest(p.user_id):   # nytt eller fjernet profilbilde (gjester har ikke)
 		var avatar = msg.avatar
@@ -873,8 +878,9 @@ func _seat_record(room: Room, seat: int) -> Dictionary:
 	if id == 0 or not players.has(id):
 		return {}
 	var p: Player = players[id]
-	return { "name": p.name, "user": p.user_id, "skin": _allowed_look(p).skin, "decal": _decal_for(p), "decal_color": p.decal_color,
-		"away": p.away,
+	var look := _allowed_look(p)
+	return { "name": p.name, "user": p.user_id, "skin": look.skin, "decal": _decal_for(p), "decal_color": p.decal_color,
+		"effect": look.effect, "away": p.away,
 		"elo": _elo_of(p) }
 
 
@@ -1480,11 +1486,11 @@ func _decal_for(p: Player) -> String:
 	return p.decal if EloTiers.decal_unlocked(p.decal, _elo_of(p)) else "none"
 
 
-## Skin og seiersanimasjon andre ser: det spilleren har låst opp (runde 17). En gjest, eller en
+## Skin, effekt og seiersanimasjon andre ser: det spilleren har låst opp (runde 17). En gjest, eller en
 ## endret klient, får standard i stedet for det som er låst.
 func _allowed_look(p: Player) -> Dictionary:
 	var progress := Progression.progress_of(store.users.get(p.user_id, {})) if p.user_id != 0 else {}
-	return Progression.allowed_look({ "skin": p.skin, "win_fx": p.win_fx }, progress)
+	return Progression.allowed_look({ "skin": p.skin, "win_fx": p.win_fx, "effect": p.effect }, progress)
 
 
 ## Nytt nivå etter et parti: de runde nivåene (Progression.LEVEL_EVENTS) kunngjøres i den globale chatten,

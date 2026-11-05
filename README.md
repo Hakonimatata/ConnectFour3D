@@ -2,7 +2,7 @@
 
 Fire på rad på et 3D-brett (4×4×4 eller 5×5×5), laget i Godot 4.7. Spillet kan spilles mot AI (fire vanskelighetsgrader: Lett, Middels, Vanskelig og Ekspert, og en treningsmodus som viser beste trekk, vurderer hvert trekk og lar deg angre), med to spillere på samme enhet eller online mot venner. Det fungerer på PC og mobil (nettleser).
 
-Hvert parti starter med en nedtelling (3, 2, 1). Etter partiet vurderer AI-en trekkene: treffsikkerhet for begge spillerne under resultatet, og i «Se partiet igjen» får hvert trekk en vurdering og et tips, med markøren der brikken heller burde lagt. Under *Innstillinger* velger du brikke, drakt, merke, seiersanimasjon, brett og bakgrunn (Standard, Nebula, Stjernehimmel eller Kaffebar).
+Hvert parti starter med en nedtelling (3, 2, 1). Etter partiet vurderer AI-en trekkene: treffsikkerhet for begge spillerne under resultatet, og i «Se partiet igjen» får hvert trekk en vurdering og et tips, med markøren der brikken heller burde lagt. Under *Innstillinger* velger du brikke, drakt, effekt (tegneserie, cel-shading, skisse, CMYK, akvarell eller glitch, oppå hvilken som helst brikke), merke, seiersanimasjon, brett og bakgrunn (Standard, Nebula, Stjernehimmel eller Kaffebar).
 
 Alt er skrevet i GDScript i ett Godot-prosjekt. Klienten, AI-en og serveren bruker **samme regelmotor** (`core/`).
 
@@ -113,9 +113,9 @@ Online kan man spille som gjest, eller logge inn for å få statistikk, Elo-rati
 
 Innloggede spillere får et **Elo-merke** ved navnet: Bronse (under 1100), Sølv (1100), Gull (1250), Platina (1400), Diamant (1550), Mester (1700) og Stormester (1850). Nivåene låser også opp merker på brikken (krone, flamme, laurbær m.fl.). Serveren sjekker at du har låst dem opp.
 
-**XP og nivåer** (runde 17): kontoer får XP for partier mot andre kontoer (mer for å slå sterkere spillere; minst 10 trekk, høyst 3 partier mot samme motstander per dag og 400 XP per dag fra partier), for dagens oppgave (mer for hver dag på rad), 25 XP for å møte opp til start i en turnering (fra urangerte, private turneringer bare én gang per dag, og ikke til gjester) og for plassering i rangerte turneringer. Partier mot boten gir ikke XP. Nivåene låser opp skins og seiersanimasjoner. Noen låses bare opp ved å vinne en rangert turnering eller løse dagens oppgave 7 dager på rad, og admin kan sette en premie på en turnering. Reglene står i `core/progression.gd`, og serveren sjekker at andre bare ser det du har låst opp.
+**XP og nivåer** (runde 17): kontoer får XP for partier mot andre kontoer (mer for å slå sterkere spillere; minst 10 trekk, høyst 3 partier mot samme motstander per dag og 400 XP per dag fra partier), for dagens oppgave (mer for hver dag på rad), 25 XP for å møte opp til start i en turnering (fra urangerte, private turneringer bare én gang per dag, og ikke til gjester) og for plassering i rangerte turneringer. Partier mot boten gir ikke XP. Nivåene låser opp skins, effekter og seiersanimasjoner. Noen låses bare opp ved å vinne en rangert turnering eller løse dagens oppgave 7 dager på rad, og admin kan sette en premie på en turnering. Reglene står i `core/progression.gd`, og serveren sjekker at andre bare ser det du har låst opp.
 
-På forsiden vises aktive turneringer, **Dagens oppgave** (med toppliste; typen bytter dag for dag mellom «Tving frem seier», «Vinn på N trekk» med stille trekk og «Finn beste trekk») og en **global chat** med hvor mange som er online. Bak menyen spilles de tre siste partiene på serveren av, ett om gangen. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
+På forsiden vises aktive turneringer, **Dagens oppgave** (med toppliste; typen bytter dag for dag mellom «Tving frem seier», «Vinn på N trekk» med stille trekk og «Finn beste trekk»; et feil trekk stopper deg ikke, men spilles ut mot motstanderen, og alle seire innen tre trekk mer enn den raskeste godtas) og en **global chat** med hvor mange som er online. Bak menyen spilles de tre siste partiene på serveren av, ett om gangen. I chatten publiserer serveren også hendelser: nye nivåer, seiersrekker, turneringsvinnere og hvem som løste dagens oppgave. Turneringskamper kan ses på som tilskuer («Se på» på turneringssiden), og alle partier kan ses igjen med tvungne trekk markert («Se partiet igjen» og «Siste partier» på profilen).
 
 **Hvor ligger dataene?** Serveren lagrer alt som lesbare JSON-filer i én mappe:
 - Kjører serveren fra prosjektet (`scripts\web.cmd`, `scripts\online.cmd` eller `godot … -- --server`), ligger de i `data/` i prosjektmappen. Mappen er i `.gitignore`.
@@ -180,7 +180,7 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (med toppliste; typen 
   - **Til slutt:** vinneren med pokalen over brettet, som spiller av finalen, og pallen under.
   - QR-koden lages i spillet (`core/qr_code.gd`, uten eksterne biblioteker).
 
-**Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Søk etter spillere (treff mens du skriver) og trykk «Legg til». Den andre får en forespørsel og godtar. Trykk på et navn (i chatten, «hvem er online», topplisten, søket eller vennelisten) for å se profilen, med «Legg til venn» rett der. En venn fjernes fra profilen hens («Fjern venn», trykk to ganger), ikke fra listen, så ingen kommer bort i det. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
+**Venner:** *Venner* (i hovedmenyen ved profilbildet, eller i *Spill online*) krever konto. Søk etter spillere (treff mens du skriver) og trykk «Legg til». Den andre får en forespørsel og godtar. Nye forespørsler gir en rød prikk med antallet på «Venner». Trykk på et navn (i chatten, «hvem er online», topplisten, søket eller vennelisten) for å se profilen, med «Legg til venn» rett der. En venn fjernes fra profilen hens («Fjern venn», trykk to ganger), ikke fra listen, så ingen kommer bort i det. Listen viser hvem som er online og hvem som spiller (med «Se på»). «Utfordre» lager et privat rom og inviterer vennen, og i venterommet kan du invitere venner med «Inviter en venn». Vennen får et banner med «Bli med». Vennene ligger under `"friends"` og `"friend_requests"` i `users.json`.
 
 **Chatkanaler:** den globale chatten har kanalene «Generelt», «Velkommen» (nye kontoer ønskes velkommen her) og «Innspill» (lagres også i `feedback.jsonl`). Kunngjøringer vises i alle kanalene.
 
@@ -198,8 +198,15 @@ På forsiden vises aktive turneringer, **Dagens oppgave** (med toppliste; typen 
 **Web-klienten** krever at Godot har eksportmaler: *Editor → Manage Export Templates → Download*. Deretter:
 
 ```
-godot --headless --path . --export-release "Web" build/web/index.html
+scripts\web.cmd export
 ```
+
+Det eksporterer til `build/web` og kjører `scripts/pack_web.ps1` etterpå (runde 19). Skriptet legger emojiskriften ved siden av spillet (`emoji.ttf`, den er ikke med i spillpakken), og komprimerer `index.wasm` med brotli hvis `brotli` finnes (det følger med Git for Windows). Eksporterer du med `godot --export-release "Web"` direkte, mangler `emoji.ttf`, og emojier i chatten blir firkanter.
+
+**Lastetid (runde 19):**
+- Første besøk laster ca. 7,7 MB i stedet for 11,7 MB: `index.wasm` med brotli (6,9 MB, mot 10,1 MB med gzip) og spillpakken (0,7 MB, før 1,5 MB). Emojiskriften (0,7 MB) hentes når spillet har startet.
+- Serveren gir hver fil ETag og dato. Neste besøk spør nettleseren bare om filene er endret og får «304», så ingenting lastes ned på nytt. Nettleseren kan da også bruke den ferdig kompilerte `index.wasm` fra forrige gang.
+- `index.wasm` komprimeres bare på nytt når Godot er oppdatert (det tar 1–2 minutter). Ellers gjenbrukes `index.wasm.br`.
 
 **Alt på én server (anbefalt):** én liten VPS med Docker. Caddy serverer web-klienten, gir automatisk HTTPS og sender `/ws` videre til spillserveren.
 
@@ -229,7 +236,7 @@ HTTPS automatisk, og IP-adressen hjemme vises ikke.
 **Ting å tenke på:**
 - PC-en må være på og ikke gå i dvale (*Innstillinger → System → Strøm*). Windows-oppdateringer kan starte den på nytt.
 - Brukerdataene ligger i `data/` i prosjektmappen. Ta en kopi av mappen av og til.
-- Opplastingen hjemme holder i massevis: et parti er noen få kB, og web-klienten (ca. 10 MB komprimert) lastes én gang per besøkende.
+- Opplastingen hjemme holder i massevis: et parti er noen få kB, og web-klienten (ca. 8 MB komprimert) lastes én gang per besøkende.
 - Når du vil ha den alltid på, flytter du til en VPS med Docker (under). Domenet kan du ta med deg.
 
 **Sjekket i runde 10:** web-eksporten bygger, serveren serverer web-klienten med gzip og `/ws`, og en
@@ -255,10 +262,16 @@ Argumentene: brettstørrelse, partier per farge, bot A og bot B (lett, middels, 
 godot --headless --path . -s res://tools/review_check.gd -- 4 4 ekspert lett
 ```
 
-**Oppgavebanken til dagens oppgave** («Vinn på N trekk» og «Finn beste trekk», `ai/daily_bank.gd`) lages på forhånd, fordi de krever tunge søk. Det tar rundt en time for 30 av hver:
-```
-godot --headless --path . -s res://tools/make_daily_bank.gd -- 30
-```
+**Oppgavebankene** lages på forhånd, fordi de krever tunge søk. Fra runde 19 må alle oppgavene gå i flere plan (ikke bare et vanlig firepårad i én høyde), og verktøyene beholder det som allerede ligger i banken og passer.
+
+- Dagens oppgave (`ai/daily_bank.gd`): «Tving frem seier», «Vinn på N trekk» og «Finn beste trekk». Argumentene er antall av hver type, prosesser som leter samtidig, en tidsfrist i minutter (med tidsfrist letes det til halvparten av «Vinn på N trekk» er uten trikset med tre trekk i samme kolonne) og antall «Tving frem seier». Med 5 prosesser tok det rundt en time:
+  ```
+  godot --headless --path . -s res://tools/make_daily_bank.gd -- 30 5 75 120
+  ```
+- «Flere oppgaver» (`ai/puzzle_bank.gd`, 20 per nivå): noen minutter.
+  ```
+  godot --headless --path . -s res://tools/make_puzzle_bank.gd
+  ```
 
 **Tester** kjøres lokalt (se «Kom i gang»). Det er ingen automatisk CI på GitHub (fjernet etter runde 12, så det ikke kommer e-post ved hver push).
 

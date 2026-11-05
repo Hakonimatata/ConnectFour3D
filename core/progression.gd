@@ -1,6 +1,6 @@
 class_name Progression
 extends RefCounted
-## XP, nivåer og opplåsing av skins og seiersanimasjoner (runde 17). Ligger i core/ fordi både klienten
+## XP, nivåer og opplåsing av skins, effekter og seiersanimasjoner (runde 17). Ligger i core/ fordi både klienten
 ## (innstillinger, profil, resultat) og serveren (XP etter partier, oppgaver og turneringer, og sjekk av
 ## utseendet andre ser) bruker det.
 ##
@@ -36,13 +36,14 @@ const TOURNAMENT := "tournament"   ## prestasjon: har vunnet en rangert turnerin
 const STREAK_7 := "streak7"        ## prestasjon: 7 dager på rad med dagens oppgave
 const LEVEL_EVENTS := [5, 10, 15, 20, 25, 30]   ## nivåene som kunngjøres i den globale chatten
 
-## Ting: "skin:<id>" og "fx:<id>" (Skins.ALL og Skins.WIN_FX).
+## Ting: "skin:<id>", "effect:<id>" og "fx:<id>" (Skins.ALL, Skins.EFFECTS og Skins.WIN_FX).
 const UNLOCKS := {
 	"skin:gold": 2, "skin:ceramic": 3, "skin:violet": 4, "skin:copper": 5, "skin:racing": 6, "skin:carbon": 7,
 	"skin:glass": 8, "skin:midnight": 9, "skin:lava": 10, "skin:mint": 11, "skin:rose": 12, "skin:aurora": 13,
 	"skin:pixel": 14, "skin:damascus": 15, "skin:circuit": 16, "skin:opal": 17, "skin:code": 18,
 	"skin:kintsugi": 20, "skin:toxic": 22, "skin:disco": 24, "skin:plasma": 26, "skin:blackhole": 30,
 	"skin:champion": TOURNAMENT, "skin:dawn": STREAK_7,
+	"effect:cel": 3, "effect:sketch": 5, "effect:cmyk": 8, "effect:watercolor": 11, "effect:glitch": 14,   # runde 19 (tegneserie er åpen)
 	"fx:fireworks": 3, "fx:shockwave": 6, "fx:glitter": 9, "fx:lightning": 12, "fx:supernova": 16, "fx:chaos": 20,
 }
 
@@ -119,11 +120,13 @@ static func sorted_skins(progress: Dictionary) -> Array:
 	return keyed.map(func(e: Array) -> Dictionary: return e[1])
 
 
-## Alle ting som kan låses opp (skins og seiersanimasjoner), i rekkefølge.
+## Alle ting som kan låses opp (skins, effekter og seiersanimasjoner), i rekkefølge.
 static func items() -> Array[String]:
 	var out: Array[String] = []
 	for s in Skins.ALL:
 		out.append("skin:" + str(s.id))
+	for e in Skins.EFFECTS:
+		out.append("effect:" + str(e.id))
 	for f in Skins.WIN_FX:
 		out.append("fx:" + str(f.id))
 	return out
@@ -138,18 +141,19 @@ static func newly_unlocked(before: Dictionary, after: Dictionary) -> Array[Strin
 	return out
 
 
-## Navnet på en ting («Lava», «Fyrverkeri»).
+## Navnet på en ting («Lava», «Skisse», «Fyrverkeri»).
 static func item_name(item: String) -> String:
 	var id := item.get_slice(":", 1)
 	if item.begins_with("skin:"):
 		return I18n.t(str(Skins.get_skin(id).name))
-	for f in Skins.WIN_FX:
+	var list := Skins.EFFECTS if item.begins_with("effect:") else Skins.WIN_FX
+	for f in list:
 		if f.id == id:
 			return I18n.t(str(f.name))
 	return id
 
 
-## Utseendet med låste ting byttet ut (skin: standard, seiersanimasjon: klassisk). Merker låses av Elo
+## Utseendet med låste ting byttet ut (skin: standard, effekt: ingen, seiersanimasjon: klassisk). Merker låses av Elo
 ## (EloTiers), ikke her.
 static func allowed_look(look: Dictionary, progress: Dictionary, default_skin := Skins.DEFAULT_P1) -> Dictionary:
 	var out := look.duplicate()
@@ -157,6 +161,8 @@ static func allowed_look(look: Dictionary, progress: Dictionary, default_skin :=
 		out.skin = default_skin
 	if not is_unlocked("fx:" + str(look.get("win_fx", "")), progress):
 		out.win_fx = "classic"
+	if not is_unlocked("effect:" + str(look.get("effect", "")), progress):
+		out.effect = "none"
 	return out
 
 

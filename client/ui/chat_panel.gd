@@ -11,6 +11,7 @@ var with_quick := true
 var placeholder := "Skriv en melding…"
 var _log: RichTextLabel
 var _input: LineEdit
+var _quick: HFlowContainer
 
 
 func _init(p_with_quick := true, p_placeholder := "Skriv en melding…") -> void:
@@ -31,6 +32,7 @@ func _ready() -> void:
 
 	if with_quick:
 		var quick := HFlowContainer.new()
+		_quick = quick
 		quick.add_theme_constant_override("h_separation", 6)
 		quick.add_theme_constant_override("v_separation", 6)
 		for q in Settings.chat_messages():
@@ -51,6 +53,17 @@ func _ready() -> void:
 	row.add_child(send)
 	v.add_child(row)
 	WebTextField.attach(_input, send)   # mobil i nettleseren: ekte tekstfelt (tastatur, markering, emojier)
+
+
+## Skriver man i feltet (på mobil: HTML-feltet over det, se WebTextField)?
+func is_typing() -> bool:
+	return _input.has_focus() or WebTextField.is_editing(_input)
+
+
+## Mens man skriver med tastaturet oppe (mobil), skjules hurtigmeldingene, så meldingene og feltet får plass.
+func set_typing(on: bool) -> void:
+	if _quick:
+		_quick.visible = not on
 
 
 func add_message(from_name: String, text: String, color := UI.ACCENT) -> void:

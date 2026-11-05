@@ -1,49 +1,72 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 128 128">
-  <!-- Fire på rad 3D: fire brikker som trapp oppover på skrå (fire på rad i 3D), med en glødende vinnerlinje -->
+  <!-- Fire på rad 3D: brettet 4x4 på skrå, og fire blå brikker på rad gjennom høydene (romdiagonal),
+       båret av oransje brikker under, med en gyllen vinnerlinje (runde 19). -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#2a3347"/>
-      <stop offset="1" stop-color="#11151d"/>
-    </linearGradient>
-    <linearGradient id="side" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#0d4fb8"/>
-      <stop offset="0.55" stop-color="#2a90ff"/>
-      <stop offset="1" stop-color="#0b44a0"/>
-    </linearGradient>
-    <linearGradient id="top" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9fe6ff"/>
-      <stop offset="1" stop-color="#4cc4ff"/>
-    </linearGradient>
-    <linearGradient id="glow" x1="0" y1="1" x2="1" y2="0">
-      <stop offset="0" stop-color="#ffd76a" stop-opacity="0"/>
-      <stop offset="0.5" stop-color="#ffd76a" stop-opacity="0.9"/>
-      <stop offset="1" stop-color="#ffd76a" stop-opacity="0"/>
-    </linearGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4356"/><stop offset="1" stop-color="#14171e"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.5"><stop offset="0" stop-color="#6b7896" stop-opacity="0.55"/><stop offset="1" stop-color="#6b7896" stop-opacity="0"/></radialGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a5161"/><stop offset="1" stop-color="#363c48"/></linearGradient>
+    <linearGradient id="side_b" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0a5fe0"/><stop offset="0.35" stop-color="#7fd4ff"/><stop offset="0.7" stop-color="#2a90ff"/><stop offset="1" stop-color="#0a5fe0"/></linearGradient>
+    <linearGradient id="top_b" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c4ecff"/><stop offset="1" stop-color="#7fd4ff"/></linearGradient>
+    <linearGradient id="side_o" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#b52806"/><stop offset="0.35" stop-color="#ff9a4a"/><stop offset="0.7" stop-color="#f2541b"/><stop offset="1" stop-color="#b52806"/></linearGradient>
+    <linearGradient id="top_o" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd2a8"/><stop offset="1" stop-color="#ff9a4a"/></linearGradient>
+    <linearGradient id="win" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#ffd76a" stop-opacity="0"/><stop offset="0.18" stop-color="#ffd76a" stop-opacity="0.95"/><stop offset="0.82" stop-color="#ffe9a8" stop-opacity="0.95"/><stop offset="1" stop-color="#ffd76a" stop-opacity="0"/></linearGradient>
   </defs>
   <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
-  <!-- Brettet: en flat rute i perspektiv -->
-  <path d="M18 92 L64 112 L110 92 L64 72 Z" fill="#3a4357" opacity="0.55"/>
-  <!-- Vinnerlinjen -->
-  <line x1="24" y1="96" x2="104" y2="28" stroke="url(#glow)" stroke-width="9" stroke-linecap="round"/>
-  <!-- Fire brikker, hver ett lag høyere -->
-  <g transform="translate(30 86)">
-      <path d="M-14 0 v9 a14 6 0 0 0 28 0 v-9 z" fill="url(#side)"/>
-      <ellipse cx="0" cy="0" rx="14" ry="6" fill="url(#top)"/>
-      <ellipse cx="0" cy="0" rx="7" ry="3" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.6"/>
-  </g>
-  <g transform="translate(52 70)">
-      <path d="M-14 0 v9 a14 6 0 0 0 28 0 v-9 z" fill="url(#side)"/>
-      <ellipse cx="0" cy="0" rx="14" ry="6" fill="url(#top)"/>
-      <ellipse cx="0" cy="0" rx="7" ry="3" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.6"/>
-  </g>
-  <g transform="translate(75 54)">
-      <path d="M-14 0 v9 a14 6 0 0 0 28 0 v-9 z" fill="url(#side)"/>
-      <ellipse cx="0" cy="0" rx="14" ry="6" fill="url(#top)"/>
-      <ellipse cx="0" cy="0" rx="7" ry="3" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.6"/>
-  </g>
-  <g transform="translate(98 38)">
-      <path d="M-14 0 v9 a14 6 0 0 0 28 0 v-9 z" fill="url(#side)"/>
-      <ellipse cx="0" cy="0" rx="14" ry="6" fill="url(#top)"/>
-      <ellipse cx="0" cy="0" rx="7" ry="3" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="1.6"/>
-  </g>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#glow)"/>
+  <polygon points="64.00,55.60 118.00,86.00 64.00,116.40 10.00,86.00" fill="#1d2129" stroke="#1d2129" stroke-width="6" stroke-linejoin="round"/>
+  <polygon points="64.00,49.60 118.00,80.00 64.00,110.40 10.00,80.00" fill="url(#board)" stroke="url(#board)" stroke-width="6" stroke-linejoin="round"/>
+  <line x1="74.80" y1="58.72" x2="26.20" y2="86.08" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="53.20" y1="58.72" x2="101.80" y2="86.08" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="88.30" y1="66.32" x2="39.70" y2="93.68" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="39.70" y1="66.32" x2="88.30" y2="93.68" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="101.80" y1="73.92" x2="53.20" y2="101.28" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <line x1="26.20" y1="73.92" x2="74.80" y2="101.28" stroke="#5a6273" stroke-width="1.6" stroke-linecap="round"/>
+  <ellipse cx="25.00" cy="81.20" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <ellipse cx="52.00" cy="81.20" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <ellipse cx="79.00" cy="81.20" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <ellipse cx="106.00" cy="81.20" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <ellipse cx="38.50" cy="88.80" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <ellipse cx="79.00" cy="96.40" rx="8.87" ry="5.08" fill="#0d0f14" opacity="0.45"/>
+  <path d="M15.29 70.50 V80.00 A8.21 4.62 0 0 0 31.71 80.00 V70.50 Z" fill="url(#side_b)"/>
+  <ellipse cx="23.50" cy="70.50" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="23.50" cy="70.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M42.29 70.50 V80.00 A8.21 4.62 0 0 0 58.71 80.00 V70.50 Z" fill="url(#side_o)"/>
+  <ellipse cx="50.50" cy="70.50" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="50.50" cy="70.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M42.29 60.00 V69.50 A8.21 4.62 0 0 0 58.71 69.50 V60.00 Z" fill="url(#side_b)"/>
+  <ellipse cx="50.50" cy="60.00" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="50.50" cy="60.00" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M69.29 70.50 V80.00 A8.21 4.62 0 0 0 85.71 80.00 V70.50 Z" fill="url(#side_o)"/>
+  <ellipse cx="77.50" cy="70.50" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="77.50" cy="70.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M69.29 60.00 V69.50 A8.21 4.62 0 0 0 85.71 69.50 V60.00 Z" fill="url(#side_o)"/>
+  <ellipse cx="77.50" cy="60.00" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="77.50" cy="60.00" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M69.29 49.50 V59.00 A8.21 4.62 0 0 0 85.71 59.00 V49.50 Z" fill="url(#side_b)"/>
+  <ellipse cx="77.50" cy="49.50" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="77.50" cy="49.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M96.29 70.50 V80.00 A8.21 4.62 0 0 0 112.71 80.00 V70.50 Z" fill="url(#side_o)"/>
+  <ellipse cx="104.50" cy="70.50" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="104.50" cy="70.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M96.29 60.00 V69.50 A8.21 4.62 0 0 0 112.71 69.50 V60.00 Z" fill="url(#side_b)"/>
+  <ellipse cx="104.50" cy="60.00" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="104.50" cy="60.00" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M96.29 49.50 V59.00 A8.21 4.62 0 0 0 112.71 59.00 V49.50 Z" fill="url(#side_o)"/>
+  <ellipse cx="104.50" cy="49.50" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="104.50" cy="49.50" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M96.29 39.00 V48.50 A8.21 4.62 0 0 0 112.71 48.50 V39.00 Z" fill="url(#side_b)"/>
+  <ellipse cx="104.50" cy="39.00" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="104.50" cy="39.00" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M28.79 78.10 V87.60 A8.21 4.62 0 0 0 45.21 87.60 V78.10 Z" fill="url(#side_o)"/>
+  <ellipse cx="37.00" cy="78.10" rx="8.21" ry="4.62" fill="url(#top_o)"/>
+  <ellipse cx="37.00" cy="78.10" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <path d="M69.29 85.70 V95.20 A8.21 4.62 0 0 0 85.71 95.20 V85.70 Z" fill="url(#side_b)"/>
+  <ellipse cx="77.50" cy="85.70" rx="8.21" ry="4.62" fill="url(#top_b)"/>
+  <ellipse cx="77.50" cy="85.70" rx="4.52" ry="2.54" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="1.1"/>
+  <line x1="13.78" y1="74.28" x2="114.22" y2="35.22" stroke="#ffd76a" stroke-opacity="0.22" stroke-width="9" stroke-linecap="round"/>
+  <line x1="13.78" y1="74.28" x2="114.22" y2="35.22" stroke="url(#win)" stroke-width="3.2" stroke-linecap="round"/>
+  <circle cx="23.50" cy="70.50" r="2.3" fill="#fff6d6"/>
+  <circle cx="50.50" cy="60.00" r="2.3" fill="#fff6d6"/>
+  <circle cx="77.50" cy="49.50" r="2.3" fill="#fff6d6"/>
+  <circle cx="104.50" cy="39.00" r="2.3" fill="#fff6d6"/>
 </svg>

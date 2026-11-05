@@ -123,6 +123,14 @@ func _ready() -> void:
 		_apply_looks()
 	))
 
+	v.add_child(UI.section("Effekt"))
+	v.add_child(_item_picker(Skins.EFFECTS, "effect:", Settings.look().effect, progress, func(id: String) -> void:
+		Sfx.play("click")
+		Settings.effect_id = id
+		_apply_looks()
+	))
+	v.add_child(UI.label("Effekten legges oppå skinnet, så den passer med alle.", "Muted", HORIZONTAL_ALIGNMENT_LEFT, true))
+
 	v.add_child(UI.section("Merke på toppen"))
 	v.add_child(_decal_picker())
 	var hint := "Noen merker låses opp av Elo-nivået ditt. Logg inn og spill rangerte partier for å låse opp flere." \
@@ -137,25 +145,10 @@ func _ready() -> void:
 	))
 
 	v.add_child(UI.section("Seiersanimasjon"))
-	var fx_flow := HFlowContainer.new()
-	fx_flow.add_theme_constant_override("h_separation", 6)
-	fx_flow.add_theme_constant_override("v_separation", 6)
-	var fx_group := ButtonGroup.new()
-	for fx in Skins.WIN_FX:
-		var b := Button.new()
-		b.toggle_mode = true
-		b.button_group = fx_group
-		b.theme_type_variation = "ChoiceButton"
-		b.text = fx.name
-		var fx_id: String = fx.id
-		b.button_pressed = fx_id == Settings.look().win_fx
-		_lock_if_needed(b, "fx:" + fx_id, progress)
-		b.pressed.connect(func() -> void:
-			Settings.win_fx_id = fx_id
-			play_fx_preview()
-		)
-		fx_flow.add_child(b)
-	v.add_child(fx_flow)
+	v.add_child(_item_picker(Skins.WIN_FX, "fx:", Settings.look().win_fx, progress, func(id: String) -> void:
+		Settings.win_fx_id = id
+		play_fx_preview()
+	))
 	v.add_child(UI.button("Vis seiersanimasjonen", play_fx_preview))
 
 	v.add_child(UI.section("Brett"))
@@ -212,6 +205,28 @@ func _lock_if_needed(b: Button, item: String, progress: Dictionary) -> void:
 	b.text = Progression.requirement_short(item)
 	b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	b.modulate.a = 0.55
+
+
+## Effektene eller seiersanimasjonene som knapper (list: Skins.EFFECTS eller Skins.WIN_FX, prefix: tingen i
+## Progression). Låste viser nivået som trengs.
+func _item_picker(list: Array[Dictionary], prefix: String, selected: String, progress: Dictionary,
+		on_pick: Callable) -> HFlowContainer:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	var group := ButtonGroup.new()
+	for item in list:
+		var b := Button.new()
+		b.toggle_mode = true
+		b.button_group = group
+		b.theme_type_variation = "ChoiceButton"
+		b.text = item.name
+		var id: String = item.id
+		b.button_pressed = id == selected
+		_lock_if_needed(b, prefix + id, progress)
+		b.pressed.connect(on_pick.bind(id))
+		flow.add_child(b)
+	return flow
 
 
 ## Merkene som knapper. Låste merker er grået ut og viser nivået som trengs.

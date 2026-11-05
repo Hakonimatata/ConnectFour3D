@@ -81,7 +81,7 @@ func test_unlocks_by_level_achievement_and_prize() -> void:
 	var look := Progression.allowed_look({ "skin": "lava", "win_fx": "chaos" }, guest)
 	check_eq(look.skin, Skins.DEFAULT_P1)
 	check_eq(look.win_fx, "classic")
-	check_eq(Progression.newly_unlocked({ "xp": 0 }, { "xp": Progression.xp_for_level(3) }), ["skin:gold", "skin:ceramic", "fx:fireworks"] as Array[String])
+	check_eq(Progression.newly_unlocked({ "xp": 0 }, { "xp": Progression.xp_for_level(3) }), ["skin:gold", "skin:ceramic", "effect:cel", "fx:fireworks"] as Array[String])
 	for item in Progression.UNLOCKS:
 		check(item in Progression.items(), "%s finnes" % item)
 

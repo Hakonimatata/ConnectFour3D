@@ -21,6 +21,8 @@ if not exist build\web\index.wasm (
 	echo Eksporten feilet. Se build\export.log
 	exit /b 1
 )
+rem Emojiskriften ved siden av, og index.wasm med brotli (runde 19, kortere lastetid)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0pack_web.ps1"
 echo Ferdig: build\web
 if /i "%~1"=="export" exit /b 0
 

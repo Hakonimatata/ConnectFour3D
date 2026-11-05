@@ -37,6 +37,7 @@ var _who_name: Label
 var _account_button: Button
 var _admin_button: Button               ## bare for admin
 var _friends_button: Button             ## bare innlogget («Venner (2)» når noen er online)
+var _request_badge: PanelContainer      ## rød prikk med antall venneforespørsler, på «Venner»
 var _champion: PanelContainer           ## siste turneringsvinner
 var _champion_trophy: TrophyView
 var _champion_name: Label
@@ -133,6 +134,8 @@ func _ready() -> void:
 	_friends_button.custom_minimum_size.y = 36
 	_friends_button.visible = false
 	_friends_button.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	_request_badge = _count_badge()
+	_friends_button.add_child(_request_badge)
 	who.add_child(_friends_button)
 	who.add_child(_account_button)
 	v.add_child(who)
@@ -366,6 +369,30 @@ static func _solved_badge() -> TextureRect:
 	return badge
 
 
+## Rød prikk med et tall øverst til høyre på en knapp. Den pulserer svakt, så den blir sett.
+static func _count_badge() -> PanelContainer:
+	var badge := PanelContainer.new()
+	badge.add_theme_stylebox_override("panel", UI._box(UI.NOTIFY, 10, Color(1, 1, 1, 0.9), 5, 0, 2))
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.custom_minimum_size = Vector2(20, 20)
+	badge.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	badge.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	badge.offset_right = 7
+	badge.offset_top = -7
+	var count := UI.label("", "", HORIZONTAL_ALIGNMENT_CENTER)
+	count.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	count.add_theme_font_size_override("font_size", 12)
+	count.add_theme_color_override("font_color", Color.WHITE)
+	badge.add_child(count)
+	badge.resized.connect(func() -> void: badge.pivot_offset = badge.size / 2.0)
+	var tw := badge.create_tween().set_loops()
+	tw.tween_property(badge, "scale", Vector2(1.15, 1.15), 0.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(badge, "scale", Vector2.ONE, 0.6).set_trans(Tween.TRANS_SINE)
+	tw.tween_interval(0.8)
+	badge.visible = false
+	return badge
+
+
 ## Knapper side om side med lik bredde.
 static func _row(buttons: Array) -> HBoxContainer:
 	var row := UI.hbox(8)
@@ -413,7 +440,7 @@ func _update_badge() -> void:
 		Net.send({ "t": Protocol.FRIEND, "action": "list" })
 
 
-## «Venner», med hvor mange som er online og en prikk ved nye forespørsler.
+## «Venner», med hvor mange som er online og en rød prikk med antallet nye forespørsler.
 ## Profilbildet (og fargen fra skinnet) ved navnet. Oppdateres når kontoens profil kommer ved innlogging.
 func _on_profile_synced() -> void:
 	_avatar.set_avatar(Settings.avatar, Settings.display_name(), Skins.color_of(Settings.look().skin))
@@ -424,9 +451,10 @@ func _update_friends_button() -> void:
 	var text := tr("Venner")
 	if not online.is_empty():
 		text += " (%d)" % online.size()
-	if not (Net.friends.get("requests", []) as Array).is_empty():
-		text += "  •"
 	_friends_button.text = text
+	var requests := (Net.friends.get("requests", []) as Array).size()
+	_request_badge.visible = requests > 0
+	(_request_badge.get_child(0) as Label).text = str(requests) if requests < 10 else "9+"
 	EloBadge.set_elo(_badge, int(Net.user.get("elo", -1)) if Net.is_logged_in() else -1, 20)
 
 
@@ -731,8 +759,7 @@ func _start_replay(rec: Dictionary) -> void:
 	var looks := []
 	for i in 2:
 		var p: Dictionary = recs[i] if i < recs.size() and recs[i] is Dictionary else {}
-		looks.append(Skins.look(str(p.get("skin", Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2)),
-			str(p.get("decal", "none")), "classic", bool(p.get("away", false)), str(p.get("decal_color", "auto"))))
+		looks.append(Skins.look_of(p, Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2))
 	var pair := Skins.resolve_pair(looks[0], looks[1])
 	app.board.set_looks(pair[0], pair[1])
 	var newest: bool = Net.last_games.is_empty() or rec == Net.last_games[0]

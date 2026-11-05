@@ -20,6 +20,7 @@ const ACCENT_HOVER := Color("7891c4")
 const ACCENT_PRESSED := Color("5a71a3")
 const DANGER := Color("d4706e")
 const SUCCESS := Color("6fb894")
+const NOTIFY := Color("e5484d")         ## Rød prikk for noe nytt som venter på deg (venneforespørsler)
 const RADIUS := 14
 
 
@@ -244,11 +245,32 @@ static func refocus_chat(e: LineEdit) -> void:
 
 ## Standardskriften med emojier som reserve (runde 18): Twemoji i farger, så emojier fra telefontastaturet
 ## vises i chatten. Nettleseren har ikke systemets skrifter, så uten denne ble de til firkanter.
+## Runde 19: på web er skriften ikke med i spillpakken (den var nesten halve pakken), men ligger ved siden
+## av som emoji.ttf og hentes når spillet har startet (ClientRoot, add_emoji_font). Da starter spillet
+## raskere, og emojiene kommer et øyeblikk etter.
+const EMOJI_FONT := "res://assets/fonts/Twemoji.Mozilla.ttf"
+static var _emoji_font: FontVariation
+
+
 static func emoji_font() -> Font:
-	var font := FontVariation.new()
-	font.base_font = ThemeDB.fallback_font
-	font.fallbacks = [preload("res://assets/fonts/Twemoji.Mozilla.ttf")]
-	return font
+	if _emoji_font == null:
+		_emoji_font = FontVariation.new()
+		_emoji_font.base_font = ThemeDB.fallback_font
+		if ResourceLoader.exists(EMOJI_FONT):
+			_emoji_font.fallbacks = [load(EMOJI_FONT)]
+	return _emoji_font
+
+
+static func has_emoji_font() -> bool:
+	return not (emoji_font() as FontVariation).fallbacks.is_empty()
+
+
+## Emojiskriften hentet fra nettet (innholdet i en .ttf). Tekst som allerede vises, tegnes på nytt.
+static func add_emoji_font(data: PackedByteArray) -> void:
+	var f := FontFile.new()
+	f.data = data
+	f.disable_embedded_bitmaps = true   # som i importen
+	(emoji_font() as FontVariation).fallbacks = [f]
 
 
 static func is_touch_device() -> bool:

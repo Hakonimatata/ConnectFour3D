@@ -39,6 +39,9 @@ WORKDIR /app
 COPY . .
 RUN godot --headless --path /app --import || true
 RUN mkdir -p /out/web && godot --headless --path /app --export-release "Web" /out/web/index.html
+# Emojiskriften ved siden av spillet, og index.wasm ferdig komprimert med brotli (runde 19, se scripts/pack_web.ps1)
+RUN apt-get update && apt-get install -y --no-install-recommends brotli && rm -rf /var/lib/apt/lists/* \
+	&& cp assets/fonts/Twemoji.Mozilla.ttf /out/web/emoji.ttf && brotli -q 11 /out/web/index.wasm
 
 # ---- Caddy: serverer web-klienten og sender /ws videre til spillserveren ----
 FROM caddy:2 AS web

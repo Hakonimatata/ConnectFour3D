@@ -794,3 +794,97 @@ Chatten var fortsatt ustabil på iPhone. Dette var galt, og slik er det rettet (
 - **Raskere omlegging:** nettleseren sier fra med en gang tastaturet kommer eller går (visualViewport), i stedet for at spillet sjekker hvert 0,15 sekund.
 - **«Lukk» i chatten på hovedmenyen virket ikke** etter første versjon av rettingen: menyen trodde man fortsatt skrev (de 150 ms), og holdt chatten åpen for tastaturet. Nå avslutter et fokus som går til spillflaten skrivingen med en gang, og «Lukk» avslutter skrivingen uansett (`WebTextField.stop`).
 - **Testet:** 220 Godot-tester, alle grønne. JavaScript-koden er testet i Edge (headless) med falske berøringer og et falskt tastatur: flytting bort og tilbake, kort og varig fokustap, feltet over tastaturet, tidsfristen uten tastatur, sveip, og at Send holder fokuset, at et trykk på spillflaten avslutter skrivingen med en gang, og at «Lukk» lukker chatten mens man skriver. Safari på iPhone oppfører seg annerledes enn Edge, så det må prøves på en ekte iPhone.
+
+## Runde 19 – Punktene i Description.md (04.11.2026)
+
+- **Mer varierte oppgaver, i flere plan** (`ai/puzzle.gd`, `tools/make_puzzle_bank.gd`, `tools/make_daily_bank.gd`):
+  - **Det som gikk igjen (målt):**
+    - To av tre «Tving frem seier» lå helt i én høyde: et vanlig firepårad på ett lag, med rette og flate diagonale trusler. I «Flere oppgaver» gjaldt det 13 av 15 på Lett.
+    - Av 30 «Vinn på N trekk» lå 12 i én høyde. 17 av de 18 andre endte med samme triks: tre trekk i samme kolonne (legg under, motstanderen må ta trusselen, vinn oppå).
+  - **Nå går alle oppgavene i flere plan:** angriperens brikker havner i minst to høyder, og minst én trussel går oppover (rett opp, skrått langs en vegg eller på romdiagonalen). `Puzzle.shape` beskriver løsningen (retningen på truslene og vinnerlinjen, høydene, stablet slutt), og `Puzzle.is_3d` sjekker kravet.
+  - **«Flere oppgaver»:** 20 per nivå (før 15), alle i flere plan, og høyst 8 per nivå med vinnerlinjen i samme retning. 35 av de gamle passet og er beholdt med samme id, så fremgangen stemmer. 45 er nye. Motstanderens tregeste svar er 112 ms her.
+  - **Dagens oppgave:**
+    - «Tving frem seier» ligger nå også ferdig i banken: 120 oppgaver i flere plan, nok til ett år (hver tredje dag). Vinnerlinjene: 45 skrått langs en vegg, 30 rett opp, 21 rett bortover, 17 romdiagonale og 7 flate diagonaler. Med kravet om flere plan tok det opptil 8 sekunder å lage en når dagen kom, og serveren (eller nettleseren uten nett) ville stått stille så lenge.
+    - «Vinn på N trekk»: alle 30 går i flere plan. 13 av dem er uten trikset med tre trekk i samme kolonne, og de veksles med de andre, så trikset ikke kommer hver gang.
+    - Verktøyet leter med flere prosesser samtidig (`-- 30 5 75 120`: antall, prosesser, minutter, antall «Tving frem seier»). Med 5 prosesser i 75 minutter fant det 107 «Vinn på N trekk» i flere plan, 13 av dem uten trikset. De 120 «Tving frem seier» tok 2 minutter.
+- **Nye effekter på skins** (`assets/shaders/piece.gdshader`, `client/skins.gd`):
+  - **Tegneserie** (åpen for alle): flate farger, skyggen trykt med store rasterprikker, hvit glans og tykk svart kant.
+  - **Cel-shading** (nivå 3): tre harde lystrinn med kaldere skygge, skarp glans og svart kant.
+  - **Skisse** (nivå 5): blyantstreker på papir, med flere lag kryssende streker der det er mørkt, og kant i blyantfargen.
+  - **CMYK** (nivå 8): trykk med fire rasterprikker (cyan, magenta, gul og svart) i hver sin vinkel på papir.
+  - **Akvarell** (nivå 11): maling som flyter ut på papiret, mørkere i kantene der den tørket.
+  - **Glitch** (nivå 14): skrå felt med fargekanter (forskjøvet rød og blå kanal) og skannelinjer. I korte støt hopper rader sidelengs og blokker blinker.
+  - **Kanten** er et ekstra pass (`assets/shaders/piece_outline.gdshader`): brikken tegnes litt større, bare baksiden. Den forstørres fra midten, ikke langs normalene, så kanten ikke sprekker ved de skarpe kantene.
+  - **Rasterprikkene og strekene** går et helt antall ganger rundt brikken, så det ikke blir noen søm. Blir de for små på skjermen, tegnes gjennomsnittsfargen i stedet, så de ikke flimrer.
+  - Hver stil kompileres bare når den brukes, som før.
+- **Kortere lastetid** (`server/web_file_server.gd`, `scripts/pack_web.ps1`, `client/ui/ui.gd`):
+  - **Neste besøk laster ingenting på nytt:** serveren sendte filene med `Cache-Control: no-cache`, men uten ETag eller dato. Da måtte nettleseren laste ned hele spillet (ca. 11,7 MB) hver gang. Nå har hver fil ETag og dato, og har nettleseren filen fra før, svarer serveren «304». Nettleseren kan da også bruke den ferdig kompilerte `index.wasm` fra forrige gang, så spillet starter raskere.
+  - **Brotli:** `index.wasm` er 6,9 MB med brotli, mot 10,1 MB med gzip. Eksporten (`scripts\web.cmd export`) lager `index.wasm.br` når `brotli` finnes (det følger med Git for Windows), og serveren sender den til nettlesere som støtter det. Filen er den samme til Godot oppdateres, så den komprimeres bare på nytt da (1–2 minutter).
+  - **Emojiskriften hentes etterpå:** Twemoji var nesten halve spillpakken (1,6 MB, nå 0,8 MB). Nå ligger den ved siden av (`emoji.ttf`, 0,7 MB med gzip) og hentes når spillet har startet. Emojier i chatten kommer et øyeblikk etter.
+  - **Første besøk:** ca. 7,7 MB i stedet for 11,7 MB (`index.wasm` 6,9 MB og spillpakken 0,7 MB, før 1,5 MB).
+  - Docker-oppsettet (Caddy) gjør det samme: `emoji.ttf` ved siden av, og `index.wasm.br`.
+- **Tydeligere varsel om venneforespørsler** (`client/ui/main_menu.gd`): en rød prikk med antallet øverst til høyre på «Venner». Den pulserer svakt. Før var det bare en liten «•» i teksten. Forespørslene på vennesiden har også rød prikk.
+- **Nytt ikon** (`icon.svg`): brettet 4×4 på skrå med rutenettet, som i spillet. Fire blå brikker på rad gjennom høydene (romdiagonal) står på oransje brikker, med en gyllen vinnerlinje gjennom dem, og et par brikker til på brettet. Ikonet brukes som fanikon, på hjemskjermen og på lasteskjermen. Det er sjekket i 512, 180, 32 og 16 piksler.
+- **Testet:** 225 tester, alle grønne. Nye tester:
+  - oppgavene går i flere plan (retningene, en gammel flat oppgave, dagens oppgave, «Flere oppgaver», «Tving frem seier» i banken og alle «Vinn på N trekk»), og høyst to av tre «Vinn på N trekk» ender med tre trekk i samme kolonne;
+  - ETag og «304», og brotli når nettleseren støtter det;
+  - emojiskriften lastet fra fila;
+  - kanten på de tegnede skinsene;
+  - den røde prikken med antallet.
+  - Web-bygget er startet i Edge (headless) mot en midlertidig server: spillet starter og henter `emoji.ttf`, `index.wasm` kommer med brotli, og ved ny innlasting svarer serveren «304» på alle filene.
+  - Skjermbilder av alle de nye skinsene (hjemme og borte, stablet og med merke), menyen med den røde prikken, og ikonet i fire størrelser.
+
+## Runde 19 (forts.) – Effekter oppå alle skins, hvit bakgrunn og chatten i partiet på iPhone (04.11.2026)
+
+- **Effektene er egne valg, ikke skins** (`assets/shaders/piece.gdshader`, `client/skins.gd`, Innstillinger → «Effekt»):
+  - Tegneserie, cel-shading, skisse, CMYK, akvarell og glitch legges oppå skinnet du har valgt, slik merket gjør. De seks skinsene fra runde 19 er borte.
+  - **Slik virker det:** skinnet og merket tegnes som før, og effekten tegner fargen på nytt:
+    - Tegneserie og cel-shading tar ut det myke lyset skinnet har, og tegner det med rasterprikker eller tre harde trinn.
+    - Skisse tegner med fargeblyant i skinnets farger på farget papir.
+    - CMYK trykker fargen med fire raster.
+    - Akvarell lar skinnet flyte ut på papir.
+    - Glitch dreier noen rader litt rundt brikken i korte støt, så mønsteret i skinnet hopper sidelengs. Radene får byttet fargekanalene, og brikken får fargekanter, skannelinjer og blokker som blinker.
+  - **Kant:** tegneserie, cel-shading og skisse har fortsatt en tegnet kant.
+  - **Kompilering:** shaderen lages for hver kombinasjon av stil, merke og effekt (`#define EFFECT`). Bare det som brukes, kompileres.
+  - **Opplåsing som før:** tegneserie er åpen for alle, cel-shading nivå 3, skisse 5, CMYK 8, akvarell 11 og glitch 14 (`effect:<id>` i `core/progression.gd`).
+  - **Synlig for andre:** effekten lagres på kontoen og sendes til de andre i rommet, i partiet og i turneringer. Serveren viser «ingen» for en effekt du ikke har låst opp.
+  - **Har du valgt en av de gamle effekt-skinsene:** du får Havblå med den effekten (på enheten og på kontoen).
+  - Sjekket i skjermbilder på ti skins (blant annet Gull, Marmor, Lava, Kretskort, Karbon og Glass) med alle effektene.
+- **Hvit bakgrunn under partiet på iPhone** (`client/client_root.gd`, `assets/shaders/background.gdshader`):
+  - **Symptom:** brettet ble tegnet som vanlig, men alt rundt ble helt hvitt.
+  - **Årsak:** bakgrunnen lå på et eget 2D-lag bak 3D-bildet (`BG_CANVAS`). Den veien er skjør på iOS: Godot har en kjent feil der bakgrunn fra 2D-laget blir borte på iPhone. Hvitt er nettopp det laget blir når skyggeleggingen (shaderen) ikke kommer med.
+  - **Retting:** nå tegnes bakgrunnen på innsiden av en stor kule rundt brettet, i selve 3D-bildet, med samme gradienter og stjerner i skjermkoordinater. Den ser lik ut som før (sammenlignet piksel for piksel på PC). 2D-laget er borte, og dermed også en ekstra kopi av hele skjermen hvert bilde.
+- **Chatten i partiet på iPhone** (`client/ui/game_screen.gd`, `client/ui/chat_panel.gd`):
+  - **Problemet:** chatpanelet tok 45 % av høyden. Når tastaturet kom opp, ble det 45 % av det lille som var igjen, og lavere enn innholdet (meldinger, hurtigmeldinger og felt). Tekstfeltet havnet under tastaturet, og feltet nettleseren viser, ble lagt et annet sted enn feltet i spillet. På små telefoner ble plassen over tastaturet bredere enn den var høy, så oppsettet byttet til liggende med panelet til høyre.
+  - **Nå:** mens man skriver, får chatten hele plassen over tastaturet, under spillerkortene (med klokkene). Hurtigmeldingene og bunnlinjen skjules til tastaturet går ned, og oppsettet byttes ikke mens man skriver. Slik virker chatten i hovedmenyen også.
+- **Testet:** 226 tester, alle grønne. Nye eller endrede tester:
+  - effektene på et vilkårlig skin, kanten, opplåsingen og overgangen fra de gamle effekt-skinsene;
+  - effekten i rommet og på kontoen (serveren);
+  - chatten i partiet med tastaturet oppe. Den feiler uten rettingen.
+
+## Runde 19 (forts.) – Oppgavene spilles ut (05.11.2026)
+
+- **Et feil trekk stopper deg ikke lenger** (`ai/puzzle.gd`, `client/ui/puzzle_screen.gd`):
+  - **Før:** oppgaven var over med en gang du gjorde noe annet enn løsningen. Et trekk uten trussel i «Tving frem seier» ga «Prøv igjen» før motstanderen hadde svart, og i «Vinn på N trekk» måtte du følge den ene løsningen. Du fikk ikke se hvorfor det var feil.
+  - **Nå:** partiet spilles videre, og motstanderen svarer etter hvert trekk. Den gjør dette, i denne rekkefølgen (`Puzzle.respond`):
+    1. Den vinner med en gang hvis den kan.
+    2. Har den selv en tvungen seier med trusler, spiller den den. Da ser du hvordan du taper.
+    3. Ellers stopper den seieren din, eller utsetter den så lenge som mulig. Den ser stille seire inntil 3 trekk frem (eksakt søk) og seire med bare trusler inntil 6 trekk frem.
+    4. Står flere trekk likt, tar den det som bygger mest på egne linjer og stenger dine.
+  - **Etter hvert svar** står det om du fortsatt kan vinne, for eksempel «Bra! 2 trekk igjen» eller «Du kan fortsatt vinne, men det tar 3 trekk til». Har du ikke lenger noen tvungen seier, står det også.
+  - **Taper du,** står det hva som skjedde («Motstanderen fikk fire på rad», «Trekkene dine er brukt opp») og hvilket trekk seieren glapp med. Motstanderens fire på rad lyses opp.
+  - **«Finn beste trekk»:** bommer du, spiller motstanderen ut seieren sin, og du forsvarer deg til den vinner.
+  - «Prøv igjen» kan trykkes når som helst underveis.
+- **Flere løsninger og seire på flere trekk godtas:**
+  - Alle seire innen den raskeste seieren pluss 3 trekk (`Puzzle.move_limit`) er løst, også på dagens oppgave. Telleren viser «Trekk: 2 av 6».
+  - Bruker du flere trekk enn den raskeste, står det etter «Løst», med tips om «Vis løsning».
+  - Kan motstanderen tvinge frem seier selv, spilles det ut også etter at trekkene dine er brukt opp.
+- **Serveren sjekker løsningen på samme måte:** den spiller trekkene dine mot det samme svaret (`Puzzle.reply`, som klienten bruker). Svaret er alltid det samme for samme stilling: fast rekkefølge, og trusselsøket har et fast antall steg (`THREAT_STEPS`), ikke en tidsfrist.
+  - Følger du løsningen i «Vinn på N trekk», svarer motstanderen som i den.
+  - «Vis løsning» viser de samme løsningene som før, for alle 200 oppgavene med «Tving frem seier».
+- **Tid:** motstanderens svar tar normalt noen få millisekunder. I verste fall tar det rundt 0,4 s på PC, målt etter alle mulige første trekk i alle oppgavene. Før stegbegrensningen var det opptil 3,7 s.
+- **Testet:** 228 tester, alle grønne. Nye eller endrede tester:
+  - En seier på flere trekk enn den raskeste godtas, men ikke over grensen.
+  - Gir du motstanderen et fritt trekk og den har en tvungen seier, spiller den den og vinner.
+  - Svaret er det samme også etter JSON.
+  - Oppgaveskjermen: et feil trekk stopper ikke oppgaven, trekkene telles, og partiet spilles til det er avgjort, med en forklaring.

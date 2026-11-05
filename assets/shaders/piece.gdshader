@@ -8,10 +8,13 @@ render_mode unshaded;
 //         9 nordlys, 10 is, 11 tre, 12 keramikk, 13 glass, 14 kobber med patina,
 //         15 plasma, 16 kintsugi, 17 damaskusstål, 18 kretskort, 19 disco, 20 opal, 21 piksel,
 //         22 kode, 23 giftig, 24 sort hull
+// Effekter oppå stilen (runde 19, Skins.EFFECTS): 0 ingen, 1 tegneserie, 2 cel-shading, 3 skisse,
+//         4 CMYK-trykk, 5 akvarell, 6 glitch. De tar fargen stilen (og merket) ga, og tegner den på nytt,
+//         så de passer på alle skins. 1–3 får også en tegnet kant (piece_outline.gdshader).
 // Merker (decal på toppen): 0 ingen, 1 stjerne, 2 prikk, 3 ring, 4 kryss, 5 diamant, 6 hjerte,
 //         7 sekskant, 8 måne, 9 krone, 10 lyn, 11 pil, 12 flamme, 13 laurbær
 //
-// Stil og merke velges med STYLE og DECAL (preprosessoren), ikke uniforms. Skins setter inn
+// Stil, merke og effekt velges med STYLE, DECAL og EFFECT (preprosessoren), ikke uniforms. Skins setter inn
 // #define-linjene ved markøren under og lager én liten shader per kombinasjon. Da kompileres
 // bare koden som faktisk brukes, og det første bildet med brikker henger ikke (særlig på web).
 // @SPECIALIZE
@@ -20,6 +23,9 @@ render_mode unshaded;
 #endif
 #ifndef DECAL
 #define DECAL 0
+#endif
+#ifndef EFFECT
+#define EFFECT 0
 #endif
 
 uniform vec4 color_a : source_color = vec4(0.0, 0.5, 1.0, 1.0);   // nederst / hovedfarge
@@ -70,6 +76,39 @@ float fbm(vec3 p) {
 vec3 hue(float h) {
 	return clamp(abs(fract(h + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 }
+
+#if EFFECT > 0
+// Effektene (runde 19). Mønstrene måles i «omganger»: x = 0..1 rundt brikken, y = høyden med
+// omkretsen som enhet. Da blir prikkene runde, og mønsteret går opp rundt brikken (ingen søm).
+const float CIRC = 0.5466;   // omkretsen til brikken (2π · 0.087)
+
+float luma(vec3 c) {
+	return dot(c, vec3(0.299, 0.587, 0.114));
+}
+
+vec2 turns(vec3 p, bool top, float ang) {
+	return top ? p.xz / CIRC : vec2(ang / 6.2831853, p.y / CIRC);
+}
+
+// Rasterprikker vridd i retningen (a, b), n · |(a, b)| prikker rundt brikken. Gir 1 i prikken med
+// radius r (0..0,71 av avstanden mellom prikkene). Blir prikkene for små på skjermen, gis dekningen
+// i stedet, så det ikke flimrer.
+float halftone(vec2 t, vec2 ab, float n, float r) {
+	vec2 q = n * vec2(ab.x * t.x + ab.y * t.y, -ab.y * t.x + ab.x * t.y);
+	float d = length(fract(q) - 0.5);
+	float aa = fwidth(d) + 0.001;
+	float dots = 1.0 - smoothstep(r - aa, r + aa, d);
+	return mix(dots, clamp(3.14159 * r * r, 0.0, 1.0), smoothstep(0.2, 0.5, length(fwidth(q))));
+}
+
+// Streker på tvers av retningen (a, b), n · |(a, b)| streker rundt. w = bredden (0..1 av avstanden).
+float hatch(vec2 t, vec2 ab, float n, float w) {
+	float q = n * (ab.x * t.x + ab.y * t.y);
+	float aa = fwidth(q) + 0.001;
+	float lines = 1.0 - smoothstep(w * 0.5 - aa, w * 0.5 + aa, abs(fract(q) - 0.5));
+	return mix(lines, w, smoothstep(0.2, 0.5, fwidth(q)));
+}
+#endif
 
 // --- Merker (avstandsfelt i en enhetssirkel på toppen) ---
 float sd_star(vec2 p, float r, float rf) {
@@ -228,12 +267,22 @@ float decal_sdf(vec2 p) {
 }
 
 void fragment() {
+	vec3 lp = lpos;   // punktet på brikken (glitch dreier det, se under)
+#if EFFECT == 6
+	// Glitch: i korte støt (burst) dreies noen rader litt rundt brikken, så mønsteret i skinnet hopper sidelengs
+	float g_tick = floor(TIME * 10.0);
+	float g_burst = step(0.6, hash3(vec3(g_tick, 9.1, 2.3)));
+	float g_row = floor((lnorm.y > 0.7 ? lp.z : lp.y) * 70.0);
+	float g_jump = step(0.7, hash3(vec3(g_row, g_tick, 1.7))) * g_burst;
+	float g_turn = (hash3(vec3(g_row, g_tick, 4.1)) - 0.5) * 1.4 * g_jump;
+	lp.xz = mat2(vec2(cos(g_turn), sin(g_turn)), vec2(-sin(g_turn), cos(g_turn))) * lp.xz;
+#endif
 	vec3 N = normalize(NORMAL);
 	vec3 V = normalize(VIEW);
 	vec3 up = normalize((VIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 	vec3 key = normalize(up + normalize((VIEW_MATRIX * vec4(0.4, 0.0, 0.3, 0.0)).xyz) * 0.6);
-	float h = clamp(lpos.y / HEIGHT, 0.0, 1.0);
-	float ang = atan(lpos.z, lpos.x);
+	float h = clamp(lp.y / HEIGHT, 0.0, 1.0);
+	float ang = atan(lp.z, lp.x);
 	bool is_top = lnorm.y > 0.7;
 
 	float ndl = clamp(dot(N, up) * 0.5 + 0.5, 0.0, 1.0);
@@ -256,7 +305,7 @@ void fragment() {
 		col = env + vec3(spec) * mix(vec3(1.0), base, 0.25) * 1.3 + base * rim * 0.4;
 #elif STYLE == 2
 	// lava: mørk stein med glødende sprekker
-		float n = fbm(lpos * 38.0 + vec3(0.0, -TIME * 0.35, 0.0));
+		float n = fbm(lp * 38.0 + vec3(0.0, -TIME * 0.35, 0.0));
 		float crack = 1.0 - smoothstep(0.02, 0.09, abs(n - 0.5));
 		vec3 stone = color_b.rgb * (0.25 + 0.35 * toon);
 		float pulse = 0.75 + 0.25 * sin(TIME * 2.2 + n * 9.0);
@@ -264,9 +313,9 @@ void fragment() {
 		glow = color_a.rgb * crack * 0.6;
 #elif STYLE == 3
 	// galakse: tåke og blinkende stjerner
-		float neb = fbm(lpos * 22.0 + vec3(TIME * 0.05));
+		float neb = fbm(lp * 22.0 + vec3(TIME * 0.05));
 		col = mix(color_a.rgb, color_b.rgb, neb) * (0.55 + 0.45 * toon);
-		vec3 cell = floor(lpos * 160.0);
+		vec3 cell = floor(lp * 160.0);
 		float star = step(0.985, hash3(cell));
 		float tw = 0.5 + 0.5 * sin(TIME * 3.0 + hash3(cell + 7.0) * 30.0);
 		col += vec3(star * tw * 1.4);
@@ -287,7 +336,7 @@ void fragment() {
 		float g;
 		if (is_top) {
 			// Toppen: mørk, med en lysende ring langs kanten
-			float r = length(lpos.xz) / TOP_R;
+			float r = length(lp.xz) / TOP_R;
 			g = smoothstep(0.78, 0.9, r) * (1.0 - smoothstep(1.02, 1.12, r));
 		} else {
 			float bands = smoothstep(0.88, 0.96, h) + (1.0 - smoothstep(0.04, 0.12, h));
@@ -299,8 +348,8 @@ void fragment() {
 		glow = color_a.rgb * g * 0.5;
 #elif STYLE == 6
 	// marmor: årer gjennom steinen
-		float n = fbm(lpos * 30.0);
-		float vein = abs(sin((lpos.x + lpos.y * 0.6) * 90.0 + n * 9.0));
+		float n = fbm(lp * 30.0);
+		float vein = abs(sin((lp.x + lp.y * 0.6) * 90.0 + n * 9.0));
 		vein = 1.0 - smoothstep(0.0, 0.18, vein);
 		col = mix(color_a.rgb, color_b.rgb, vein * 0.85) * (0.7 + 0.3 * toon) + vec3(spec) * 0.35;
 #elif STYLE == 7
@@ -318,7 +367,7 @@ void fragment() {
 #elif STYLE == 9
 	// nordlys: mørk himmel med bølgende lysbånd
 		vec3 sky = color_a.rgb * (0.7 + 0.5 * toon);
-		float flow = fbm(vec3(lpos.x * 18.0, lpos.y * 10.0 - TIME * 0.15, lpos.z * 18.0));
+		float flow = fbm(vec3(lp.x * 18.0, lp.y * 10.0 - TIME * 0.15, lp.z * 18.0));
 		float wave = sin(ang * 3.0 + h * 7.0 + TIME * 0.7 + flow * 5.0);
 		float band = smoothstep(0.35, 1.0, wave) * smoothstep(0.05, 0.6, h);
 		vec3 light = mix(color_b.rgb, color_b.rgb.bgr, 0.5 + 0.5 * sin(h * 4.0 + TIME * 0.3));
@@ -326,21 +375,21 @@ void fragment() {
 		glow = light * band * 0.35;
 #elif STYLE == 10
 	// is: frostede fasetter, blank kant og små glimt
-		float facet = hash3(floor(lpos * 55.0 + vec3(0.5)));
+		float facet = hash3(floor(lp * 55.0 + vec3(0.5)));
 		vec3 icec = mix(color_a.rgb, color_b.rgb, facet * 0.6 + h * 0.4);
-		vec3 cell = floor(lpos * 140.0);
+		vec3 cell = floor(lp * 140.0);
 		float spark = step(0.992, hash3(cell)) * (0.5 + 0.5 * sin(TIME * 4.0 + hash3(cell + 3.0) * 20.0));
 		col = icec * (0.75 + 0.25 * toon) + vec3(1.0) * rim * 0.55 + vec3(spec) * 1.2 + vec3(spark);
 #elif STYLE == 11
 	// tre: årringer og fiber
-		float r = length(lpos.xz) * 70.0 + fbm(lpos * 28.0) * 2.5 + lpos.y * 4.0;
+		float r = length(lp.xz) * 70.0 + fbm(lp * 28.0) * 2.5 + lp.y * 4.0;
 		float rings = smoothstep(0.15, 0.85, abs(fract(r) - 0.5) * 2.0);
-		float fiber = noise3(vec3(lpos.x * 300.0, lpos.y * 18.0, lpos.z * 300.0)) * 0.12;
+		float fiber = noise3(vec3(lp.x * 300.0, lp.y * 18.0, lp.z * 300.0)) * 0.12;
 		vec3 wood = mix(color_a.rgb, color_b.rgb, rings) - fiber;
 		col = wood * (0.65 + 0.35 * toon) + vec3(spec) * 0.12;
 #elif STYLE == 12
 	// keramikk: matt glasur med fine prikker
-		float speck = step(0.975, hash3(floor(lpos * 320.0)));
+		float speck = step(0.975, hash3(floor(lp * 320.0)));
 		vec3 c = mix(color_a.rgb, color_b.rgb, h);
 		col = c * (0.72 + 0.28 * toon) - speck * 0.12 + c * rim * 0.12;
 #elif STYLE == 13
@@ -353,12 +402,12 @@ void fragment() {
 	// kobber med grønn patina i flekker
 		float sky = smoothstep(-0.35, 0.75, dot(R, up));
 		vec3 metal = mix(base * 0.25, mix(base, vec3(1.0), 0.3), sky) + vec3(spec) * mix(vec3(1.0), base, 0.3);
-		float mask = smoothstep(0.52, 0.68, fbm(lpos * 26.0 + vec3(3.1)));
+		float mask = smoothstep(0.52, 0.68, fbm(lp * 26.0 + vec3(3.1)));
 		vec3 patina = vec3(0.33, 0.68, 0.58) * (0.6 + 0.4 * toon);
 		col = mix(metal, patina, mask * 0.85);
 #elif STYLE == 15
 	// plasma: elektriske buer som kryper over en mørk kjerne
-		vec3 q = lpos * 30.0;
+		vec3 q = lp * 30.0;
 		float n1 = fbm(q + vec3(0.0, TIME * 0.6, 0.0));
 		float n2 = fbm(q * 1.3 + vec3(TIME * 0.4, 5.2, -TIME * 0.3));
 		float dn = abs(n1 - n2);
@@ -368,10 +417,10 @@ void fragment() {
 		glow = color_b.rgb * (arc * 0.7 + rim * 0.3);
 #elif STYLE == 16
 	// kintsugi: matt keramikk reparert med gull i sprekkene
-		float n = fbm(lpos * 15.0 + vec3(7.3));
+		float n = fbm(lp * 15.0 + vec3(7.3));
 		float dn = abs(n - 0.5);
 		float crack = 1.0 - smoothstep(0.012, 0.012 + fwidth(dn) * 1.5, dn);
-		float n2 = noise3(lpos * 60.0 + vec3(1.7));
+		float n2 = noise3(lp * 60.0 + vec3(1.7));
 		float dn2 = abs(n2 - 0.5);
 		crack = max(crack, (1.0 - smoothstep(0.015, 0.015 + fwidth(dn2) * 1.5, dn2)) * smoothstep(0.47, 0.5, n) * (1.0 - smoothstep(0.5, 0.53, n)));
 		vec3 glaze = color_a.rgb * (0.72 + 0.28 * toon) + vec3(spec) * 0.1;
@@ -381,15 +430,15 @@ void fragment() {
 #elif STYLE == 17
 	// damaskusstål: bølgende lag i blankt stål
 		// Mange tynne lag som vris av støy: vannrette på siden, ringer på toppen
-		float warp = fbm(lpos * 26.0) * 15.0 + noise3(lpos * 80.0) * 2.0;
-		float t = lpos.y * 420.0 + length(lpos.xz) * 300.0 + warp;
+		float warp = fbm(lp * 26.0) * 15.0 + noise3(lp * 80.0) * 2.0;
+		float t = lp.y * 420.0 + length(lp.xz) * 300.0 + warp;
 		float band = smoothstep(0.25, 0.75, 0.5 + 0.5 * sin(t));
 		vec3 steel = mix(color_a.rgb, color_b.rgb, 0.25 + 0.6 * band);
 		float sky = smoothstep(-0.35, 0.75, dot(R, up));
 		col = mix(steel * 0.3, steel * 1.15, sky) + vec3(spec) * 1.2 + steel * rim * 0.3;
 #elif STYLE == 18
 	// kretskort: ledningsbaner og loddepunkter med pulser som løper
-		vec2 uv = is_top ? lpos.xz * 160.0 : vec2(ang * 7.0028, lpos.y * 160.0);   // 44 ruter rundt
+		vec2 uv = is_top ? lp.xz * 160.0 : vec2(ang * 7.0028, lp.y * 160.0);   // 44 ruter rundt
 		vec2 cell = floor(uv);
 		vec2 f = fract(uv) - 0.5;
 		float hrow = step(0.45, hash3(vec3(cell.y, floor(cell.x / 4.0), 1.3)));
@@ -404,7 +453,7 @@ void fragment() {
 		glow = color_b.rgb * trace * pulse * 0.45;
 #elif STYLE == 19
 	// disco: speilfliser som blinker i lysshowet
-		vec2 uv = is_top ? lpos.xz * 105.0 : vec2(ang * 4.7746, lpos.y * 105.0);   // 30 fliser rundt
+		vec2 uv = is_top ? lp.xz * 105.0 : vec2(ang * 4.7746, lp.y * 105.0);   // 30 fliser rundt
 		vec2 cell = floor(uv);
 		vec2 f = fract(uv);
 		float edge = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
@@ -418,24 +467,24 @@ void fragment() {
 		glow = light * flash * 0.45 * tile;
 #elif STYLE == 20
 	// opal: melkehvit stein med fargespill som flytter seg med blikket
-		float n = fbm(lpos * 26.0);
-		float r = hash3(floor(lpos * 85.0 + vec3(n * 3.0)));
+		float n = fbm(lp * 26.0);
+		float r = hash3(floor(lp * 85.0 + vec3(n * 3.0)));
 		float play = smoothstep(0.6, 0.95, sin(dot(N, V) * 10.0 + r * 30.0 + TIME * 0.3));
 		vec3 fire = mix(hue(r + dot(N, V) * 0.7), color_b.rgb, 0.25);
 		vec3 milk = mix(color_a.rgb, color_b.rgb, n * 0.6) * (0.78 + 0.22 * toon);
 		col = milk + fire * play * 0.6 + vec3(spec) * 0.7 + color_b.rgb * rim * 0.3;
 #elif STYLE == 21
 	// piksel: 8-bit-klosser med få fargetrinn
-		vec3 vox = floor(lpos * 75.0);
+		vec3 vox = floor(lp * 75.0);
 		float r = hash3(vox);
 		float shade = floor(clamp(toon * 0.9 + r * 0.3, 0.0, 0.999) * 4.0) / 3.0;
 		vec3 c = mix(color_a.rgb, color_b.rgb, step(0.8, r));
-		vec3 fv = fract(lpos * 75.0);
+		vec3 fv = fract(lp * 75.0);
 		float bevel = step(0.86, max(fv.x, max(fv.y, fv.z)));
 		col = c * (0.4 + 0.65 * shade) * (1.0 - bevel * 0.18);
 #elif STYLE == 22
 	// kode: fallende tegn i kolonner
-		vec2 uv = is_top ? lpos.xz * 150.0 : vec2(ang * 6.3662, lpos.y * 150.0);   // 40 kolonner rundt
+		vec2 uv = is_top ? lp.xz * 150.0 : vec2(ang * 6.3662, lp.y * 150.0);   // 40 kolonner rundt
 		vec2 cell = floor(uv);
 		vec2 f = fract(uv);
 		float off = hash3(vec3(cell.x, 3.0, 1.0));
@@ -449,9 +498,9 @@ void fragment() {
 		glow = color_b.rgb * glyph * bright * 0.5;
 #elif STYLE == 23
 	// giftig: selvlysende slim med bobler som stiger
-		float n = fbm(lpos * 24.0 + vec3(0.0, -TIME * 0.25, 0.0));
+		float n = fbm(lp * 24.0 + vec3(0.0, -TIME * 0.25, 0.0));
 		vec3 slime = mix(color_a.rgb * 0.3, color_a.rgb * 1.1, smoothstep(0.3, 0.75, n));
-		vec3 bp = lpos * 110.0 + vec3(0.0, -TIME * 2.5, 0.0);
+		vec3 bp = lp * 110.0 + vec3(0.0, -TIME * 2.5, 0.0);
 		vec3 bf = fract(bp) - 0.5;
 		float br = hash3(floor(bp));
 		float dl = abs(length(bf) - 0.3);
@@ -462,8 +511,8 @@ void fragment() {
 	// sort hull: nesten svart, med en virvlende ring av lys
 		vec3 voidc = vec3(0.012, 0.012, 0.018);
 		if (is_top) {
-			float r = length(lpos.xz) / TOP_R;
-			float arms = 0.5 + 0.5 * sin((ang + r * 5.0 - TIME * 1.2) * 3.0 + fbm(lpos * 40.0) * 4.0);
+			float r = length(lp.xz) / TOP_R;
+			float arms = 0.5 + 0.5 * sin((ang + r * 5.0 - TIME * 1.2) * 3.0 + fbm(lp * 40.0) * 4.0);
 			float disk = smoothstep(0.32, 0.5, r) * (1.0 - smoothstep(0.85, 1.05, r));
 			float horizon = 1.0 - smoothstep(0.0, 0.05, abs(r - 0.33));
 			vec3 hot = mix(color_a.rgb, color_b.rgb, arms);
@@ -481,12 +530,87 @@ void fragment() {
 #if DECAL > 0
 	if (is_top) {
 		// y snus, så merket står rett vei sett fra spillerens side av brettet
-		vec2 p = lpos.xz / TOP_R * vec2(1.0, -1.0);
+		vec2 p = lp.xz / TOP_R * vec2(1.0, -1.0);
 		float d = decal_sdf(p);
 		float aa = fwidth(d) * 1.2;
 		float m = (1.0 - smoothstep(-aa, aa, d)) * decal_color.a;
 		col = mix(col, decal_color.rgb * (0.85 + 0.15 * toon), m);
 	}
+#endif
+
+	// Effekten oppå (runde 19): tar fargen stilen og merket ga, og tegner den på nytt
+#if EFFECT > 0
+	vec3 e_skin = clamp(col, 0.0, 1.0);
+	float e_lit = clamp(dot(N, key) * 0.5 + 0.5, 0.0, 1.0);
+	// Fargen uten det myke lyset stilene har (de fleste ganger med toon): det tegnes på nytt under
+	vec3 e_fill = clamp(e_skin / toon, 0.0, 1.0);
+#endif
+#if EFFECT == 1
+	// tegneserie: flate, litt sterkere farger, skyggen trykt med rasterprikker, og en stor hvit glans
+	float e_shade = 1.0 - smoothstep(0.38, 0.78, e_lit);
+	vec3 e_flat = clamp(mix(vec3(luma(e_fill)), e_fill, 1.25), 0.0, 1.0);
+	float e_dots = halftone(turns(lp, is_top, ang), vec2(1.0, 1.0), 11.0, 0.62 * sqrt(e_shade));
+	col = mix(e_flat, e_flat * 0.22, e_dots);
+	float e_sa = fwidth(spec) + 0.002;
+	col = mix(col, vec3(1.0), smoothstep(0.32 - e_sa, 0.32 + e_sa, spec));
+#elif EFFECT == 2
+	// cel-shading: tre harde lystrinn i stedet for det myke lyset (kaldere i skyggen), litt sterkere farger,
+	// skarp glans og en lys kant
+	float e_aa = fwidth(e_lit) * 1.5 + 0.002;
+	float e_b1 = smoothstep(0.5 - e_aa, 0.5 + e_aa, e_lit);
+	float e_b2 = smoothstep(0.72 - e_aa, 0.72 + e_aa, e_lit);
+	vec3 e_cel = clamp(mix(vec3(luma(e_fill)), e_fill, 1.2), 0.0, 1.0);
+	col = mix(mix(e_cel * vec3(0.42, 0.46, 0.62), e_cel * 0.74, e_b1), e_cel, e_b2);
+	float e_sa = fwidth(spec) + 0.002;
+	float e_shine = smoothstep(0.5 - e_sa, 0.5 + e_sa, spec);
+	float e_edge = smoothstep(0.6, 0.64, rim) * e_b1;
+	col = mix(col, vec3(1.0), max(e_shine, e_edge * 0.5));
+#elif EFFECT == 3
+	// skisse: fargeblyant i skinnets farger på farget papir, flere lag streker der det er mørkt
+	float e_dark = 1.0 - sqrt(luma(e_skin)) * (0.55 + 0.45 * e_lit);
+	vec2 e_t = turns(lp, is_top, ang) + vec2(noise3(lp * 70.0) * 0.012, 0.0);   // ujevne streker
+	float e_pencil = hatch(e_t, vec2(1.0, 1.0), 16.0, 0.26) * smoothstep(0.2, 0.28, e_dark);
+	e_pencil = max(e_pencil, hatch(e_t, vec2(1.0, -1.0), 16.0, 0.24) * smoothstep(0.38, 0.46, e_dark));
+	e_pencil = max(e_pencil, hatch(e_t, vec2(0.0, 1.0), 26.0, 0.26) * smoothstep(0.55, 0.63, e_dark));
+	vec3 e_paper = mix(vec3(0.97, 0.95, 0.9), mix(e_fill, vec3(1.0), 0.35), 0.45) * (0.94 + 0.06 * noise3(lp * 420.0));
+	col = mix(e_paper, e_skin * 0.6, e_pencil * (0.55 + 0.45 * noise3(lp * 160.0)));
+#elif EFFECT == 4
+	// CMYK-trykk: fire raster (cyan, magenta, gul og svart) i hver sin vinkel på papir
+	float e_k = 1.0 - max(e_skin.r, max(e_skin.g, e_skin.b));
+	vec3 e_cmy = max((1.0 - e_skin - e_k) / max(1.0 - e_k, 0.001), vec3(0.0));
+	vec2 e_t = turns(lp, is_top, ang);
+	float e_dc = halftone(e_t, vec2(3.0, 1.0), 8.0, 0.6 * sqrt(e_cmy.x));
+	float e_dm = halftone(e_t + vec2(0.005, 0.003), vec2(1.0, 3.0), 8.0, 0.6 * sqrt(e_cmy.y));
+	float e_dy = halftone(e_t, vec2(1.0, 0.0), 26.0, 0.6 * sqrt(e_cmy.z));
+	float e_dk = halftone(e_t + vec2(0.003, 0.0), vec2(1.0, 1.0), 18.0, 0.6 * sqrt(e_k));
+	col = vec3(0.96, 0.94, 0.89) * mix(vec3(1.0), vec3(0.0, 0.62, 0.89), e_dc)
+		* mix(vec3(1.0), vec3(0.9, 0.0, 0.5), e_dm) * mix(vec3(1.0), vec3(1.0, 0.9, 0.0), e_dy)
+		* mix(vec3(1.0), vec3(0.13, 0.12, 0.14), e_dk);
+#elif EFFECT == 5
+	// akvarell: malingen (skinnet, med litt av draktens to farger) flyter ut på papiret, tettere i skyggen og
+	// mørkere i kantene der den tørket
+	float e_n = fbm(lp * 16.0 + vec3(5.3));
+	float e_m = fbm(lp * 34.0 + vec3(1.1));
+	vec3 e_paint = mix(e_skin, mix(color_a.rgb, color_b.rgb, smoothstep(0.38, 0.62, e_n)), 0.3);
+	float e_thin = smoothstep(0.25, 0.75, e_m * 0.6 + e_lit * 0.5);
+	float e_edge = 1.0 - smoothstep(0.0, 0.03 + fwidth(e_n), abs(e_n - 0.5));
+	vec3 e_paper = vec3(0.97, 0.955, 0.92) * (0.96 + 0.04 * noise3(lp * 380.0));
+	col = mix(e_paper, e_paint, 0.6 + 0.38 * (1.0 - e_thin)) * (1.0 - e_edge * 0.25);
+#elif EFFECT == 6
+	// glitch: radene som hopper (se toppen av fragment), får byttet fargekanalene. Fargekanter langs kanten
+	// (rød og blå forskjøvet), skannelinjer, og blokker som blinker i støtene.
+	vec2 e_g = is_top ? lp.xz : vec2(ang * 0.087, lp.y);
+	vec3 e_c = mix(e_skin, e_skin.brg, g_jump * 0.85);
+	float e_fringe = smoothstep(0.3, 0.75, rim) * 0.75;
+	e_c += (vec3(1.0, 0.1, 0.45) * smoothstep(0.2, 0.7, N.x) + vec3(0.1, 0.75, 1.0) * smoothstep(0.2, 0.7, -N.x)) * e_fringe;
+	float e_sl = e_g.y * 260.0 - TIME * 2.0;
+	float e_scan = 1.0 - 0.22 * smoothstep(0.2, 0.9, sin(e_sl)) * (1.0 - smoothstep(0.3, 0.8, fwidth(e_sl)));
+	float e_flash = step(0.95, hash3(vec3(floor(e_g.x * 18.0), floor(e_g.y * 20.0), g_tick))) * g_burst;
+	col = mix(e_c * e_scan, vec3(1.0) - clamp(e_c, 0.0, 1.0), e_flash);
+	glow += e_c * e_flash * 0.4 + color_a.rgb * g_jump * 0.12;
+#endif
+#if EFFECT == 3 || EFFECT == 4 || EFFECT == 5
+	glow *= 0.25;   // papir lyser nesten ikke
 #endif
 
 	col = col * (1.0 - dim * 0.6) + base * emission_energy + glow * (1.0 - dim);

@@ -94,3 +94,31 @@ func test_look_sanitizes_and_material_gets_parameters() -> void:
 	check(m.shader.code.contains("#define STYLE %d" % Skins.Style.LAVA), "stilen settes inn i koden")
 	check_eq(m.get_shader_parameter("color_a"), Skins.get_skin("lava").away.a)
 	check(Skins.swatch("gold").get_width() == 30)
+
+
+## Runde 19: effektene legges oppå et hvilket som helst skin. Cel-shading, tegneserie og skisse får en tegnet
+## kant (neste pass), de andre ikke.
+func test_effects_go_on_any_skin() -> void:
+	var m := Skins.make_material(Skins.look("lava", "star", "classic", false, "auto", "cmyk"))
+	check_eq(m.shader, Skins.shader_for(Skins.Style.LAVA, Skins.decal_index("star"), Skins.effect_index("cmyk")),
+		"spesialisert shader:")
+	check(m.shader.code.contains("#define EFFECT %d" % Skins.effect_index("cmyk")), "effekten settes inn i koden")
+	check(Skins.make_material(Skins.look("lava", "star")).shader != m.shader, "uten effekt: en annen shader")
+	check(m.next_pass == null, "CMYK har ingen kant")
+	for id in ["cel", "comic", "sketch"]:
+		var l := Skins.look("gold", "none", "classic", false, "auto", id)
+		check(Skins.make_material(l).next_pass is ShaderMaterial, "%s har kant" % id)
+	var comic := Skins.look("ocean", "none", "classic", false, "auto", "comic")
+	check(Skins.make_material(comic).next_pass == Skins.make_material(comic).next_pass, "kanten deles mellom brikkene")
+	check_eq(Skins.look("ocean", "none", "classic", false, "auto", "tull").effect, "none", "ukjent effekt:")
+	check_eq(Skins.look_of({ "skin": "lava", "effect": "glitch" }).effect, "glitch")
+	check_eq(Skins.look_of({}).effect, "none")
+	# Effektene var skins en kort stund: den som hadde valgt et av dem, får standard-skinnet med effekten
+	check(not Skins.is_valid("cel"), "ikke lenger et skin")
+	check_eq(Skins.split_old_effect_skin("sketch", "none"), { "skin": Skins.DEFAULT_P1, "effect": "sketch" })
+	check_eq(Skins.split_old_effect_skin("lava", "cel"), { "skin": "lava", "effect": "cel" })
+	check(Progression.is_unlocked("effect:comic", {}), "tegneserie er åpen for alle")
+	check(not Progression.is_unlocked("effect:glitch", {}), "glitch må låses opp")
+	check_eq(Progression.allowed_look({ "skin": "ocean", "win_fx": "classic", "effect": "glitch" }, {}).effect, "none",
+		"låst effekt:")
+	check_eq(Progression.item_name("effect:sketch"), I18n.t("Skisse"))

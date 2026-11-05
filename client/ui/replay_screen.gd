@@ -27,8 +27,7 @@ func _ready() -> void:
 	for i in 2:
 		var rec: Dictionary = recs[i] if i < recs.size() and recs[i] is Dictionary else {}
 		names[i + 1] = str(rec.get("name", tr("Spiller %d") % (i + 1)))
-		looks.append(Skins.look(str(rec.get("skin", Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2)),
-			str(rec.get("decal", "none")), "classic", bool(rec.get("away", false)), str(rec.get("decal_color", "auto"))))
+		looks.append(Skins.look_of(rec, Skins.DEFAULT_P1 if i == 0 else Skins.DEFAULT_P2))
 	var pair := Skins.resolve_pair(looks[0], looks[1])
 	app.board.set_looks(pair[0], pair[1])
 	var colors := { 1: Skins.ui_color(pair[0]), 2: Skins.ui_color(pair[1]) }

@@ -230,8 +230,7 @@ func _show_matchup(players: Array, you: int) -> void:
 		if not info is Dictionary:
 			continue
 		var seat := int(info.seat)
-		looks[seat] = Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
-			str(info.get("win_fx", "classic")), bool(info.get("away", false)), str(info.get("decal_color", "auto")))
+		looks[seat] = Skins.look_of(info, "")
 		names[seat] = tr("Deg") if seat == you else str(info.name)
 	if looks.size() < 2:
 		_preview.set_look(looks.get(you, Settings.look()))

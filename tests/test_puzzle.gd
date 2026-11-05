@@ -46,11 +46,93 @@ func test_solution_is_accepted_and_others_are_not() -> void:
 func test_defender_is_deterministic() -> void:
 	var p := Puzzle.generate(_day_of_kind("forced"))
 	var s := Puzzle.start_state(p)
-	s.play(Puzzle.best_move(s, int(p.depth)), false)
-	var a := Puzzle.defend(s, int(p.depth) - 1)
-	var b := Puzzle.defend(s, int(p.depth) - 1)
-	check_eq(a, b)
+	# Et stille trekk først, så motstanderen kan velge fritt
+	var quiet := Vector2i(-1, -1)
+	for c in s.legal_moves():
+		if not Puzzle._creates_threat(s, c, s.current_player):
+			quiet = c
+			break
+	s.play(quiet, false)
+	var a := Puzzle.reply(p, s, [quiet])
+	var b := Puzzle.reply(JSON.parse_string(JSON.stringify(p)), s, [[quiet.x, quiet.y]])
+	check_eq(a, b, "samme svar (også etter JSON):")
 	check(a in s.legal_moves(), "forsvaret er et lovlig trekk")
+
+
+## Et feil trekk stopper ikke oppgaven: en seier på flere trekk enn den raskeste godtas, men ikke over
+## grensen (Puzzle.move_limit).
+func test_slower_win_is_accepted() -> void:
+	var found := []
+	for p in PuzzleBank.PUZZLES.filter(func(q: Dictionary) -> bool: return int(q.depth) == 3).slice(0, 12):
+		var sol := Puzzle.solution(p)
+		var start := Puzzle.start_state(p)
+		for c in start.legal_moves():
+			if c == sol[0]:
+				continue
+			var s := Puzzle.start_state(p)
+			var played: Array = [c]
+			s.play(c, false)
+			s.play(Puzzle.reply(p, s, played), false)
+			if s.is_over() or Puzzle.known_win(s, Puzzle.move_limit(p) - 1) == 0:
+				continue
+			if _win_on(p, s, played) and played.size() > int(p.depth):
+				found = [p, played]
+				break
+		if not found.is_empty():
+			break
+	check(not found.is_empty(), "fant en oppgave der et annet første trekk også vinner, men senere")
+	if found.is_empty():
+		return
+	var moves: Array = found[1]
+	check(Puzzle.verify(found[0], moves), "%s: seieren på %d trekk godtas" % [found[0].id, moves.size()])
+	var too_many := moves.duplicate()
+	while too_many.size() <= Puzzle.move_limit(found[0]):
+		too_many.push_front(moves[0])
+	check(not Puzzle.verify(found[0], too_many), "flere trekk enn grensen godtas ikke")
+
+
+## Gir et trekk motstanderen et fritt trekk, og den har en tvungen seier selv, spiller den den.
+func test_opponent_punishes_a_free_move() -> void:
+	var punished := 0
+	for p in PuzzleBank.PUZZLES.slice(0, 20):
+		var start := Puzzle.start_state(p)
+		var me := start.current_player
+		for c in start.legal_moves():
+			var s := Puzzle.start_state(p)
+			s.play(c, false)
+			if s.is_over() or Puzzle.win_depth(s, Puzzle.COUNTER_SIGHT) == 0:
+				continue
+			var r := Puzzle.reply(p, s, [c])
+			check(s.wins_by(r, s.current_player) or Puzzle._creates_threat(s, r, s.current_player),
+				"%s: motstanderen angriper etter %s" % [p.id, c])
+			# … og vinner, uansett hvordan du blokkerer
+			var played: Array = [c]
+			s.play(r, false)
+			while not s.is_over() and played.size() < 12:
+				var block: Vector2i = s.legal_moves()[0]
+				played.append(block)
+				s.play(block, false)
+				if not s.is_over():
+					s.play(Puzzle.reply(p, s, played), false)
+			check_eq(s.winner(), GameState.opponent(me), "%s: motstanderen vinner:" % p.id)
+			punished += 1
+			break
+	check(punished > 0, "fant et trekk som gir motstanderen en tvungen seier")
+
+
+## Spiller videre (raskeste vinnertrekk) mot motstanderen i oppgaven. true ved seier innen grensen.
+static func _win_on(p: Dictionary, s: GameState, played: Array) -> bool:
+	while played.size() < Puzzle.move_limit(p):
+		var col := Puzzle.quiet_winning_move(s, mini(Puzzle.move_limit(p) - played.size(), 4))
+		if col.x < 0:
+			return false
+		played.append(col)
+		if s.play(col, false).won:
+			return true
+		s.play(Puzzle.reply(p, s, played), false)
+		if s.is_over():
+			return false
+	return false
 
 
 func test_timeline_marks_the_same_moves_as_the_analysis() -> void:
@@ -113,6 +195,33 @@ func test_daily_kinds_rotate() -> void:
 		var has_bank := DailyBank.PUZZLES.any(func(b: Dictionary) -> bool: return b.kind == Puzzle.kind_for(d))
 		check_eq(str(p.get("kind", "forced")), Puzzle.kind_for(d) if has_bank else "forced", d)
 		check(Puzzle.verify(p, _attacker_moves(p)), "løsningen godtas: %s" % d)
+
+
+## Runde 19: oppgavene går i flere plan. Før var to av tre et vanlig firepårad i én høyde (som FLAT).
+const FLAT := {"depth":3,"first":1,"id":"3-01","moves":[[2,3],[1,3],[0,2],[2,2],[3,1],[1,3],[0,2],[3,3],[2,0],[1,3],[1,3],[1,1],[0,0],[2,2],[0,0],[2,0],[2,1],[3,1]],"options":{"must_block":true,"no_gift":true,"size":4,"starter":"p1","time_base_s":0,"time_increment_s":0,"win_length":4},"player":1}
+
+
+func test_puzzles_use_several_planes() -> void:
+	check_eq(Puzzle.line_kind(Vector3i(0, 0, 0), Vector3i(1, 1, 1)), "space")
+	check_eq(Puzzle.line_kind(Vector3i(0, 3, 0), Vector3i(0, 2, 1)), "slant")
+	check_eq(Puzzle.line_kind(Vector3i(1, 1, 0), Vector3i(1, 1, 1)), "vertical")
+	check_eq(Puzzle.line_kind(Vector3i(0, 3, 0), Vector3i(1, 2, 0)), "flat")
+	check_eq(Puzzle.line_kind(Vector3i(0, 0, 2), Vector3i(0, 1, 2)), "straight")
+	var flat := Puzzle.shape(FLAT)
+	check_eq(flat.levels, 1, "den gamle oppgaven ligger i én høyde:")
+	check(not Puzzle.is_3d(FLAT), "og går ikke i flere plan")
+	check(Puzzle.is_3d(Puzzle.generate(_day_of_kind("forced"))), "dagens oppgave går i flere plan")
+	for i in range(0, PuzzleBank.PUZZLES.size(), 7):
+		check(Puzzle.is_3d(PuzzleBank.PUZZLES[i]), "%s går i flere plan" % PuzzleBank.PUZZLES[i].id)
+	var wins := DailyBank.PUZZLES.filter(func(p: Dictionary) -> bool: return p.kind == "win")
+	for p in wins:
+		check(Puzzle.is_3d(p), "%s går i flere plan" % p.id)
+	var stacked := wins.filter(func(p: Dictionary) -> bool: return Puzzle.shape(p).stacked).size()
+	check(stacked * 3 <= wins.size() * 2, "høyst to av tre ender med tre trekk i samme kolonne (%d av %d)" % [stacked, wins.size()])
+	var forced := DailyBank.PUZZLES.filter(func(p: Dictionary) -> bool: return p.kind == "forced")
+	check(forced.size() >= 100, "«Tving frem seier» ligger i banken")
+	for i in range(0, forced.size(), 10):
+		check(Puzzle.is_3d(forced[i]), "%s går i flere plan" % forced[i].id)
 
 
 ## Det eksakte søket (stille trekk lov) finner de tvungne seirene i oppgavebanken, og aldri lengre.

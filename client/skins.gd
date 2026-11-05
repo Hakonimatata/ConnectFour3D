@@ -1,10 +1,10 @@
 class_name Skins
 extends RefCounted
-## Utseende på brikkene: skins (stil + farger), merker på toppen og seiersanimasjoner.
+## Utseende på brikkene: skins (stil + farger), merker på toppen, effekter og seiersanimasjoner.
 ##
 ## Hver skin har to drakter, «hjemme» og «borte». Velger begge spillerne samme
 ## (eller veldig lik) skin, bruker spiller 2 bortedrakten, som i fotball.
-## Et «look» er en Dictionary: { skin, decal, win_fx, away, decal_color }.
+## Et «look» er en Dictionary: { skin, decal, win_fx, away, decal_color, effect }.
 
 enum Style { SMOOTH, METAL, LAVA, GALAXY, HOLO, NEON, MARBLE, CARBON, STRIPES, AURORA, ICE, WOOD, CERAMIC,
 	GLASS, PATINA, PLASMA, KINTSUGI, DAMASCUS, CIRCUIT, DISCO, OPAL, PIXEL, CODE, TOXIC, BLACK_HOLE }
@@ -52,6 +52,22 @@ static var ALL: Array[Dictionary] = [
 	_skin("champion", "Gullmester", Style.KINTSUGI, ["120d05", "ffd76a", "f2c14e"], ["f6f1e4", "2a4fd0", "3f6ae0"]),
 	_skin("dawn", "Morgengry", Style.AURORA, ["2a0f2e", "ff9a5c", "ff8a6a"], ["0b1d3a", "5ce1f0", "4fd8e8"]),
 ]
+
+## Effekter oppå skinnet (runde 19, EFFECT i piece.gdshader, indeksen brukes der). Velges for seg, som merket,
+## og passer på alle skins. Noen låses opp med nivå (core/progression.gd).
+const EFFECTS: Array[Dictionary] = [
+	{ "id": "none", "name": "Ingen" },
+	{ "id": "comic", "name": "Tegneserie" },
+	{ "id": "cel", "name": "Cel-shading" },
+	{ "id": "sketch", "name": "Skisse" },
+	{ "id": "cmyk", "name": "CMYK" },
+	{ "id": "watercolor", "name": "Akvarell" },
+	{ "id": "glitch", "name": "Glitch" },
+]
+
+## Effektene som får en tegnet kant rundt brikken (assets/shaders/piece_outline.gdshader): hvor mye større
+## kanten er. Skissen får kanten i blyantfargen, de andre en nesten svart.
+const OUTLINES := { "cel": 0.07, "comic": 0.11, "sketch": 0.05 }
 
 ## Merker på toppen av brikken (indeksen brukes i shaderen). Noen låses opp av Elo (EloTiers.DECAL_TIERS).
 const DECALS: Array[Dictionary] = [
@@ -119,8 +135,9 @@ const WIN_FX: Array[Dictionary] = [
 ]
 
 static var _base_code := ""
-static var _shaders: Dictionary = {}     ## stil * 100 + merke -> Shader
+static var _shaders: Dictionary = {}     ## (effekt * 100 + stil) * 100 + merke -> Shader
 static var _swatches: Dictionary = {}
+static var _outlines: Dictionary = {}    ## «størrelse:farge» -> materialet til kanten
 
 
 static func _skin(id: String, name: String, style: Style, home: Array, away: Array) -> Dictionary:
@@ -161,6 +178,25 @@ static func is_valid_decal_color(id: String) -> bool:
 	return DECAL_COLORS.any(func(d: Dictionary) -> bool: return d.id == id)
 
 
+static func is_valid_effect(id: String) -> bool:
+	return EFFECTS.any(func(d: Dictionary) -> bool: return d.id == id)
+
+
+static func effect_index(id: String) -> int:
+	for i in EFFECTS.size():
+		if EFFECTS[i].id == id:
+			return i
+	return 0
+
+
+## Effektene var egne skins en kort stund (runde 19). Den som hadde valgt et av dem, får standard-skinnet
+## med effekten i stedet: { skin, effect }.
+static func split_old_effect_skin(skin: String, effect: String) -> Dictionary:
+	if skin != "none" and is_valid_effect(skin):
+		return { "skin": DEFAULT_P1, "effect": skin }
+	return { "skin": skin, "effect": effect }
+
+
 static func get_board(id: String) -> Dictionary:
 	for b in BOARDS:
 		if b.id == id:
@@ -176,14 +212,22 @@ static func decal_index(id: String) -> int:
 
 
 ## Et komplett look med gyldige verdier.
-static func look(skin: String, decal := "none", win_fx := "classic", away := false, decal_color := "auto") -> Dictionary:
+static func look(skin: String, decal := "none", win_fx := "classic", away := false, decal_color := "auto",
+		effect := "none") -> Dictionary:
 	return {
 		"skin": skin if is_valid(skin) else DEFAULT_P1,
 		"decal": decal if is_valid_decal(decal) else "none",
 		"win_fx": win_fx if is_valid_fx(win_fx) else "classic",
 		"away": away,
 		"decal_color": decal_color if is_valid_decal_color(decal_color) else "auto",
+		"effect": effect if is_valid_effect(effect) else "none",
 	}
+
+
+## Et look fra det serveren sender (spillere i rommet, partier, turneringer). Mangler skin, brukes default_skin.
+static func look_of(d: Dictionary, default_skin := DEFAULT_P1) -> Dictionary:
+	return look(str(d.get("skin", default_skin)), str(d.get("decal", "none")), str(d.get("win_fx", "classic")),
+		bool(d.get("away", false)), str(d.get("decal_color", "auto")), str(d.get("effect", "none")))
 
 
 static func variant(l: Dictionary) -> Dictionary:
@@ -274,27 +318,42 @@ static func swatch(id: String, size := 30) -> Texture2D:
 
 # ---------------------------------------------------------------- Materialer
 
-## Lager et materiale for en brikke med dette lookets skin, drakt og merke.
+## Lager et materiale for en brikke med dette lookets skin, drakt, merke og effekt.
 static func make_material(l: Dictionary) -> ShaderMaterial:
 	var s := get_skin(str(l.get("skin", DEFAULT_P1)))
 	var v := variant(l)
+	var effect := str(l.get("effect", "none"))
 	var m := ShaderMaterial.new()
-	m.shader = shader_for(int(s.style), decal_index(str(l.get("decal", "none"))))
+	m.shader = shader_for(int(s.style), decal_index(str(l.get("decal", "none"))), effect_index(effect))
 	m.set_shader_parameter("color_a", v.a)
 	m.set_shader_parameter("color_b", v.b)
 	m.set_shader_parameter("decal_color", Color(decal_color_of(l), 0.92))
+	if OUTLINES.has(effect):
+		var ink: Color = (v.a as Color).darkened(0.45) if effect == "sketch" else Color("101217")
+		m.next_pass = _outline(OUTLINES[effect], ink)
 	return m
 
 
-## Brikke-shaderen spesialisert for én stil og ett merke (se toppen av piece.gdshader).
+static func _outline(grow: float, color: Color) -> ShaderMaterial:
+	var key := "%s:%s" % [grow, color.to_html()]
+	if not _outlines.has(key):
+		var m := ShaderMaterial.new()
+		m.shader = load("res://assets/shaders/piece_outline.gdshader")
+		m.set_shader_parameter("grow", grow)
+		m.set_shader_parameter("outline_color", color)
+		_outlines[key] = m
+	return _outlines[key]
+
+
+## Brikke-shaderen spesialisert for én stil, ett merke og én effekt (se toppen av piece.gdshader).
 ## Små shadere kompileres raskt, så det første bildet med brikker ikke henger.
-static func shader_for(style: int, decal: int) -> Shader:
-	var key := style * 100 + decal
+static func shader_for(style: int, decal: int, effect := 0) -> Shader:
+	var key := (effect * 100 + style) * 100 + decal
 	if not _shaders.has(key):
 		if _base_code == "":
 			_base_code = (load("res://assets/shaders/piece.gdshader") as Shader).code
 		var sh := Shader.new()
-		sh.code = _base_code.replace("// @SPECIALIZE", "#define STYLE %d\n#define DECAL %d" % [style, decal])
+		sh.code = _base_code.replace("// @SPECIALIZE", "#define STYLE %d\n#define DECAL %d\n#define EFFECT %d" % [style, decal, effect])
 		_shaders[key] = sh
 	return _shaders[key]
 

@@ -234,14 +234,15 @@ func test_avatar_follows_the_account_to_other_devices() -> void:
 func test_look_follows_the_account() -> void:
 	# Ny konto tar enhetens utseende
 	_msg(1, { "t": "hello", "name": "Ada", "skin": "lava", "decal": "star", "win_fx": "fireworks",
-		"decal_color": "gold", "away": true, "version": Protocol.VERSION })
+		"decal_color": "gold", "away": true, "effect": "sketch", "version": Protocol.VERSION })
 	_msg(1, { "t": "register", "username": "Ada", "password": "hemmelig123" })
 	check_eq(_last(1, "session").look.skin, "lava", "kontoen tar enhetens utseende:")
 	# PC-en (standard utseende) logger inn: får kontoens
 	_hello(2, "Ada")
 	_msg(2, { "t": "login", "username": "Ada", "password": "hemmelig123" })
 	var look: Dictionary = _last(2, "session").look
-	check_eq([look.skin, look.decal, look.win_fx, look.decal_color, look.away], ["lava", "star", "fireworks", "gold", true],
+	check_eq([look.skin, look.decal, look.win_fx, look.decal_color, look.away, look.effect],
+		["lava", "star", "fireworks", "gold", true, "sketch"],
 		"PC-en får kontoens utseende:")
 	# Endret på PC-en: lagres på kontoen
 	_msg(2, { "t": "set_look", "skin": "glass", "decal": "none", "win_fx": "classic", "decal_color": "auto", "away": false })

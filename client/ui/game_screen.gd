@@ -20,6 +20,9 @@ var _touch_hint_shown := false
 var _last_tick_s := -1
 var _watchers: Label
 var _bottom: Control
+var _top: Control                     ## spillerkortene øverst
+var _typing_layout := false           ## chatten er lagt ut for skriving med tastaturet oppe (mobil)
+var _last_landscape := false
 var _replay: ReplayPlayer
 var _resign_button: Button
 var _leave_button: Button
@@ -88,6 +91,7 @@ func _exit_tree() -> void:
 func _build_hud() -> void:
 	# Topp: spillerkort
 	var top := MarginContainer.new()
+	_top = top
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side in ["left", "right", "top"]:
@@ -409,9 +413,34 @@ func _build_chat_drawer() -> void:
 	_layout_chat.call_deferred()
 
 
+## Skriver man i chatten med tastaturet oppe (mobil)?
+func _chat_typing() -> bool:
+	if app.keyboard_height <= 0.0 or not _chat_drawer.visible:
+		return false
+	return _chat.is_typing() or (_tchat != null and _tchat.is_typing())
+
+
 func _layout_chat() -> void:
+	# Tastaturet på mobil krymper skjermen. Mens man skriver, byttes ikke oppsettet (liggende/stående), og
+	# chatten får hele plassen over tastaturet: under spillerkortene hvis det er plass, uten hurtigmeldingene
+	# og bunnlinjen. Før ble panelet lavere enn innholdet, så feltet havnet under tastaturet og hoppet.
+	var typing := _chat_typing()
+	var landscape := _last_landscape if typing else size.x > size.y
+	_last_landscape = landscape
+	_chat.set_typing(typing)
+	if typing != _typing_layout:
+		_typing_layout = typing
+		_bottom.visible = not typing and _replay == null
+	if typing:
+		var below_cards := _top.position.y + _top.size.y + 8.0
+		_chat_drawer.set_anchors_preset(Control.PRESET_RIGHT_WIDE if landscape else Control.PRESET_FULL_RECT)
+		_chat_drawer.offset_left = -minf(380.0, size.x * 0.4) if landscape else 12.0
+		_chat_drawer.offset_right = -12
+		_chat_drawer.offset_top = below_cards if not landscape and size.y - below_cards >= 260.0 else 10.0
+		_chat_drawer.offset_bottom = -10
+		return
 	# Liggende: panel til høyre. Stående: panel over bunnlinjen.
-	if size.x > size.y:
+	if landscape:
 		_chat_drawer.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 		_chat_drawer.offset_left = -minf(380.0, size.x * 0.4)
 		_chat_drawer.offset_right = -12
@@ -779,6 +808,8 @@ func _process(delta: float) -> void:
 		if _status_timer <= 0.0:
 			_update_turn_status()
 	_update_clocks()
+	if _chat_typing() != _typing_layout:   # begynte eller sluttet å skrive (tastaturet)
+		_layout_chat()
 
 
 func _update_clocks() -> void:

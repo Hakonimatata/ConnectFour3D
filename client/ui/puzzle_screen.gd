@@ -1,7 +1,10 @@
 class_name PuzzleScreen
 extends Screen
-## Dagens oppgave: finn den tvungne seieren. Motstanderen forsvarer seg så godt det går
-## (Puzzle.defend), og glipper den tvungne seieren, må du prøve igjen.
+## Dagens oppgave: finn den tvungne seieren. Motstanderen forsvarer seg så godt det går (Puzzle.reply).
+## Runde 19 (forts.): et feil trekk stopper deg ikke. Partiet spilles videre til noen vinner, eller til
+## trekkene dine er brukt opp (Puzzle.move_limit), så du ser hvorfor det gikk galt. Etter hvert svar står
+## det om du fortsatt kan vinne, og taper du, hvilket trekk seieren glapp med. Alle seire innen
+## trekkene godtas, også andre løsninger og seire på flere trekk enn den raskeste.
 ## Runde 17: dagens oppgave bytter mellom tre typer (Puzzle.kind_for): tving frem seier (som over),
 ## «Vinn på N trekk» (stille trekk er lov, motstanderen svarer etter løsningen, line) og «Finn beste
 ## trekk» (eneste trekk som redder deg; bommer du, vises hvordan motstanderen vinner).
@@ -27,6 +30,8 @@ var _attempts := 1
 var _busy := false
 var _solved := false
 var _shown_solution := false
+var _slipped_at := 0           ## ditt trekk der seieren glapp (0 = ikke glippet), vises hvis du taper
+var _note := ""                ## «du brukte flere trekk enn den raskeste seieren», etter «Løst»
 var _generation := 0
 var _panel: MarginContainer
 var _scroll: ScrollContainer
@@ -211,9 +216,9 @@ func _on_message(msg: Dictionary) -> void:
 			if bool(msg.get("ok", false)):
 				var rank := int(msg.get("rank", 0))
 				if rank > 0:
-					_status.text = tr("Løst! Du er nr. %d i dag.") % rank
+					_status.text = tr("Løst! Du er nr. %d i dag.") % rank + _note
 				elif not Net.is_logged_in():
-					_status.text = tr("Løst! Logg inn for å komme på listen.")
+					_status.text = tr("Løst! Logg inn for å komme på listen.") + _note
 				var xp = msg.get("xp", {})
 				if xp is Dictionary and int(xp.get("gained", 0)) > 0:
 					_status.text += "\n" + GameScreen.xp_text(xp)
@@ -279,6 +284,8 @@ func _reset() -> void:
 	_my_moves.clear()
 	_busy = false
 	_solved = false
+	_slipped_at = 0
+	_note = ""
 	app.board.setup(_state.size)
 	var other := GameState.opponent(_me)
 	var pair := Skins.resolve_pair(Settings.look(), Skins.look(Skins.DEFAULT_P2))
@@ -291,13 +298,13 @@ func _reset() -> void:
 	var depth := int(_puzzle.get("depth", Puzzle.MIN_DEPTH))
 	match _kind():
 		"win":
-			_goal.text = tr("Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan.") % depth
+			_goal.text = tr("Vinn på %d trekk! Her holder det ikke bare med trusler: et stille trekk må til. Motstanderen forsvarer seg så godt den kan, og du får bruke opptil %d trekk.") % [depth, Puzzle.move_limit(_puzzle)]
 			_tip.text = tr("Tips: let etter et trekk som forbereder to trusler samtidig, gjerne på kryss og tvers gjennom flere høyder.")
 		"defend":
-			_goal.text = tr("Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg.")
+			_goal.text = tr("Finn beste trekk! Motstanderen truer med å tvinge frem seier, og bare ett trekk redder deg. Bommer du, ser du hvordan den vinner.")
 			_tip.text = tr("Tips: se etter plassen motstanderen trenger for å lage to trusler samtidig, og ta den først.")
 		_:
-			_goal.text = tr("Du har tur. Finn den tvungne seieren med %d trekk – motstanderen forsvarer seg så godt den kan.") % depth
+			_goal.text = tr("Du har tur og kan tvinge frem seier på %d trekk. Motstanderen forsvarer seg så godt den kan, og du får bruke opptil %d trekk.") % [depth, Puzzle.move_limit(_puzzle)]
 			_tip.text = tr("Tips: et tvunget trekk lager en trussel motstanderen må blokkere. Sett opp to trusler samtidig, så vinner du.")
 	_goal.add_theme_color_override("font_color", app.board.colors[_me].lerp(Color.WHITE, 0.35))
 	_show_legend(looks[_me], looks[other])
@@ -326,7 +333,10 @@ func _show_legend(mine: Dictionary, theirs: Dictionary) -> void:
 
 
 func _update_attempts() -> void:
-	_attempts_label.text = tr("Forsøk: %d") % _attempts
+	if _kind() == "defend":
+		_attempts_label.text = tr("Forsøk: %d") % _attempts
+	else:
+		_attempts_label.text = tr("Forsøk: %d · Trekk: %d av %d") % [_attempts, _my_moves.size(), Puzzle.move_limit(_puzzle)]
 
 
 func _on_column_hovered(col: Vector2i) -> void:
@@ -351,6 +361,8 @@ func _can_play() -> bool:
 
 
 ## Spiller ditt trekk, og svarer for motstanderen. Brukes også av testene.
+## Et feil trekk stopper ikke oppgaven: motstanderen svarer, og partiet går videre til du vinner,
+## motstanderen vinner, eller trekkene dine (Puzzle.move_limit) er brukt opp.
 func play(col: Vector2i) -> void:
 	var err := _state.check_move(col)
 	if err != GameState.MoveError.OK:
@@ -365,89 +377,106 @@ func play(col: Vector2i) -> void:
 	app.board.add_piece(r.pos, _me)
 	Sfx.play("drop")
 	_my_moves.append([col.x, col.y])
+	_retry_button.visible = true   # du kan alltid begynne på nytt
+	_update_attempts()
 	if r.won:
-		_on_solved()
+		_on_won()
 		return
 	if _state.is_over():
-		_fail(tr("Brettet ble fullt."))
+		_lose(tr("Brettet ble fullt."))
 		return
-	match _kind():
-		"win":
-			_reply_from_line(col)
-			return
-		"defend":
-			_check_defense(col)
-			return
-	# Et trekk uten trussel gir motstanderen et fritt trekk: da er den tvungne seieren borte.
-	var quiet := _state.winning_columns(_me).is_empty()
+	if _kind() == "defend" and _my_moves.size() == 1 and col == Puzzle._vec(_puzzle.get("answer", [])):
+		_on_solved()
+		return
 	_busy = true
 	var gen := _generation
 	await get_tree().create_timer(REPLY_DELAY_S).timeout
 	if not is_inside_tree() or gen != _generation:
 		return
-	var left := int(_puzzle.depth) - _my_moves.size()
-	var reply := Puzzle.defend(_state, 0 if quiet else left)
-	var r2 := _state.play(reply, false)
+	var r2 := _state.play(_opponent_move(), false)
 	app.board.add_piece(r2.pos, GameState.opponent(_me))
 	Sfx.play("drop", 0.85)
-	if quiet:
-		_fail(tr("Det trekket truet ingenting, så motstanderen fikk et fritt trekk."))
+	if r2.won:
+		app.board.highlight(_state.winning_line)
+		_lose(tr("Motstanderen fikk fire på rad."))
 		return
-	if r2.won or _state.is_over() or left <= 0 or Puzzle.win_depth(_state, left) == 0:
-		_fail(tr("Motstanderen slapp unna. Den tvungne seieren glapp."))
+	if _state.is_over():
+		_lose(tr("Brettet ble fullt."))
 		return
-	_status.text = tr("Bra! %d trekk igjen.") % left
 	_busy = false
+	if _kind() == "defend":
+		if _my_moves.size() == 1:
+			_status.text = tr("Det trekket redder deg ikke: nå kan motstanderen tvinge frem seier. Forsvar deg, og se hvordan den gjør det.")
+		elif _my_moves.size() > int(_puzzle.get("depth", 2)) + Puzzle.EXTRA_MOVES:
+			_lose(tr("Ikke det trekket. Prøv igjen!"))   # motstanderen fant ikke seieren (skal ikke skje)
+		return
+	_judge()
 
 
 func _kind() -> String:
 	return str(_puzzle.get("kind", "forced"))
 
 
-## «Vinn på N trekk»: trekket må være neste i løsningen (den er entydig), og motstanderen svarer
-## som i løsningen. Siste trekk: alle vinnertrekk godtas (det tar play()).
-func _reply_from_line(col: Vector2i) -> void:
-	var line: Array = _puzzle.get("line", [])
-	var i := (_my_moves.size() - 1) * 2
-	if i + 1 >= line.size() or col != Puzzle._vec(line[i]):
-		_fail(tr("Ikke det trekket – nå slipper motstanderen unna. Prøv igjen!"))
-		return
-	_busy = true
-	var gen := _generation
-	await get_tree().create_timer(REPLY_DELAY_S).timeout
-	if not is_inside_tree() or gen != _generation:
-		return
-	var r2 := _state.play(Puzzle._vec(line[i + 1]), false)
-	app.board.add_piece(r2.pos, GameState.opponent(_me))
-	Sfx.play("drop", 0.85)
-	_status.text = tr("Bra! %d trekk igjen.") % ((line.size() - i - 1) / 2)
-	_busy = false
+## Motstanderens trekk. Puzzle.reply (som serveren bruker til å sjekke løsningen): følger du løsningen i
+## «Vinn på N trekk», svarer den som i løsningen, ellers stopper den deg eller vinner selv.
+## «Finn beste trekk»: bommer du, spiller den seieren sin, først trekket som er lagret i oppgaven (refute),
+## så det raskeste vinnertrekket.
+func _opponent_move() -> Vector2i:
+	if _kind() != "defend":
+		return Puzzle.reply(_puzzle, _state, _my_moves)
+	if _my_moves.size() == 1:
+		var first: Array = _my_moves[0]
+		var w := Puzzle._vec((_puzzle.get("refute", {}) as Dictionary).get("%d,%d" % [first[0], first[1]], []))
+		if w.x >= 0 and _state.check_move(w) == GameState.MoveError.OK:
+			return w
+	var win := Puzzle.quiet_winning_move(_state, int(_puzzle.get("depth", 2)))
+	return win if win.x >= 0 else Puzzle.respond(_state, 0)
 
 
-## «Finn beste trekk»: riktig trekk løser oppgaven. Ellers vises motstanderens første trekk i
-## seieren (lagret i oppgaven, refute), og du kan prøve igjen.
-func _check_defense(col: Vector2i) -> void:
-	if col == Puzzle._vec(_puzzle.get("answer", [])):
+## Etter motstanderens svar: kan du fortsatt vinne med trekkene du har igjen (slik motstanderen ser det)?
+## Husker trekket der seieren glapp, så det kan vises hvis du taper.
+func _judge() -> void:
+	var used := _my_moves.size()
+	var left := Puzzle.move_limit(_puzzle) - used
+	var d := Puzzle.known_win(_state, left)
+	if d > 0:
+		_slipped_at = 0
+		if used + d <= int(_puzzle.get("depth", Puzzle.MIN_DEPTH)):
+			_status.text = tr("Bra! %d trekk igjen.") % d
+		else:
+			_status.text = tr("Du kan fortsatt vinne, men det tar %d trekk til.") % d
+		return
+	if _slipped_at == 0:
+		_slipped_at = used
+	# Kan motstanderen tvinge frem seier selv, spilles den ut, også når trekkene dine er brukt opp
+	var threatened := not _state.winning_columns(GameState.opponent(_me)).is_empty()
+	if threatened and Puzzle.loses_to_threats(_state, Puzzle.COUNTER_SIGHT):
+		_status.text = tr("Nå kan motstanderen tvinge frem seier selv. Se hvordan den gjør det.")
+	elif left <= 0:
+		_lose(tr("Trekkene dine er brukt opp."))
+	elif threatened:
+		_status.text = tr("Motstanderen truer, og du må blokkere.")
+	else:
+		_status.text = tr("Nå har du ikke lenger noen tvungen seier. Spill videre og se hvordan det går, eller prøv igjen.")
+
+
+## Du fikk fire på rad: løst, hvis det var innen trekkene du hadde.
+func _on_won() -> void:
+	if _my_moves.size() <= Puzzle.move_limit(_puzzle):
 		_on_solved()
 		return
+	app.board.highlight(_state.winning_line)
+	_lose(tr("Du vant, men brukte mer enn %d trekk.") % Puzzle.move_limit(_puzzle))
+
+
+## Forsøket er tapt: hva som skjedde, og hvilket trekk seieren glapp med.
+func _lose(text: String) -> void:
 	_busy = true
-	var gen := _generation
-	await get_tree().create_timer(REPLY_DELAY_S).timeout
-	if not is_inside_tree() or gen != _generation:
-		return
-	var win := Puzzle._vec((_puzzle.get("refute", {}) as Dictionary).get("%d,%d" % [col.x, col.y], []))
-	if win.x >= 0 and _state.is_column_open(win):
-		var r2 := _state.play(win, false)
-		app.board.add_piece(r2.pos, GameState.opponent(_me))
-		Sfx.play("drop", 0.85)
-		_fail(tr("Da kan motstanderen tvinge frem seier, og slik begynner den. Prøv igjen!"))
+	if _kind() == "defend":
+		text += " " + tr("Slik vinner motstanderen etter det trekket.")
 	else:
-		_fail(tr("Ikke det trekket. Prøv igjen!"))
-
-
-func _fail(text: String) -> void:
-	_busy = true
-	_status.text = text
+		text += " " + tr("Seieren glapp med trekk %d.") % (_slipped_at if _slipped_at > 0 else _my_moves.size())
+	_status.text = text + "\n" + tr("Prøv igjen, eller se løsningen.")
 	_retry_button.visible = true
 	Sfx.play("lose")
 
@@ -460,6 +489,7 @@ func _retry() -> void:
 
 func _on_solved() -> void:
 	_solved = true
+	_busy = false
 	app.board.input_enabled = false
 	if not _state.winning_line.is_empty():
 		app.board.highlight(_state.winning_line)
@@ -471,7 +501,12 @@ func _on_solved() -> void:
 		_status.text = tr("Slik løses den. Prøv selv neste gang!")
 		_next_button.visible = _mode != 0
 		return
-	_status.text = tr("Løst på %d forsøk!") % _attempts
+	var used := _my_moves.size()
+	var depth := int(_puzzle.get("depth", Puzzle.MIN_DEPTH))
+	_note = ""
+	if _kind() != "defend" and used > depth:
+		_note = "\n" + tr("Du brukte %d trekk. Den raskeste seieren tar %d: se den med «Vis løsning».") % [used, depth]
+	_status.text = tr("Løst på %d forsøk!") % _attempts + _note
 	if _kind() == "defend":
 		_status.text = tr("Riktig! Det var det eneste trekket som redder deg. Løst på %d forsøk.") % _attempts
 	if _mode != 0:

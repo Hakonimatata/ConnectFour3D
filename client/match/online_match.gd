@@ -150,8 +150,7 @@ func _read_players(list: Array) -> void:
 			sub = EloBadge.describe(elo)
 		players[seat] = { "name": str(info.name), "avatar": str(info.get("avatar", "")),
 			"local": seat == _seat, "subtitle": sub, "elo": elo }
-		players[seat].merge(Skins.look(str(info.get("skin", "")), str(info.get("decal", "none")),
-			str(info.get("win_fx", "classic")), bool(info.get("away", false)), str(info.get("decal_color", "auto"))), true)
+		players[seat].merge(Skins.look_of(info, ""), true)
 	# Begge klientene regner likt: verten (sete 1) har hjemmedrakt, gjesten bortedrakt ved lik skin.
 	resolve_looks()
 	players_changed.emit()

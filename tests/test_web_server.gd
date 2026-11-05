@@ -209,3 +209,38 @@ func test_gzip_when_browser_accepts_it() -> void:
 	# Uten Accept-Encoding: ukomprimert
 	var plain: Dictionary = await _http_get("/game.wasm")
 	check(not plain.head.contains("Content-Encoding"), "uten gzip-støtte skal svaret være ukomprimert")
+
+
+## Runde 19: har nettleseren filen fra før (ETag eller dato), svarer serveren 304 uten innhold.
+func test_not_modified_when_the_browser_has_the_file() -> void:
+	var r: Dictionary = await _http_get("/game.wasm")
+	var etag := _head_value(r.head, "etag")
+	check(etag.begins_with("W/\""), "ETag: " + etag)
+	var again: Dictionary = await _http_get("/game.wasm", "If-None-Match: %s\r\nAccept-Encoding: gzip\r\n" % etag)
+	check(again.head.begins_with("HTTP/1.1 304"), "304: " + again.head.get_slice("\r\n", 0))
+	check_eq(again.body.size(), 0, "uten innhold:")
+	var by_date: Dictionary = await _http_get("/game.wasm", "If-Modified-Since: %s\r\n" % _head_value(r.head, "last-modified"))
+	check(by_date.head.begins_with("HTTP/1.1 304"), "304 etter datoen: " + by_date.head.get_slice("\r\n", 0))
+	var changed: Dictionary = await _http_get("/game.wasm", "If-None-Match: W/\"1-2\"\r\n")
+	check(changed.head.begins_with("HTTP/1.1 200"), "endret fil: " + changed.head.get_slice("\r\n", 0))
+	check_eq(changed.body.size(), 700_000)
+
+
+## Runde 19: en «fil.br» som er nyere enn filen, sendes til nettlesere som støtter brotli.
+func test_brotli_file_when_the_browser_accepts_it() -> void:
+	var f := FileAccess.open(DIR + "/game.wasm.br", FileAccess.WRITE)
+	f.store_string("brotli-innhold")
+	f.close()
+	var r: Dictionary = await _http_get("/game.wasm", "Accept-Encoding: gzip, deflate, br\r\n")
+	check(r.head.contains("Content-Encoding: br"), "brotli: " + r.head)
+	check_eq(r.body.get_string_from_ascii(), "brotli-innhold")
+	var gz: Dictionary = await _http_get("/game.wasm", "Accept-Encoding: gzip;q=1.0, deflate\r\n")
+	check(gz.head.contains("Content-Encoding: gzip"), "uten br: gzip: " + gz.head)
+	DirAccess.remove_absolute(DIR + "/game.wasm.br")
+
+
+static func _head_value(head: String, name: String) -> String:
+	for line in head.split("\r\n"):
+		if line.to_lower().begins_with(name + ":"):
+			return line.substr(name.length() + 1).strip_edges()
+	return ""

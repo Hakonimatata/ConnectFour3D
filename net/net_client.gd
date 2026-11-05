@@ -110,7 +110,7 @@ func _process(delta: float) -> void:
 				_socket_open = true
 				send({ "t": Protocol.HELLO, "name": Settings.display_name(), "skin": Settings.skin_id,
 					"decal": Settings.decal_id, "win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id,
-					"away": Settings.kit_away,
+					"away": Settings.kit_away, "effect": Settings.effect_id,
 					"avatar": Settings.avatar,
 					"look_pending": Settings.look_pending,
 					"version": Protocol.VERSION, "token": _token, "session": Settings.session_token })
@@ -191,7 +191,8 @@ func _handle(msg: Dictionary) -> void:
 ## Sender nytt utseende til serveren (f.eks. byttet skin i venterommet).
 func send_look() -> void:
 	send({ "t": Protocol.SET_LOOK, "skin": Settings.skin_id, "decal": Settings.decal_id,
-		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id, "away": Settings.kit_away })
+		"win_fx": Settings.win_fx_id, "decal_color": Settings.decal_color_id, "away": Settings.kit_away,
+		"effect": Settings.effect_id })
 
 
 ## Nytt eller fjernet profilbilde. Innlogget lagres det på kontoen, så det følger med til andre enheter.
@@ -217,7 +218,9 @@ func _adopt_profile(msg: Dictionary) -> void:
 		var win_fx := str(look.get("win_fx", ""))
 		var decal_color := str(look.get("decal_color", ""))
 		var away := bool(look.get("away", Settings.kit_away))
-		var before := [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away]
+		var effect := str(look.get("effect", ""))
+		var before := [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away,
+			Settings.effect_id]
 		if Skins.is_valid(skin):
 			Settings.skin_id = skin
 		if Skins.is_valid_decal(decal):
@@ -226,8 +229,11 @@ func _adopt_profile(msg: Dictionary) -> void:
 			Settings.win_fx_id = win_fx
 		if Skins.is_valid_decal_color(decal_color):
 			Settings.decal_color_id = decal_color
+		if Skins.is_valid_effect(effect):
+			Settings.effect_id = effect
 		Settings.kit_away = away
-		changed = changed or before != [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away]
+		changed = changed or before != [Settings.skin_id, Settings.decal_id, Settings.win_fx_id, Settings.decal_color_id, Settings.kit_away,
+			Settings.effect_id]
 	if changed:
 		Settings.save()
 		profile_synced.emit()

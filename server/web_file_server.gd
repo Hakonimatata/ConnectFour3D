@@ -8,6 +8,12 @@ extends RefCounted
 ## (USB) eller en HTTPS-tunnel, som nettleseren krever for Godot-spill.
 ## Med et sertifikat (TLSOptions) kjører den HTTPS direkte, f.eks. med
 ## local-ip.sh-sertifikatet slik at telefoner på wifi kan koble til (se ServerMain).
+##
+## Runde 19, kortere lastetid:
+##   - Hver fil har ETag og Last-Modified. Har nettleseren filen fra før, svarer serveren 304 (ingen
+##     nedlasting), og nettleseren kan bruke den ferdig kompilerte index.wasm fra forrige gang.
+##   - Ligger det en nyere «fil.br» ved siden av (scripts/pack_web.ps1 lager index.wasm.br), sendes den
+##     til nettlesere som støtter brotli. index.wasm blir ~30 % mindre enn med gzip.
 
 const MAX_REQUEST := 8192
 const CHUNK := 256 * 1024
@@ -15,13 +21,16 @@ const MAX_PER_POLL := 16 * 1024 * 1024
 const TIMEOUT_MS := 30_000
 
 ## Filtyper som komprimeres (gzip) når nettleseren støtter det. index.wasm krymper ~4×.
-const GZIP_TYPES := ["wasm", "js", "html", "pck", "json", "css", "svg", "txt"]
+const GZIP_TYPES := ["wasm", "js", "html", "pck", "json", "css", "svg", "txt", "ttf"]
 
 const TYPES := {
 	"html": "text/html; charset=utf-8", "js": "application/javascript", "wasm": "application/wasm",
 	"pck": "application/octet-stream", "png": "image/png", "svg": "image/svg+xml", "ico": "image/x-icon",
-	"json": "application/json", "css": "text/css", "txt": "text/plain; charset=utf-8",
+	"json": "application/json", "css": "text/css", "txt": "text/plain; charset=utf-8", "ttf": "font/ttf",
 }
+
+const DAYS := ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+const MONTHS := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 var root := ""
 var port := 0
@@ -179,29 +188,57 @@ func _respond(c: Dictionary, request: String) -> void:
 		return
 	var ext := clean.get_extension().to_lower()
 	var type: String = TYPES.get(ext, "application/octet-stream")
-	if ext in GZIP_TYPES and _accepts_gzip(request):
+	# Nettleseren har filen fra før: 304 uten innhold (If-None-Match går foran If-Modified-Since)
+	var mtime := FileAccess.get_modified_time(full)
+	var etag := "\"%x-%x\"" % [mtime, f.get_length()]
+	var modified := _http_date(mtime)
+	var validators := "ETag: W/%s\r\nLast-Modified: %s\r\n" % [etag, modified]
+	var match_tag := _header_value(request, "if-none-match")
+	var cached := match_tag.contains(etag) if match_tag != "" else _header_value(request, "if-modified-since") == modified
+	if cached:
+		c.pending = ("HTTP/1.1 304 Not Modified\r\n%sCache-Control: no-cache\r\nConnection: close\r\n\r\n" % validators).to_utf8_buffer()
+		return
+	if ext in GZIP_TYPES and _accepts(request, "br") and FileAccess.file_exists(full + ".br") \
+			and FileAccess.get_modified_time(full + ".br") >= mtime:
+		var br := FileAccess.open(full + ".br", FileAccess.READ)
+		if br != null:
+			c.pending = _header(200, type, br.get_length(), "Content-Encoding: br\r\nVary: Accept-Encoding\r\n" + validators)
+			c.file = br
+			return
+	if ext in GZIP_TYPES and _accepts(request, "gzip"):
 		var data := _gzipped(full)
 		if not data.is_empty():
-			c.pending = _header(200, type, data.size(), "Content-Encoding: gzip" + "\r\n" + "Vary: Accept-Encoding" + "\r\n")
+			c.pending = _header(200, type, data.size(), "Content-Encoding: gzip\r\nVary: Accept-Encoding\r\n" + validators)
 			c.mem = data
 			return
-	c.pending = _header(200, type, f.get_length())
+	c.pending = _header(200, type, f.get_length(), validators)
 	c.file = f
 
 
 static func _host(request: String) -> String:
-	for line in request.split("
-"):
-		if line.to_lower().begins_with("host:"):
-			return line.substr(5).strip_edges()
+	return _header_value(request, "host")
+
+
+## Verdien til en header i forespørselen (navnet med små bokstaver), eller "".
+static func _header_value(request: String, name: String) -> String:
+	for line in request.split("\r\n"):
+		if line.to_lower().begins_with(name + ":"):
+			return line.substr(name.length() + 1).strip_edges()
 	return ""
 
 
-static func _accepts_gzip(request: String) -> bool:
-	for line in request.split("\r\n"):
-		if line.to_lower().begins_with("accept-encoding:"):
-			return line.to_lower().contains("gzip")
+## Støtter nettleseren komprimeringen (Accept-Encoding: gzip, deflate, br)?
+static func _accepts(request: String, encoding: String) -> bool:
+	for part in _header_value(request, "accept-encoding").to_lower().split(","):
+		if part.get_slice(";", 0).strip_edges() == encoding:
+			return true
 	return false
+
+
+## Tidspunkt som i HTTP, f.eks. «Wed, 04 Nov 2026 17:30:00 GMT».
+static func _http_date(unix: int) -> String:
+	var d := Time.get_datetime_dict_from_unix_time(unix)
+	return "%s, %02d %s %d %02d:%02d:%02d GMT" % [DAYS[d.weekday], d.day, MONTHS[d.month - 1], d.year, d.hour, d.minute, d.second]
 
 
 ## Komprimert innhold for en fil (gzip), hentet fra minnet hvis filen ikke er endret.

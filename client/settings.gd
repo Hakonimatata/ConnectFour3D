@@ -15,6 +15,7 @@ var skin_id := Skins.DEFAULT_P1
 var decal_id := "none"        ## Merke på toppen av brikken (Skins.DECALS)
 var win_fx_id := "classic"    ## Seiersanimasjon (Skins.WIN_FX)
 var decal_color_id := "auto"  ## Farge på merket (Skins.DECAL_COLORS)
+var effect_id := "none"       ## Effekt oppå skinnet (Skins.EFFECTS, runde 19)
 var kit_away := false         ## Drakten du vil bruke: false = hjemme, true = borte
 var board_theme := "slate"    ## Brett-tema (Skins.BOARDS), bare for deg selv
 var background := "standard"  ## Bakgrunn (Skins.BACKGROUNDS), bare for deg selv
@@ -43,6 +44,10 @@ func _ready() -> void:
 		decal_id = str(cfg.get_value("player", "decal", decal_id))
 		win_fx_id = str(cfg.get_value("player", "win_fx", win_fx_id))
 		decal_color_id = str(cfg.get_value("player", "decal_color", decal_color_id))
+		effect_id = str(cfg.get_value("player", "effect", effect_id))
+		var split := Skins.split_old_effect_skin(skin_id, effect_id)
+		skin_id = split.skin
+		effect_id = split.effect
 		kit_away = bool(cfg.get_value("player", "kit_away", false))
 		board_theme = str(cfg.get_value("app", "board_theme", board_theme))
 		background = str(cfg.get_value("app", "background", background))
@@ -100,11 +105,11 @@ func set_chat_messages(msgs: Array[String]) -> void:
 			chat_presets.append(m.substr(0, 40))
 
 
-## Spillerens eget utseende (skin, merke, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen»,
-## og skins og seiersanimasjoner du ikke har låst opp (nivå, runde 17), blir standard.
+## Spillerens eget utseende (skin, merke, effekt, seiersanimasjon). Merker du ikke har låst opp (Elo), blir «ingen»,
+## og skins, effekter og seiersanimasjoner du ikke har låst opp (nivå, runde 17), blir standard.
 func look() -> Dictionary:
 	var decal := decal_id if EloTiers.decal_unlocked(decal_id, known_elo()) else "none"
-	return Progression.allowed_look(Skins.look(skin_id, decal, win_fx_id, kit_away, decal_color_id), progress())
+	return Progression.allowed_look(Skins.look(skin_id, decal, win_fx_id, kit_away, decal_color_id, effect_id), progress())
 
 
 ## XP og det som er låst opp: fra serveren når du er innlogget, ellers det sist kjente ({} for gjester).
@@ -138,6 +143,7 @@ func save() -> void:
 	cfg.set_value("player", "decal", decal_id)
 	cfg.set_value("player", "win_fx", win_fx_id)
 	cfg.set_value("player", "decal_color", decal_color_id)
+	cfg.set_value("player", "effect", effect_id)
 	cfg.set_value("player", "kit_away", kit_away)
 	cfg.set_value("app", "board_theme", board_theme)
 	cfg.set_value("app", "background", background)

@@ -261,6 +261,22 @@
 
 - Til slutt, Gi meg tips til å få folk til å møte opp til turneringer
 
+
+
+## Runde 19
+
+- Kan du gjøre puzzles litt mer interessant? Noen mønstre er litt enkle og dukker opp gang på gang. Hva med få laget noen som er litt mer varierte i forskjellige plan osv?
+
+- Nye "Effekter" på skins, feks cell shading, toon, CMYK-stil etc.
+
+- Gjerne sjekk om noen enkle knep som kan redusere loading tid for å laste inn spiller.
+
+- Tydeligere varsel for venneforespørsel. Gjør den prikken rød.
+
+- Lag en bedre logo/ikon for spillet. Ta utgangspunkt i den vi har, bare litt mer gjennomført og som likner spillet.
+
+
+
 ## Senere (ikke gjennomtenkt nok)
 
 - Custom reactions. 
